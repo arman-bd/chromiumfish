@@ -1,0 +1,57 @@
+# Chromium source tree and build output. The fork is the patches/ +
+# assets/ delta on top, not a full copy of the source.
+src/
+out/
+
+# Build / fetch logs
+*.log
+
+# macOS / IDE / editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# depot_tools internal state
+.gclient_entries
+.gclient_previous_sync_commits
+.gcs_entries
+.cipd/
+.python_shim/
+
+# Per-session runtime droppings and browser profiles
+persona.current.json
+runtime/
+*.bak
+*.upstream
+.env
+
+# Local dev tooling, not part of the shippable fork (patches/ + assets/
+# + apply.sh). Lives on disk only, under __tools/.
+__tools/
+
+# Packaged release artifacts (built output, not source)
+dist/
+
+# Harness SDKs (packages/) — built output and dependency trees
+node_modules/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build stdout captures
+*.stdout
+
+# Local assistant / agent state
+.claude/
+
+# Local edit backups + bake build scratch
+*.prebake
+bake_build.sh
