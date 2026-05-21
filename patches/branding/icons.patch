@@ -1,0 +1,379 @@
+diff --git a/chrome/app/theme/chromium/chromeos/chrome_app_icon_192.png b/chrome/app/theme/chromium/chromeos/chrome_app_icon_192.png
+index dc537339a6d2f..d7d544c10c3fb 100644
+Binary files a/chrome/app/theme/chromium/chromeos/chrome_app_icon_192.png and b/chrome/app/theme/chromium/chromeos/chrome_app_icon_192.png differ
+diff --git a/chrome/app/theme/chromium/chromeos/chrome_app_icon_32.png b/chrome/app/theme/chromium/chromeos/chrome_app_icon_32.png
+index 5dc9688a186fc..51e025ace88f1 100644
+Binary files a/chrome/app/theme/chromium/chromeos/chrome_app_icon_32.png and b/chrome/app/theme/chromium/chromeos/chrome_app_icon_32.png differ
+diff --git a/chrome/app/theme/chromium/chromeos/crosh_app_icon_256.png b/chrome/app/theme/chromium/chromeos/crosh_app_icon_256.png
+index 2e3521c378544..61e312bed5937 100644
+Binary files a/chrome/app/theme/chromium/chromeos/crosh_app_icon_256.png and b/chrome/app/theme/chromium/chromeos/crosh_app_icon_256.png differ
+diff --git a/chrome/app/theme/chromium/chromeos/webstore_app_icon_128.png b/chrome/app/theme/chromium/chromeos/webstore_app_icon_128.png
+index 4ef2f405f9a52..bab03e4ad5025 100644
+Binary files a/chrome/app/theme/chromium/chromeos/webstore_app_icon_128.png and b/chrome/app/theme/chromium/chromeos/webstore_app_icon_128.png differ
+diff --git a/chrome/app/theme/chromium/chromeos/webstore_app_icon_16.png b/chrome/app/theme/chromium/chromeos/webstore_app_icon_16.png
+index 1699cd631f8ba..aa822472d9a6b 100644
+Binary files a/chrome/app/theme/chromium/chromeos/webstore_app_icon_16.png and b/chrome/app/theme/chromium/chromeos/webstore_app_icon_16.png differ
+diff --git a/chrome/app/theme/chromium/linux/product_logo_128.png b/chrome/app/theme/chromium/linux/product_logo_128.png
+index b65587c3d2bca..cc803af18f357 100644
+Binary files a/chrome/app/theme/chromium/linux/product_logo_128.png and b/chrome/app/theme/chromium/linux/product_logo_128.png differ
+diff --git a/chrome/app/theme/chromium/linux/product_logo_24.png b/chrome/app/theme/chromium/linux/product_logo_24.png
+index 883fc484ed796..25ffbe996b55e 100644
+Binary files a/chrome/app/theme/chromium/linux/product_logo_24.png and b/chrome/app/theme/chromium/linux/product_logo_24.png differ
+diff --git a/chrome/app/theme/chromium/linux/product_logo_256.png b/chrome/app/theme/chromium/linux/product_logo_256.png
+index 034c9d7017428..ff886e0acccd4 100644
+Binary files a/chrome/app/theme/chromium/linux/product_logo_256.png and b/chrome/app/theme/chromium/linux/product_logo_256.png differ
+diff --git a/chrome/app/theme/chromium/linux/product_logo_32.xpm b/chrome/app/theme/chromium/linux/product_logo_32.xpm
+index c3802805a9c39..21f371476f0b2 100644
+--- a/chrome/app/theme/chromium/linux/product_logo_32.xpm
++++ b/chrome/app/theme/chromium/linux/product_logo_32.xpm
+@@ -1,126 +1,124 @@
+ /* XPM */
+ static char * linux_icon_chromium_32_xpm[] = {
+-"32 32 91 1",
+-" 	c None",
+-".	c #1A68D2",
+-"+	c #1967D3",
+-"@	c #1A66D2",
+-"#	c #1967D2",
+-"$	c #1A67D2",
+-"%	c #1967D1",
+-"&	c #1A66D3",
+-"*	c #1A68D3",
+-"=	c #1866D1",
+-"-	c #3B7FE2",
+-";	c #538DDD",
+-">	c #9ABDEB",
+-",	c #E2ECFA",
+-"'	c #FFFFFF",
+-")	c #F0F5FE",
+-"!	c #E1EBFD",
+-"~	c #B8D1FA",
+-"{	c #AECBFA",
+-"]	c #669CF4",
+-"^	c #619AF4",
+-"/	c #1E6AD4",
+-"(	c #2771D4",
+-"_	c #9ABCEC",
+-":	c #D4E5FB",
+-"<	c #A9CAF6",
+-"[	c #B8D3F8",
+-"}	c #DCE8FD",
+-"|	c #B3CEFA",
+-"1	c #ADCAFA",
+-"2	c #669DF6",
+-"3	c #4485E6",
+-"4	c #D3E3F6",
+-"5	c #C6DCF9",
+-"6	c #458DEC",
+-"7	c #1A73E8",
+-"8	c #3784EB",
+-"9	c #2771D9",
+-"0	c #8CB9F4",
+-"a	c #538FED",
+-"b	c #367AD7",
+-"c	c #C2D8FB",
+-"d	c #679EF6",
+-"e	c #2C74DB",
+-"f	c #A9C6EE",
+-"g	c #3684EB",
+-"h	c #5396EE",
+-"i	c #DBE8FD",
+-"j	c #659DF5",
+-"k	c #5C96F1",
+-"l	c #D3E3F7",
+-"m	c #E3EEFC",
+-"n	c #F5F8FE",
+-"o	c #4082E4",
+-"p	c #A9CBF6",
+-"q	c #B8D3F7",
+-"r	c #4988E9",
+-"s	c #E3ECF9",
+-"t	c #D3E5FB",
+-"u	c #669EF5",
+-"v	c #ADCAF4",
+-"w	c #ADCBFA",
+-"x	c #669CF5",
+-"y	c #8CB5F8",
+-"z	c #B8D1FB",
+-"A	c #AFCCFA",
+-"B	c #BCD4FB",
+-"C	c #8DB9F3",
+-"D	c #D7E5FD",
+-"E	c #70A3F7",
+-"F	c #E3ECFE",
+-"G	c #5396ED",
+-"H	c #E7EFFE",
+-"I	c #AFCBFA",
+-"J	c #659CF4",
+-"K	c #94BAF8",
+-"L	c #79A9F7",
+-"M	c #C5DAFB",
+-"N	c #E2EDFE",
+-"O	c #EBF3FE",
+-"P	c #6FA2F6",
+-"Q	c #93B9F8",
+-"R	c #ADCBF9",
+-"S	c #78A8F7",
+-"T	c #A5C5F9",
+-"U	c #81AEF7",
+-"V	c #669BF5",
+-"W	c #8EB7F8",
+-"X	c #ADCCFA",
+-"Y	c #679CF6",
+-"Z	c #AECBF9",
+-"            .+@##@+$            ",
+-"         %@###########$         ",
+-"       #################&       ",
+-"      ####################      ",
+-"     ######################     ",
+-"    ########################    ",
+-"   ##########################   ",
+-"  *##########################=  ",
+-"  -#########;>,'')!~{{{{{{{{{{  ",
+-" ]^/######(_'':<[:''}|{{{{{{{{1 ",
+-" 223#####(4'5677778<')|{{{{{{{{ ",
+-" 2229####_'0777777770'}{{{{{{{{ ",
+-"]222a###b'<77777777775'c{{{{{{{1",
+-"d2222e##f'g7777777777h'i{{{{{{{{",
+-"j2222k/#l:777777777777mn{{{{{{{{",
+-"222222o#'[777777777777p'{{{{{{{{",
+-"222222^/'<777777777777q'{{{{{{{{",
+-"j222222rs:777777777777t){{{{{{{{",
+-"u2222222v'677777777778'!{{{{{{{w",
+-"x2222222y'57777777777<'z{{{{{{{A",
+-" 22222222B'C77777777C'D{{{{{{{{ ",
+-" j2222222EF'<g7777G5'HI{{{{{{{{ ",
+-" J22222222EB'':[<m''BK{{{{{{{{A ",
+-"  2222222222LMN''OByP{{{{{{{{{  ",
+-"  J22222222222222222Q{{{{{{{{R  ",
+-"   2222222222222222S{{{{{{{{{   ",
+-"    222222222222222T{{{{{{{{    ",
+-"     2222222222222U{{{{{{{{     ",
+-"      22222222222PT{{{{{{{      ",
+-"       V222222222W{{{{{{X       ",
+-"         x222222P{{{{{1         ",
+-"            xYj2QZ{1            "};
++"32 32 88 1",
++". c None",
++"a c #0B0B0B",
++"b c #151616",
++"c c #1A1B1C",
++"d c #202022",
++"e c #2A2B2D",
++"f c #303132",
++"g c #333435",
++"h c #38393B",
++"i c #3B3C3F",
++"j c #404144",
++"k c #46484A",
++"l c #4A4A4D",
++"m c #4B4D50",
++"n c #505254",
++"o c #585A5D",
++"p c #5B5E62",
++"q c #636568",
++"r c #67696E",
++"s c #6B6C70",
++"t c #707277",
++"u c #74767B",
++"v c #77797E",
++"w c #777A7F",
++"x c #7A7D83",
++"y c #7D8087",
++"z c #7F8288",
++"A c #7F8389",
++"B c #808389",
++"C c #818184",
++"D c #81848A",
++"E c #81858B",
++"F c #82858B",
++"G c #82858C",
++"H c #82868C",
++"I c #83868C",
++"J c #83868D",
++"K c #84878D",
++"L c #85888E",
++"M c #868589",
++"N c #868A90",
++"O c #8A8C93",
++"P c #8B8E95",
++"Q c #8E9196",
++"R c #919398",
++"S c #96979B",
++"T c #9D9FA4",
++"U c #A0A1A3",
++"V c #A2A4A8",
++"W c #A6A7AC",
++"X c #A9AAAF",
++"Y c #A9ABB2",
++"Z c #A9ACB3",
++"0 c #AAADB4",
++"1 c #ABADB4",
++"2 c #ABAEB5",
++"3 c #ACAEB5",
++"4 c #ACAFB6",
++"5 c #ADAFB5",
++"6 c #ADAFB6",
++"7 c #AEB0B7",
++"8 c #B0B2B7",
++"9 c #B2B3B9",
++"+ c #B3B5BA",
++"@ c #B5B7BD",
++"# c #B7BAC0",
++"$ c #B9BBC2",
++"% c #BBBDC4",
++"& c #BFBFC3",
++"* c #C3C3C5",
++"= c #CACACC",
++"- c #CECED0",
++"; c #CFCFD1",
++": c #D0CFD2",
++", c #D0D0D2",
++"< c #D1D1D3",
++"> c #D2D2D3",
++"? c #D2D2D4",
++"/ c #D2D2D5",
++"[ c #D3D2D4",
++"] c #D3D2D5",
++"^ c #D3D3D4",
++"_ c #D3D3D5",
++"` c #D6D6D8",
++"{ c #DBDADD",
++"| c #DEDDE0",
++"} c #E0E0E2",
++"~ c #E3E3E5",
++"................................",
++"................................",
++"................................",
++"...........ftV&==&Vug...........",
++".........iU]|{`__`{|?Ui.........",
++"........C||?,;,?<:;;<{|M........",
++".......U~,;?_?[/?]_]?;;~Xb......",
++".....aU~-][??/]_??_]??<-}X......",
++".....e`,???]]<;,,,?___^_-~C.....",
++"....fqs~;/?_:`~}{{`:[[>?<-{g....",
++"....v%h@`;?:}*tkgdinlmllllnh....",
++"...cW#xo~-;}SdjoqnclLwyyyxxzd...",
++"...n@X$jU{{TdtKyyTzenVQGKKEOl...",
++"...w@Y9Rj{,frAuxuEPtoQDDFFDLr...",
++"...R90Y%nQVfHvwtuSVSqkQBIKEKw...",
++"...T7118VlqmAuwS8_,`rgPBIIGHy...",
++"...T803Z#v.pxv8&&x*XvgOzHIFEy...",
++"...R90660#eiL@&=8*U+siQBIKFKv...",
++"...v@0660@Ob9**&@TV+epPBIJFNq...",
++"...l@Z466Y%ln_$WROTodNFGFIzOj...",
++"...bW3176168hiMFLxk.rOzIIDFBb...",
++"....s$Y64417@rfefikhPzFGIBPo....",
++"....b3726461Y#9TT#msNDFHDDLb....",
++".....m%Y46433YZ3%viQBIFHzQj.....",
++"......s%Y37632020gxNFIFyQo......",
++".......s%6Y131Y$qmQBIzBPp.......",
++"........n5#6ZY8TfFDzIOJk........",
++".........ctY@9%mpQKODpc.........",
++"...........cnLzgLwrkc...........",
++"................................",
++"................................",
++"................................"
++};
+diff --git a/chrome/app/theme/chromium/linux/product_logo_48.png b/chrome/app/theme/chromium/linux/product_logo_48.png
+index 631feccf6b569..7aba210d6dcda 100644
+Binary files a/chrome/app/theme/chromium/linux/product_logo_48.png and b/chrome/app/theme/chromium/linux/product_logo_48.png differ
+diff --git a/chrome/app/theme/chromium/linux/product_logo_64.png b/chrome/app/theme/chromium/linux/product_logo_64.png
+index 434f88eaf423d..b295614d1e60d 100644
+Binary files a/chrome/app/theme/chromium/linux/product_logo_64.png and b/chrome/app/theme/chromium/linux/product_logo_64.png differ
+diff --git a/chrome/app/theme/chromium/mac/AppIcon.icon/Assets/ring.png b/chrome/app/theme/chromium/mac/AppIcon.icon/Assets/ring.png
+index e36f8ddafdd08..de169ff287605 100644
+Binary files a/chrome/app/theme/chromium/mac/AppIcon.icon/Assets/ring.png and b/chrome/app/theme/chromium/mac/AppIcon.icon/Assets/ring.png differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.car b/chrome/app/theme/chromium/mac/Assets.car
+index cc692a8a680ac..c0227e31063b6 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.car and b/chrome/app/theme/chromium/mac/Assets.car differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_1024.png b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_1024.png
+index d305b90bc2b39..de169ff287605 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_1024.png and b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_1024.png differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_128.png b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_128.png
+index c901e6082bbcc..62f349c64a388 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_128.png and b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_128.png differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_16.png b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_16.png
+index bf78075a22d71..972aad9cf42af 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_16.png and b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_16.png differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_256.png b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_256.png
+index 60952232a8949..86c9b013622f2 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_256.png and b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_256.png differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_32.png b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_32.png
+index f7df6171f18ca..5d114a0a41411 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_32.png and b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_32.png differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_512.png b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_512.png
+index 4a081db040cef..2cf18c086fbda 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_512.png and b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_512.png differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_64.png b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_64.png
+index d0707a0a713b5..b53c38dcd6cd6 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_64.png and b/chrome/app/theme/chromium/mac/Assets.xcassets/AppIcon.appiconset/appicon_64.png differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.xcassets/Icon.iconset/icon_256x256.png b/chrome/app/theme/chromium/mac/Assets.xcassets/Icon.iconset/icon_256x256.png
+index 5d1c4313bc1d6..86c9b013622f2 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.xcassets/Icon.iconset/icon_256x256.png and b/chrome/app/theme/chromium/mac/Assets.xcassets/Icon.iconset/icon_256x256.png differ
+diff --git a/chrome/app/theme/chromium/mac/Assets.xcassets/Icon.iconset/icon_256x256@2x.png b/chrome/app/theme/chromium/mac/Assets.xcassets/Icon.iconset/icon_256x256@2x.png
+index 7cb79033d0a1a..2cf18c086fbda 100644
+Binary files a/chrome/app/theme/chromium/mac/Assets.xcassets/Icon.iconset/icon_256x256@2x.png and b/chrome/app/theme/chromium/mac/Assets.xcassets/Icon.iconset/icon_256x256@2x.png differ
+diff --git a/chrome/app/theme/chromium/mac/app.icns b/chrome/app/theme/chromium/mac/app.icns
+index 97072c8c1157d..aba14392ed83e 100644
+Binary files a/chrome/app/theme/chromium/mac/app.icns and b/chrome/app/theme/chromium/mac/app.icns differ
+diff --git a/chrome/app/theme/chromium/product_logo_128.png b/chrome/app/theme/chromium/product_logo_128.png
+index 9ce48f920e87c..cc803af18f357 100644
+Binary files a/chrome/app/theme/chromium/product_logo_128.png and b/chrome/app/theme/chromium/product_logo_128.png differ
+diff --git a/chrome/app/theme/chromium/product_logo_16.png b/chrome/app/theme/chromium/product_logo_16.png
+index ce9084c733b2c..e2328c7acd135 100644
+Binary files a/chrome/app/theme/chromium/product_logo_16.png and b/chrome/app/theme/chromium/product_logo_16.png differ
+diff --git a/chrome/app/theme/chromium/product_logo_22_mono.png b/chrome/app/theme/chromium/product_logo_22_mono.png
+index b8874d44bcde3..20d318d07ecd2 100644
+Binary files a/chrome/app/theme/chromium/product_logo_22_mono.png and b/chrome/app/theme/chromium/product_logo_22_mono.png differ
+diff --git a/chrome/app/theme/chromium/product_logo_24.png b/chrome/app/theme/chromium/product_logo_24.png
+index d883fde3daa7e..25ffbe996b55e 100644
+Binary files a/chrome/app/theme/chromium/product_logo_24.png and b/chrome/app/theme/chromium/product_logo_24.png differ
+diff --git a/chrome/app/theme/chromium/product_logo_256.png b/chrome/app/theme/chromium/product_logo_256.png
+index 4899f69aaba5c..ff886e0acccd4 100644
+Binary files a/chrome/app/theme/chromium/product_logo_256.png and b/chrome/app/theme/chromium/product_logo_256.png differ
+diff --git a/chrome/app/theme/chromium/product_logo_48.png b/chrome/app/theme/chromium/product_logo_48.png
+index 9ec8436cbf853..7aba210d6dcda 100644
+Binary files a/chrome/app/theme/chromium/product_logo_48.png and b/chrome/app/theme/chromium/product_logo_48.png differ
+diff --git a/chrome/app/theme/chromium/product_logo_64.png b/chrome/app/theme/chromium/product_logo_64.png
+index 8bd239e39c653..b295614d1e60d 100644
+Binary files a/chrome/app/theme/chromium/product_logo_64.png and b/chrome/app/theme/chromium/product_logo_64.png differ
+diff --git a/chrome/app/theme/chromium/win/app_list.ico b/chrome/app/theme/chromium/win/app_list.ico
+index 7e7cf595f42c9..b8d9721259e69 100644
+Binary files a/chrome/app/theme/chromium/win/app_list.ico and b/chrome/app/theme/chromium/win/app_list.ico differ
+diff --git a/chrome/app/theme/chromium/win/chromium.ico b/chrome/app/theme/chromium/win/chromium.ico
+index d0aa0c2fdc944..b8d9721259e69 100644
+Binary files a/chrome/app/theme/chromium/win/chromium.ico and b/chrome/app/theme/chromium/win/chromium.ico differ
+diff --git a/chrome/app/theme/chromium/win/tiles/Logo.png b/chrome/app/theme/chromium/win/tiles/Logo.png
+index 7e327c0cb7cd9..f643f4e35f8ce 100644
+Binary files a/chrome/app/theme/chromium/win/tiles/Logo.png and b/chrome/app/theme/chromium/win/tiles/Logo.png differ
+diff --git a/chrome/app/theme/chromium/win/tiles/SmallLogo.png b/chrome/app/theme/chromium/win/tiles/SmallLogo.png
+index 405ff30a61c55..f0dd299a889ce 100644
+Binary files a/chrome/app/theme/chromium/win/tiles/SmallLogo.png and b/chrome/app/theme/chromium/win/tiles/SmallLogo.png differ
+diff --git a/chrome/app/theme/default_100_percent/chromium/linux/product_logo_16.png b/chrome/app/theme/default_100_percent/chromium/linux/product_logo_16.png
+index d08bce9bb856a..e2328c7acd135 100644
+Binary files a/chrome/app/theme/default_100_percent/chromium/linux/product_logo_16.png and b/chrome/app/theme/default_100_percent/chromium/linux/product_logo_16.png differ
+diff --git a/chrome/app/theme/default_100_percent/chromium/linux/product_logo_32.png b/chrome/app/theme/default_100_percent/chromium/linux/product_logo_32.png
+index 53ffd085f2f97..811db81357544 100644
+Binary files a/chrome/app/theme/default_100_percent/chromium/linux/product_logo_32.png and b/chrome/app/theme/default_100_percent/chromium/linux/product_logo_32.png differ
+diff --git a/chrome/app/theme/default_200_percent/chromium/favicon_password_manager.png b/chrome/app/theme/default_200_percent/chromium/favicon_password_manager.png
+index 26089512040e1..51e025ace88f1 100644
+Binary files a/chrome/app/theme/default_200_percent/chromium/favicon_password_manager.png and b/chrome/app/theme/default_200_percent/chromium/favicon_password_manager.png differ
+diff --git a/chrome/app/theme/default_200_percent/chromium/product_logo_16.png b/chrome/app/theme/default_200_percent/chromium/product_logo_16.png
+index 2b5899e392fb8..e2328c7acd135 100644
+Binary files a/chrome/app/theme/default_200_percent/chromium/product_logo_16.png and b/chrome/app/theme/default_200_percent/chromium/product_logo_16.png differ
+diff --git a/chrome/app/theme/default_200_percent/chromium/product_logo_32.png b/chrome/app/theme/default_200_percent/chromium/product_logo_32.png
+index 886113df438c5..811db81357544 100644
+Binary files a/chrome/app/theme/default_200_percent/chromium/product_logo_32.png and b/chrome/app/theme/default_200_percent/chromium/product_logo_32.png differ
+diff --git a/chrome/app/theme/default_200_percent/chromium/webstore_icon.png b/chrome/app/theme/default_200_percent/chromium/webstore_icon.png
+index 10475d4c54384..544a4f1256740 100644
+Binary files a/chrome/app/theme/default_200_percent/chromium/webstore_icon.png and b/chrome/app/theme/default_200_percent/chromium/webstore_icon.png differ
+diff --git a/chrome/app/theme/default_200_percent/chromium/webstore_icon_16.png b/chrome/app/theme/default_200_percent/chromium/webstore_icon_16.png
+index 93873c99d3dca..51e025ace88f1 100644
+Binary files a/chrome/app/theme/default_200_percent/chromium/webstore_icon_16.png and b/chrome/app/theme/default_200_percent/chromium/webstore_icon_16.png differ
+diff --git a/chrome/app/theme/default_200_percent/chromium/webstore_icon_24.png b/chrome/app/theme/default_200_percent/chromium/webstore_icon_24.png
+index cf9a05ed085e9..73c97ad5d3bce 100644
+Binary files a/chrome/app/theme/default_200_percent/chromium/webstore_icon_24.png and b/chrome/app/theme/default_200_percent/chromium/webstore_icon_24.png differ
+diff --git a/chrome/app/theme/default_200_percent/chromium/webstore_icon_32.png b/chrome/app/theme/default_200_percent/chromium/webstore_icon_32.png
+index 93765a0f16449..0606f2d831fb7 100644
+Binary files a/chrome/app/theme/default_200_percent/chromium/webstore_icon_32.png and b/chrome/app/theme/default_200_percent/chromium/webstore_icon_32.png differ
