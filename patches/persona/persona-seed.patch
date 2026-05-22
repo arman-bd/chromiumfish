@@ -1,0 +1,65 @@
+diff --git a/content/browser/renderer_host/render_process_host_impl.cc b/content/browser/renderer_host/render_process_host_impl.cc
+index 2e1c77eaaca9a..17493057ca21e 100644
+--- a/content/browser/renderer_host/render_process_host_impl.cc
++++ b/content/browser/renderer_host/render_process_host_impl.cc
+@@ -71,6 +71,7 @@
+ #include "base/tracing/protos/chrome_track_event.pbzero.h"
+ #include "build/build_config.h"
+ #include "cc/base/switches.h"
++#include "components/canvas_bridge/public/canvas_bridge_switches.h"
+ #include "components/embedder_support/switches.h"
+ #include "components/input/features.h"
+ #include "components/input/utils.h"
+@@ -3839,6 +3840,9 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
+       switches::kDisableVideoCaptureUseGpuMemoryBuffer,
+       switches::kDomAutomationController,
+       switches::kEnableAutomation,
++      // Lightweight-fork: forward the fingerprint persona seed so every
++      // renderer derives the same persona as the browser process.
++      switches::kPersonaSeed,
+       switches::kEnableExperimentalAccessibilityLanguageDetection,
+       switches::kEnableExperimentalAccessibilityLabelsDebugging,
+       switches::kEnableExperimentalWebPlatformFeatures,
+@@ -3980,6 +3984,12 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
+ #if BUILDFLAG(IS_CHROMEOS)
+       switches::kSchedulerBoostUrgent,
+ #endif
++      canvas_bridge::switches::kCanvasBridgeUrl,
++      canvas_bridge::switches::kCanvasBridgeAuth,
++      // ChromiumFish persona-os switch — must reach the renderer so
++      // fingerprint_profile.cc reads it in DeriveFromSeed. (persona-seed
++      // is already forwarded above via switches::kPersonaSeed.)
++      "persona-os",
+   };
+   renderer_cmd->CopySwitchesFrom(browser_cmd, kSwitchNames);
+ 
+diff --git a/content/public/common/content_switches.cc b/content/public/common/content_switches.cc
+index a5dd79908643a..7a454d86f251c 100644
+--- a/content/public/common/content_switches.cc
++++ b/content/public/common/content_switches.cc
+@@ -934,6 +934,9 @@ const char kEnableAggressiveDOMStorageFlushing[] =
+ // Enable indication that browser is controlled by automation.
+ const char kEnableAutomation[] = "enable-automation";
+ 
++// Lightweight-fork: see header. Numeric seed for fingerprint persona.
++const char kPersonaSeed[] = "persona-seed";
++
+ #if BUILDFLAG(IS_IOS)
+ // For mobile devices, tests should include a viewport meta tag to specify page
+ // dimension adjustments. Omitting the tag can lead to automatic resizing to
+diff --git a/content/public/common/content_switches.h b/content/public/common/content_switches.h
+index 17e834a0e19e6..7a946e6543366 100644
+--- a/content/public/common/content_switches.h
++++ b/content/public/common/content_switches.h
+@@ -97,6 +97,11 @@ CONTENT_EXPORT extern const char kDomAutomationController[];
+ extern const char kDisable2dCanvasClipAntialiasing[];
+ CONTENT_EXPORT extern const char kEnableAggressiveDOMStorageFlushing[];
+ CONTENT_EXPORT extern const char kEnableAutomation[];
++// Lightweight-fork: numeric seed (uint64, decimal) that selects the
++// fingerprint persona for this browser session. Read by Blink's
++// `fingerprinting::Current()` accessor; forwarded to renderers so every
++// process in the session derives the same persona.
++CONTENT_EXPORT extern const char kPersonaSeed[];
+ CONTENT_EXPORT extern const char kEnableBlinkFeatures[];
+ CONTENT_EXPORT extern const char kEnableCaretBrowsing[];
+ CONTENT_EXPORT extern const char kEnableDisplayList2dCanvas[];
