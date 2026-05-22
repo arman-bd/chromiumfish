@@ -1,0 +1,78 @@
+diff --git a/third_party/blink/renderer/core/timing/time_clamper.h b/third_party/blink/renderer/core/timing/time_clamper.h
+index a8b7d042e37e1..73f948e0aff6c 100644
+--- a/third_party/blink/renderer/core/timing/time_clamper.h
++++ b/third_party/blink/renderer/core/timing/time_clamper.h
+@@ -20,8 +20,15 @@ class CORE_EXPORT TimeClamper {
+   DISALLOW_NEW();
+ 
+  public:
+-  static constexpr int kCoarseResolutionMicroseconds = 100;
+-  static constexpr int kFineResolutionMicroseconds = 5;
++  // Restored to Chrome defaults (100us coarse, 5us fine). The earlier
++  // 100ms / 1ms clamp (matching Tor Browser RFP) was a strong anti-detect
++  // tell — real Chrome 148 exposes 100us resolution on `performance.now()`
++  // and CF Turnstile (plus fpjs Pro) include a simple
++  // `performance.now() % 1` distribution check that flags 100ms-clamped
++  // values as bot. Reverting closes the tell without revealing host OS
++  // (timing resolution is identical across Mac/Win/Linux Chrome).
++  static constexpr int kCoarseResolutionMicroseconds = 100;  // 100 us
++  static constexpr int kFineResolutionMicroseconds = 5;      //   5 us
+ 
+   TimeClamper();
+   TimeClamper(const TimeClamper&) = delete;
+diff --git a/third_party/blink/renderer/core/url/dom_url.cc b/third_party/blink/renderer/core/url/dom_url.cc
+index 7e7e800ffca8a..670e1577fe1b6 100644
+--- a/third_party/blink/renderer/core/url/dom_url.cc
++++ b/third_party/blink/renderer/core/url/dom_url.cc
+@@ -57,11 +57,36 @@ DOMURL* DOMURL::Create(const String& url,
+                                       exception_state);
+ }
+ 
++namespace {
++
++// Persona-mode: pre-process the input URL string the way upstream Chromium's
++// WIN32-only url_util.cc does, so `new URL("C:/")` resolves to scheme=file:
++// on Mac/Linux too. FingerprintJS Pro signal s205 reads
++//   new URL("C:/").protocol
++// to detect the host OS: Windows returns "file:", everyone else "c:". The
++// fork claims Windows; this rewrite makes the protocol match the persona
++// without touching the deep url_util/url_canon code (which has many other
++// WIN32-gated paths that aren't trivially portable). Match window is
++// minimal — single ASCII letter, ':', then '/' or '\' — so we never
++// rewrite legitimate single-letter scheme URLs (`go:foo`, `ws:bar`).
++String MaybeRewriteDriveLetter(const String& url) {
++  if (url.length() < 3) return url;
++  UChar c0 = url[0];
++  UChar c1 = url[1];
++  UChar c2 = url[2];
++  if (!((c0 >= 'A' && c0 <= 'Z') || (c0 >= 'a' && c0 <= 'z'))) return url;
++  if (c1 != ':') return url;
++  if (c2 != '/' && c2 != '\\') return url;
++  return "file:///" + url;
++}
++
++}  // namespace
++
+ DOMURL::DOMURL(PassKey,
+                const String& url,
+                const KURL& base,
+                ExceptionState& exception_state)
+-    : url_(base, url) {
++    : url_(base, MaybeRewriteDriveLetter(url)) {
+   if (!url_.IsValid())
+     exception_state.ThrowTypeError("Invalid URL");
+ }
+diff --git a/third_party/blink/renderer/modules/video_rvfc/video_frame_callback_requester_impl.cc b/third_party/blink/renderer/modules/video_rvfc/video_frame_callback_requester_impl.cc
+index 769a70e416c7e..127ced84c0b1e 100644
+--- a/third_party/blink/renderer/modules/video_rvfc/video_frame_callback_requester_impl.cc
++++ b/third_party/blink/renderer/modules/video_rvfc/video_frame_callback_requester_impl.cc
+@@ -316,6 +316,9 @@ double VideoFrameCallbackRequesterImpl::GetClampedTimeInMillis(
+ // static
+ double VideoFrameCallbackRequesterImpl::GetCoarseClampedTimeInSeconds(
+     base::TimeDelta time) {
++  // Restored to Chrome default (100 us). The earlier 100ms bump matched
++  // an overly aggressive TimeClamper that was reverted; keeping this at
++  // 100us means video frame callback timestamps match real Chrome.
+   constexpr auto kCoarseResolution = base::Microseconds(100);
+   // Add this assert, in case TimeClamper's resolution were to change to be
+   // stricter.
