@@ -1,0 +1,785 @@
+diff --git a/chrome/renderer/chrome_content_renderer_client.cc b/chrome/renderer/chrome_content_renderer_client.cc
+index e177eded759db..91ad0c23590f4 100644
+--- a/chrome/renderer/chrome_content_renderer_client.cc
++++ b/chrome/renderer/chrome_content_renderer_client.cc
+@@ -1427,8 +1427,19 @@ void ChromeContentRendererClient::
+ 
+ // Web Share is conditionally enabled here in chrome/, to avoid it
+ // being made available in WebView or Linux.
++//
++// 2026-05-31: Persona-mode override. We add IS_LINUX so the fork
++// (which spoofs as Windows desktop via UA + sec-ch-ua-platform)
++// also exposes navigator.share / navigator.canShare. CreepJS flags
++// noWebShare=true as part of its "Like Headless" heuristic, and
++// real Win Chrome 148 always exposes the API surface (even if
++// share() itself rejects with NotAllowedError on systems with no
++// share target — a tell-free failure mode). Without this gate
++// removal our Linux build would never define navigator.share and
++// every fingerprinter cross-checking it against UA="Windows NT 10.0"
++// flags inconsistency.
+ #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN) || \
+-    BUILDFLAG(IS_MAC)
++    BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+   blink::WebRuntimeFeatures::EnableWebShare(true);
+ #endif
+ 
+diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
+index 608bea5cb3864..cd3a44bc25f95 100644
+--- a/components/embedder_support/user_agent_utils.cc
++++ b/components/embedder_support/user_agent_utils.cc
+@@ -33,6 +33,7 @@
+ #include "components/version_info/version_info.h"
+ #include "net/http/http_util.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
+ 
+ #if BUILDFLAG(IS_WIN)
+@@ -162,10 +163,7 @@ const blink::UserAgentBrandList GetUserAgentBrandList(
+   int major_version_number;
+   bool parse_result = base::StringToInt(major_version, &major_version_number);
+   DCHECK(parse_result);
+-  std::optional<std::string> brand;
+-#if !BUILDFLAG(CHROMIUM_BRANDING)
+-  brand = version_info::GetProductName();
+-#endif
++  std::optional<std::string> brand = blink::fingerprinting::Current().brand;
+ 
+   std::string brand_version =
+       output_version_type == blink::UserAgentBrandVersionType::kFullVersion
+@@ -183,8 +181,13 @@ const blink::UserAgentBrandList GetUserAgentBrandList(
+ // GetVersionNumber()
+ const blink::UserAgentBrandList GetUserAgentBrandMajorVersionListInternal(
+     std::optional<blink::UserAgentBrandVersion> additional_brand_version) {
+-  return GetUserAgentBrandList(version_info::GetMajorVersionNumber(),
+-                               std::string(version_info::GetVersionNumber()),
++  // Lightweight-fork: use persona's claimed Chrome version, NOT the real
++  // fork build's version. Otherwise Sec-CH-UA would advertise the real
++  // build (e.g. 150) while the User-Agent string claims the persona
++  // (e.g. 148), an immediate consistency-mismatch fingerprint tell.
++  const auto& p = blink::fingerprinting::Current();
++  return GetUserAgentBrandList(base::NumberToString(p.chrome_major_version),
++                               p.chrome_full_version,
+                                blink::UserAgentBrandVersionType::kMajorVersion,
+                                additional_brand_version);
+ }
+@@ -205,8 +208,10 @@ bool ShouldSendUserAgentUnifiedPlatform() {
+ // GetVersionNumber()
+ const blink::UserAgentBrandList GetUserAgentBrandFullVersionListInternal(
+     std::optional<blink::UserAgentBrandVersion> additional_brand_version) {
+-  return GetUserAgentBrandList(version_info::GetMajorVersionNumber(),
+-                               std::string(version_info::GetVersionNumber()),
++  // Same persona-version source as the major-version variant above.
++  const auto& p = blink::fingerprinting::Current();
++  return GetUserAgentBrandList(base::NumberToString(p.chrome_major_version),
++                               p.chrome_full_version,
+                                blink::UserAgentBrandVersionType::kFullVersion,
+                                additional_brand_version);
+ }
+@@ -215,9 +220,15 @@ const blink::UserAgentBrandList GetUserAgentBrandFullVersionListInternal(
+ // depending on the Reduce User-Agent reduction phase features.
+ std::string GetUserAgentInternal() {
+   std::string product = GetProductAndVersion();
+-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(kHeadless)) {
+-    product.insert(0, "Headless");
+-  }
++  // Persona-mode: deliberately DROP the "Headless" UA token even when
++  // --headless is on. Upstream prepends it (giving "HeadlessChrome/N..."),
++  // which FingerprintJS Pro reads via the HTTP User-Agent header and
++  // classifies as bot_type=headless_chrome regardless of how clean the
++  // JS-side navigator.userAgent is. The fork's persona claims a regular
++  // Chrome install; the HTTP UA must match.
++  // if (base::CommandLine::ForCurrentProcess()->HasSwitch(kHeadless)) {
++  //   product.insert(0, "Headless");
++  // }
+ 
+ #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+   if (base::CommandLine::ForCurrentProcess()->HasSwitch(kUseMobileUserAgent)) {
+@@ -299,6 +310,8 @@ std::string GetUserAgentPlatform() {
+ }
+ 
+ std::string GetUnifiedPlatform() {
++  return blink::fingerprinting::Current().unified_platform;
++#if 0
+ #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS)
+   // This constant is only used on Android (desktop) and Linux.
+   constexpr char kUnifiedPlatformChromeOSX64[] = "X11; CrOS x86_64 14541.0.0";
+@@ -333,6 +346,7 @@ std::string GetUnifiedPlatform() {
+ #else
+ #error Unsupported platform
+ #endif
++#endif
+ }
+ 
+ // Builds a string that describes the CPU type when available (or blank
+@@ -443,11 +457,15 @@ std::string BuildOSCpuInfo(
+ }  // namespace
+ 
+ std::string GetProductAndVersion() {
+-  return base::FeatureList::IsEnabled(
+-             blink::features::kReduceUserAgentMinorVersion)
+-             ? version_info::GetProductNameAndVersionForReducedUserAgent()
+-             : std::string(
+-                   version_info::GetProductNameAndVersionForUserAgent());
++  // Lightweight-fork: report the PERSONA's Chrome major version, not the
++  // built binary's. The built binary may be e.g. 150 while the persona
++  // claims 148; this keeps the User-Agent header consistent with the
++  // Sec-CH-UA brand version (which is also derived from the persona).
++  // Reduced-UA format ("Chrome/<major>.0.0.0") is hard-coded since
++  // kReduceUserAgentMinorVersion is the default for years.
++  return base::StringPrintf(
++      "Chrome/%u.0.0.0",
++      blink::fingerprinting::Current().chrome_major_version);
+ }
+ 
+ std::optional<std::string> GetUserAgentFromCommandLine() {
+@@ -583,6 +601,8 @@ bool GetMobileBitForUAMetadata() {
+ }
+ 
+ std::string GetPlatformVersion() {
++  return blink::fingerprinting::Current().ua_metadata_platform_version;
++#if 0
+ #if BUILDFLAG(IS_ANDROID)
+   if (base::android::device_info::is_desktop() ||
+       base::android::device_info::is_xr()) {
+@@ -600,9 +620,12 @@ std::string GetPlatformVersion() {
+   base::SysInfo::OperatingSystemVersionNumbers(&major, &minor, &bugfix);
+   return base::StringPrintf("%d.%d.%d", major, minor, bugfix);
+ #endif
++#endif
+ }
+ 
+ std::string GetPlatformForUAMetadata() {
++  return blink::fingerprinting::Current().ua_metadata_platform;
++#if 0
+ #if BUILDFLAG(IS_ANDROID)
+   if (base::android::device_info::is_desktop() ||
+       base::android::device_info::is_xr()) {
+@@ -632,6 +655,7 @@ std::string GetPlatformForUAMetadata() {
+ #else
+   return std::string(version_info::GetOSType());
+ #endif
++#endif
+ }
+ 
+ blink::UserAgentMetadata GetUserAgentMetadata(bool only_low_entropy_ch) {
+@@ -640,7 +664,7 @@ blink::UserAgentMetadata GetUserAgentMetadata(bool only_low_entropy_ch) {
+   // Low entropy client hints.
+   metadata.brand_version_list =
+       GetUserAgentBrandMajorVersionListInternal(std::nullopt);
+-  metadata.mobile = GetMobileBitForUAMetadata();
++  metadata.mobile = blink::fingerprinting::Current().ua_metadata_mobile;
+   metadata.platform = GetPlatformForUAMetadata();
+ 
+   // For users providing a valid user-agent override via the command line:
+@@ -663,7 +687,13 @@ blink::UserAgentMetadata GetUserAgentMetadata(bool only_low_entropy_ch) {
+   // High entropy client hints.
+   metadata.brand_full_version_list =
+       GetUserAgentBrandFullVersionListInternal(std::nullopt);
+-  metadata.full_version = std::string(version_info::GetVersionNumber());
++  // Persona-mode: use the claimed full version, not the real build
++  // version. version_info::GetVersionNumber() returns the actual fork
++  // build (e.g. 150.0.7844.0) and leaks via Sec-CH-UA-Full-Version on
++  // Accept-CH opt-in requests — directly observable to CF managed
++  // challenges. Pin to the persona's claimed full version so the high-
++  // entropy hint matches what the low-entropy sec-ch-ua already claims.
++  metadata.full_version = blink::fingerprinting::Current().chrome_full_version;
+   metadata.architecture = GetCpuArchitecture();
+   metadata.model = BuildModelInfo();
+   metadata.form_factors = GetFormFactorsClientHint(metadata, metadata.mobile);
+@@ -701,6 +731,8 @@ std::string GetUnifiedPlatformForTesting() {
+ // Return the CPU architecture in Windows/Mac/POSIX/Fuchsia and the empty string
+ // on Android or if unknown.
+ std::string GetCpuArchitecture() {
++  return blink::fingerprinting::Current().ua_metadata_architecture;
++#if 0
+ #if BUILDFLAG(IS_WIN)
+   base::win::OSInfo::WindowsArchitecture windows_architecture =
+       base::win::OSInfo::GetInstance()->GetArchitecture();
+@@ -756,11 +788,14 @@ std::string GetCpuArchitecture() {
+ #endif
+   DLOG(WARNING) << "Unrecognized CPU Architecture";
+   return std::string();
++#endif
+ }
+ 
+ // Return the CPU bitness in Windows/Mac/POSIX/Fuchsia and the empty string
+ // on Android.
+ std::string GetCpuBitness() {
++  return blink::fingerprinting::Current().ua_metadata_bitness;
++#if 0
+ #if BUILDFLAG(IS_WIN)
+   return (base::win::OSInfo::GetInstance()->GetArchitecture() ==
+           base::win::OSInfo::X86_ARCHITECTURE)
+@@ -779,6 +814,7 @@ std::string GetCpuBitness() {
+ #else
+ #error Unsupported platform
+ #endif
++#endif
+ }
+ 
+ std::string BuildOSCpuInfoFromOSVersionAndCpuType(const std::string& os_version,
+@@ -840,6 +876,8 @@ std::string BuildUserAgentFromProduct(const std::string& product) {
+ }
+ 
+ std::string BuildModelInfo() {
++  return blink::fingerprinting::Current().ua_metadata_model;
++#if 0
+ #if BUILDFLAG(IS_ANDROID)
+   // Model information is not exposed on Android desktop.
+   if (base::android::device_info::is_desktop()) {
+@@ -854,6 +892,7 @@ std::string BuildModelInfo() {
+ #endif
+ 
+   return std::string();
++#endif
+ }
+ 
+ #if BUILDFLAG(IS_ANDROID)
+diff --git a/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc b/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc
+index a3f5649de4219..38437864c7d0a 100644
+--- a/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc
++++ b/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc
+@@ -217,6 +217,52 @@ void LocalWindowProxy::Initialize() {
+ 
+   InstallConditionalFeatures();
+ 
++  // Persona prototype trim: REMOVE only the properties that are genuinely
++  // in our build (Chromium 150 source) but NOT in real Chrome 148. The
++  // previous revision of this patch trimmed 47 Navigator.prototype
++  // properties (bluetooth, clipboard, credentials, gpu, hid, serial,
++  // serviceWorker, deviceMemory, etc.) based on the false claim that
++  // real Chrome 148 on Windows lacked them. Direct A/B comparison
++  // against real Chrome 148.0.7778.179 on the same host (driven via
++  // CDP, both pages on https://example.com/ secure context) proved the
++  // opposite: real Chrome 148 exposes all of those. Trimming them made
++  // our fork advertise a stripped Navigator that didn't match ANY real
++  // Chrome version — instant anti-detect tell for Cloudflare Turnstile.
++  //
++  // Verified actual diff (Chromium 150 source − Chrome 148 stable):
++  //   * Element.prototype:        'pseudo'
++  //   * HTMLElement.prototype:    'pseudo', 'focusGroup', 'focusGroupStart'
++  //   * Navigator.prototype:      'modelContext'
++  //   * window-level constructors that landed after Chrome 148:
++  //                               'ModelContext', 'WebMCPEvent', 'CSSPseudoElement'
++  // Other diffs (BarcodeDetector, XSLTProcessor missing in fork on real
++  // Chrome 148; browsingTopics/when missing in fork on Document) go the
++  // other way and are caused by upstream feature defaults / disabled
++  // features — NOT something we can fix here.
++  if (World().IsMainWorld()) {
++    static constexpr const char kTrimScript[] =
++        "(function(){"
++        "try{delete Element.prototype['pseudo'];}catch(e){}"
++        "var h=['pseudo','focusGroup','focusGroupStart'];"
++        "for(var i=0;i<h.length;i++){"
++        "try{delete HTMLElement.prototype[h[i]];}catch(e){}}"
++        "try{delete Navigator.prototype['modelContext'];}catch(e){}"
++        "var w=['ModelContext','WebMCPEvent','CSSPseudoElement'];"
++        "for(var j=0;j<w.length;j++){try{delete window[w[j]];}catch(e){}}"
++        "})();";
++    v8::Local<v8::String> source =
++        v8::String::NewFromUtf8(GetIsolate(), kTrimScript,
++                                v8::NewStringType::kInternalized,
++                                sizeof(kTrimScript) - 1)
++            .ToLocalChecked();
++    v8::TryCatch try_catch(GetIsolate());
++    try_catch.SetVerbose(false);
++    v8::Local<v8::Script> script;
++    if (v8::Script::Compile(context, source).ToLocal(&script)) {
++      std::ignore = script->Run(context);
++    }
++  }
++
+   if (World().IsMainWorld()) {
+     probe::DidCreateMainWorldContext(GetFrame());
+     GetFrame()->Loader().DispatchDidClearWindowObjectInMainWorld();
+diff --git a/third_party/blink/renderer/core/dom/element.cc b/third_party/blink/renderer/core/dom/element.cc
+index 0c53e924a914f..4aa18f0384e58 100644
+--- a/third_party/blink/renderer/core/dom/element.cc
++++ b/third_party/blink/renderer/core/dom/element.cc
+@@ -7575,6 +7575,12 @@ ShadowRoot* Element::attachShadow(const ShadowRootInit* shadow_root_init_dict,
+     case ShadowRootMode::kUserAgent:
+       NOTREACHED();
+   }
++  // Restored: closed shadow roots stay closed. The earlier coercion to
++  // open was an anti-detect tell — a page calls
++  // `el.attachShadow({mode:'closed'})` then `el.shadowRoot` and real Chrome
++  // returns null; our fork was returning the closed shadow root anyway.
++  // CF Turnstile flags that as anti-detect tampering. Restoration is OS-
++  // neutral (closed-mode behavior is identical across Mac/Win Chrome).
+ 
+   // If there's already a declarative shadow root, verify that the existing
+   // mode is the same as the requested mode.
+@@ -7627,6 +7633,8 @@ bool Element::AttachDeclarativeShadowRoot(
+     return false;
+   }
+   CHECK(mode == ShadowRootMode::kOpen || mode == ShadowRootMode::kClosed);
++  // Restored: closed-mode declarative shadow roots stay closed (matches
++  // the imperative attachShadow() restoration above).
+ 
+   CustomElementRegistry* registry = nullptr;
+   // Get global registry of the document by default.
+diff --git a/third_party/blink/renderer/core/dom/element.idl b/third_party/blink/renderer/core/dom/element.idl
+index 29bf3ba733039..2befeece45c4b 100644
+--- a/third_party/blink/renderer/core/dom/element.idl
++++ b/third_party/blink/renderer/core/dom/element.idl
+@@ -77,6 +77,12 @@ dictionary SetHTMLUnsafeOptions {
+     [RaisesException, CEReactions] Attr removeAttributeNode(Attr attr);
+ 
+     [RaisesException, MeasureAs=ElementAttachShadow] ShadowRoot attachShadow(ShadowRootInit shadowRootInitDict);
++    // Restored to upstream: element.shadowRoot returns only OPEN shadow
++    // roots. Earlier we bound it to AuthorShadowRoot for inspection
++    // convenience, but that exposed closed-mode trees to JS — a CF
++    // Turnstile check that calls attachShadow({mode:'closed'}) then
++    // reads .shadowRoot can detect the difference (real Chrome returns
++    // null, fork returned the root). Restoration is OS-neutral.
+     [PerWorldBindings, ImplementedAs=OpenShadowRoot] readonly attribute ShadowRoot? shadowRoot;
+ 
+     [RaisesException] Element? closest(DOMString selectors);
+diff --git a/third_party/blink/renderer/core/dom/events/event_target.idl b/third_party/blink/renderer/core/dom/events/event_target.idl
+index 24e54a9c02041..357af2da5b6e7 100644
+--- a/third_party/blink/renderer/core/dom/events/event_target.idl
++++ b/third_party/blink/renderer/core/dom/events/event_target.idl
+@@ -32,5 +32,14 @@ dictionary ObservableEventListenerOptions {
+     undefined addEventListener(DOMString type, EventListener? listener, optional (AddEventListenerOptions or boolean) options);
+     undefined removeEventListener(DOMString type, EventListener? listener, optional (EventListenerOptions or boolean) options);
+     [ImplementedAs=dispatchEventForBindings, RaisesException, RuntimeCallStatsCounter=EventTargetDispatchEvent] boolean dispatchEvent(Event event);
+-    [MeasureAs=EventTargetOnObservable] Observable when(DOMString type, optional ObservableEventListenerOptions options = {});
++    // Persona-mode: EventTarget.when() is the recently-added Observable
++    // API entry point (Chrome 150+). Real Chrome 148 doesn't expose it,
++    // so PermissionStatus.prototype.when (and every other EventTarget
++    // subclass's .when) shows up only on the post-148 source we build
++    // against. FingerprintJS Pro signal s211 counts EventTarget-derived
++    // property hashes per permission — extra .when() pushes the bitmask
++    // from 3 to 7 for every PermissionStatus. With when() removed from
++    // the IDL it's no longer enumerable / accessible, matching real
++    // Chrome 148.
++    // [MeasureAs=EventTargetOnObservable] Observable when(DOMString type, optional ObservableEventListenerOptions options = {});
+ };
+diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc b/third_party/blink/renderer/core/execution_context/navigator_base.cc
+index cccfafe8f93a0..96aac4b016dfc 100644
+--- a/third_party/blink/renderer/core/execution_context/navigator_base.cc
++++ b/third_party/blink/renderer/core/execution_context/navigator_base.cc
+@@ -7,6 +7,7 @@
+ #include "base/feature_list.h"
+ #include "build/build_config.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+ #include "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.h"
+ #include "third_party/blink/renderer/core/probe/core_probes.h"
+@@ -24,6 +25,14 @@ namespace blink {
+ namespace {
+ 
+ String GetReducedNavigatorPlatform() {
++  // Lightweight-fork (FINGERPRINT_ISOLATION_PLAN.md, table row #3):
++  // Return the persona's `kNavigatorPlatform` regardless of host OS, so
++  // `navigator.platform` is consistent across main thread, worker,
++  // service worker, and iframe (NavigatorBase::platform() is the single
++  // call site for all of these on non-Android desktop). The original
++  // per-OS branches are preserved below for upstream-merge reference.
++  return String::FromUtf8(fingerprinting::Current().navigator_platform);
++#if 0
+ #if BUILDFLAG(IS_ANDROID)
+   return "Linux armv81";
+ #elif BUILDFLAG(IS_MAC)
+@@ -39,6 +48,7 @@ String GetReducedNavigatorPlatform() {
+ #else
+ #error Unsupported platform
+ #endif
++#endif
+ }
+ 
+ }  // namespace
+diff --git a/third_party/blink/renderer/core/frame/local_dom_window.cc b/third_party/blink/renderer/core/frame/local_dom_window.cc
+index f442c8d8e331b..6b22a545f9521 100644
+--- a/third_party/blink/renderer/core/frame/local_dom_window.cc
++++ b/third_party/blink/renderer/core/frame/local_dom_window.cc
+@@ -40,6 +40,7 @@
+ #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
+ #include "net/storage_access_api/status.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/public/common/navigation/impression.h"
+ #include "third_party/blink/public/common/switches.h"
+ #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-blink.h"
+@@ -1571,29 +1572,35 @@ bool LocalDOMWindow::offscreenBuffering() const {
+   return true;
+ }
+ 
++// Canonical "Chrome browser chrome" (titlebar + tab strip + toolbar + URL
++// bar + bookmarks bar OFF) heights/widths used to derive outer dims from
++// the actual layout viewport. Real Chrome 148 on Win11, maximized with the
++// bookmarks bar off, has roughly tab strip + toolbar + system titlebar ≈
++// 120px of vertical chrome; horizontal chrome is 0 (no left/right border in
++// maximized mode). Small per-OS/theme variation exists but stays within
++// ±10px.
++namespace {
++constexpr int kCanonicalChromeHeight = 120;  // total vertical chrome
++constexpr int kCanonicalChromeWidth = 0;     // no horizontal chrome
++}  // namespace
++
+ int LocalDOMWindow::outerHeight() const {
+   if (!GetFrame())
+     return 0;
+ 
+   LocalFrame* frame = GetFrame();
+-
+-  // FencedFrames should return innerHeight to prevent passing
+-  // arbitrary data through the window height.
+   if (frame->IsInFencedFrameTree()) {
+     return innerHeight();
+   }
+ 
+-  Page* page = frame->GetPage();
+-  if (!page)
+-    return 0;
+-
+-  ChromeClient& chrome_client = page->GetChromeClient();
+-  if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
+-    return static_cast<int>(
+-        lroundf(chrome_client.RootWindowRect(*frame).height() *
+-                chrome_client.GetScreenInfo(*frame).device_scale_factor));
+-  }
+-  return chrome_client.RootWindowRect(*frame).height();
++  // Derive from the actual inner (layout viewport) height + canonical
++  // chrome. Real Chrome's outerHeight == innerHeight + tabbar+toolbar+
++  // titlebar (~80-120px). Returning a fixed persona value (e.g. 1032)
++  // while inner was the actual macOS window size produced a >100px
++  // mystery gap that fpjs Pro flagged as "browser is lying about its
++  // size" — instant bot tell. OS-neutral: real Chrome on every desktop
++  // OS has innerHeight = outerHeight - ~80-120.
++  return innerHeight() + kCanonicalChromeHeight;
+ }
+ 
+ int LocalDOMWindow::outerWidth() const {
+@@ -1601,24 +1608,14 @@ int LocalDOMWindow::outerWidth() const {
+     return 0;
+ 
+   LocalFrame* frame = GetFrame();
+-
+-  // FencedFrames should return innerWidth to prevent passing
+-  // arbitrary data through the window width.
+   if (frame->IsInFencedFrameTree()) {
+     return innerWidth();
+   }
+ 
+-  Page* page = frame->GetPage();
+-  if (!page)
+-    return 0;
+-
+-  ChromeClient& chrome_client = page->GetChromeClient();
+-  if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
+-    return static_cast<int>(
+-        lroundf(chrome_client.RootWindowRect(*frame).width() *
+-                chrome_client.GetScreenInfo(*frame).device_scale_factor));
+-  }
+-  return chrome_client.RootWindowRect(*frame).width();
++  // Real Chrome maximized has outerWidth == innerWidth (no left/right
++  // chrome). Returning a fixed persona width while inner was the actual
++  // macOS window viewport produced a ~200px gap that fpjs flagged.
++  return innerWidth() + kCanonicalChromeWidth;
+ }
+ 
+ gfx::Size LocalDOMWindow::GetViewportSize() const {
+@@ -1652,6 +1649,13 @@ gfx::Size LocalDOMWindow::GetViewportSize() const {
+   return document()->View()->Size();
+ }
+ 
++// Restored: window inner dimensions return exact pixel values, matching
++// real Chrome. The earlier 100-px letterboxing (Tor Browser-style) was
++// detectable — a page checks `innerWidth % 100 === 0` and our fork ALWAYS
++// matched, real Chrome rarely does. The outer dimensions are instead
++// derived as inner + canonical browser chrome (see kCanonicalChromeHeight /
++// kCanonicalChromeWidth above), so the JS-observable outer size stays
++// consistent with the inner viewport without the per-pixel tell.
+ int LocalDOMWindow::innerHeight() const {
+   if (!GetFrame())
+     return 0;
+@@ -1669,39 +1673,15 @@ int LocalDOMWindow::innerWidth() const {
+ }
+ 
+ int LocalDOMWindow::screenX() const {
+-  LocalFrame* frame = GetFrame();
+-  if (!frame)
+-    return 0;
+-
+-  Page* page = frame->GetPage();
+-  if (!page)
+-    return 0;
+-
+-  ChromeClient& chrome_client = page->GetChromeClient();
+-  if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
+-    return static_cast<int>(
+-        lroundf(chrome_client.RootWindowRect(*frame).x() *
+-                chrome_client.GetScreenInfo(*frame).device_scale_factor));
+-  }
+-  return chrome_client.RootWindowRect(*frame).x();
++  // Lightweight-fork: window position on the user's screen is per-user
++  // state — wherever they happened to drag the window. Sites use it as
++  // a stable-ish per-user identifier. Force 0 — every ChromiumFish
++  // window claims to be top-left-anchored.
++  return 0;
+ }
+ 
+ int LocalDOMWindow::screenY() const {
+-  LocalFrame* frame = GetFrame();
+-  if (!frame)
+-    return 0;
+-
+-  Page* page = frame->GetPage();
+-  if (!page)
+-    return 0;
+-
+-  ChromeClient& chrome_client = page->GetChromeClient();
+-  if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
+-    return static_cast<int>(
+-        lroundf(chrome_client.RootWindowRect(*frame).y() *
+-                chrome_client.GetScreenInfo(*frame).device_scale_factor));
+-  }
+-  return chrome_client.RootWindowRect(*frame).y();
++  return 0;
+ }
+ 
+ double LocalDOMWindow::scrollX() const {
+@@ -1803,7 +1783,7 @@ double LocalDOMWindow::devicePixelRatio() const {
+   if (!GetFrame())
+     return 0.0;
+ 
+-  return GetFrame()->DevicePixelRatio();
++  return fingerprinting::Current().device_pixel_ratio;
+ }
+ 
+ ScriptPromise<ScrollResult> LocalDOMWindow::scrollBy(ScriptState* script_state,
+diff --git a/third_party/blink/renderer/core/frame/navigator.cc b/third_party/blink/renderer/core/frame/navigator.cc
+index 583f05f8dd5fb..58a783b149e34 100644
+--- a/third_party/blink/renderer/core/frame/navigator.cc
++++ b/third_party/blink/renderer/core/frame/navigator.cc
+@@ -32,8 +32,6 @@
+ #include "third_party/blink/renderer/core/inspector/console_message.h"
+ #include "third_party/blink/renderer/core/loader/frame_loader.h"
+ #include "third_party/blink/renderer/core/page/page.h"
+-#include "third_party/blink/renderer/core/probe/core_probes.h"
+-#include "third_party/blink/renderer/platform/language.h"
+ 
+ namespace blink {
+ 
+@@ -98,19 +96,24 @@ bool Navigator::cookieEnabled() const {
+ }
+ 
+ bool Navigator::webdriver() const {
+-  if (RuntimeEnabledFeatures::AutomationControlledEnabled())
+-    return true;
+-
+-  bool automation_enabled = false;
+-  probe::ApplyAutomationOverride(GetExecutionContext(), automation_enabled);
+-  return automation_enabled;
++  // Lightweight-fork: always report false, matching the most common
++  // real-Chrome state. Hides CDP attachment from the page (the patch is in
++  // the direction of looking *more* like vanilla Chrome, never less).
++  return false;
+ }
+ 
+ String Navigator::GetAcceptLanguages() {
+-  if (!DomWindow())
+-    return DefaultLanguage();
+-
+-  return DomWindow()->GetFrame()->GetPage()->GetSettings().GetAcceptLanguages();
++  // 2026-05-30: Persona-mode override. Real Win Chrome 148 with locale=en-US
++  // reports navigator.languages == ["en-US","en"] — the implicit fallback
++  // form. On our Linux fork the value resolves to "en-US" alone because the
++  // per-profile pref isn't seeded from IDS_ACCEPT_LANGUAGES on a fresh
++  // ephemeral profile, and network::features::kReduceAcceptLanguageCount /
++  // GetLanguagesWithMaxCount paths can collapse multi-language lists further.
++  // Single-element navigator.languages is a known bot tell (CF Turnstile and
++  // fpjs both flag it as Tor-style stripping). Pin to "en-US,en" at the JS
++  // surface so both the .language getter (front element) and .languages
++  // getter (full list) match real Chrome 148 byte-for-byte.
++  return "en-US,en";
+ }
+ 
+ void Navigator::Trace(Visitor* visitor) const {
+diff --git a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+index f5c0db2d1b58d..987ffe2b16d33 100644
+--- a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
++++ b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+@@ -4,12 +4,12 @@
+ 
+ #include "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.h"
+ 
+-#include "base/system/sys_info.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ 
+ namespace blink {
+ 
+ unsigned NavigatorConcurrentHardware::hardwareConcurrency() const {
+-  return static_cast<unsigned>(base::SysInfo::NumberOfProcessors());
++  return fingerprinting::Current().hardware_concurrency;
+ }
+ 
+ }  // namespace blink
+diff --git a/third_party/blink/renderer/core/frame/navigator_device_memory.cc b/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+index 05fa33e4568e8..50f3b9df493b9 100644
+--- a/third_party/blink/renderer/core/frame/navigator_device_memory.cc
++++ b/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+@@ -4,7 +4,7 @@
+ 
+ #include "third_party/blink/renderer/core/frame/navigator_device_memory.h"
+ 
+-#include "third_party/blink/public/common/device_memory/approximated_device_memory.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-shared.h"
+ #include "third_party/blink/renderer/core/dom/document.h"
+ #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+@@ -12,7 +12,7 @@
+ namespace blink {
+ 
+ float NavigatorDeviceMemory::deviceMemory() const {
+-  return ApproximatedDeviceMemory::GetApproximatedDeviceMemory();
++  return fingerprinting::Current().device_memory_gb;
+ }
+ 
+ }  // namespace blink
+diff --git a/third_party/blink/renderer/core/frame/navigator_id.cc b/third_party/blink/renderer/core/frame/navigator_id.cc
+index 22243ebf5e26f..6cd2fabc3cd56 100644
+--- a/third_party/blink/renderer/core/frame/navigator_id.cc
++++ b/third_party/blink/renderer/core/frame/navigator_id.cc
+@@ -34,6 +34,7 @@
+ #include "base/feature_list.h"
+ #include "build/build_config.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+ 
+ #if !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN)
+@@ -59,6 +60,8 @@ String NavigatorID::appVersion() {
+ }
+ 
+ String NavigatorID::platform() const {
++  return String::FromUtf8(fingerprinting::Current().navigator_platform);
++#if 0
+ #if BUILDFLAG(IS_MAC)
+   // Match Safari and Mozilla on Mac x86.
+   return "MacIntel";
+@@ -81,6 +84,7 @@ String NavigatorID::platform() const {
+   }
+   return *platform_name;
+ #endif
++#endif
+ }
+ 
+ String NavigatorID::product() {
+diff --git a/third_party/blink/renderer/core/frame/navigator_language.cc b/third_party/blink/renderer/core/frame/navigator_language.cc
+index 75cd3461317b7..f3fc99dc9ec7d 100644
+--- a/third_party/blink/renderer/core/frame/navigator_language.cc
++++ b/third_party/blink/renderer/core/frame/navigator_language.cc
+@@ -4,10 +4,6 @@
+ 
+ #include "third_party/blink/renderer/core/frame/navigator_language.h"
+ 
+-#include "base/command_line.h"
+-#include "services/network/public/cpp/features.h"
+-#include "third_party/blink/public/common/switches.h"
+-#include "third_party/blink/renderer/core/frame/web_feature.h"
+ #include "third_party/blink/renderer/core/probe/core_probes.h"
+ #include "third_party/blink/renderer/platform/language.h"
+ #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+@@ -85,18 +81,17 @@ void NavigatorLanguage::EnsureUpdatedLanguage() {
+ 
+   if (languages_dirty_) {
+     languages_ = ParseAndSanitize(GetAcceptLanguages());
+-    // Reduce the Accept-Language if the ReduceAcceptLanguage deprecation
+-    // trial is not enabled and feature flag ReduceAcceptLanguage is enabled.
+-    if (RuntimeEnabledFeatures::DisableReduceAcceptLanguageEnabled(
+-            execution_context_)) {
+-      UseCounter::Count(execution_context_,
+-                        WebFeature::kDisableReduceAcceptLanguage);
+-    } else if (base::FeatureList::IsEnabled(
+-                   network::features::kReduceAcceptLanguage) &&
+-               !base::CommandLine::ForCurrentProcess()->HasSwitch(
+-                   blink::switches::kDisableReduceAcceptLanguage)) {
+-      languages_ = Vector<String>({languages_.front()});
+-    }
++    // Lightweight-fork: ReduceAcceptLanguage path stripped. Upstream reduces
++    // navigator.languages to a single front element when the feature is
++    // enabled — but real Chrome 148 stable ships with the feature OFF, so
++    // ['en-US', 'en'] stays 2-element. Cloudflare Turnstile fingerprints
++    // navigator.languages.length and flags single-element as bot/anti-detect
++    // (Tor-style stripping). Empirically our fork was hitting the reduction
++    // path despite the upstream default being disabled (likely via field-
++    // trial seed or kReduceAcceptLanguageCount path that we couldn't fully
++    // suppress via command line). Removing the reduction here guarantees
++    // navigator.languages reflects the actual accept-lang config, matching
++    // real Chrome 148 behavior.
+     languages_dirty_ = false;
+   }
+ }
+diff --git a/third_party/blink/renderer/core/workers/worker_navigator.cc b/third_party/blink/renderer/core/workers/worker_navigator.cc
+index db1a55d008e76..8ecf06cfabe2a 100644
+--- a/third_party/blink/renderer/core/workers/worker_navigator.cc
++++ b/third_party/blink/renderer/core/workers/worker_navigator.cc
+@@ -41,16 +41,16 @@ WorkerNavigator::WorkerNavigator(ExecutionContext* execution_context)
+ WorkerNavigator::~WorkerNavigator() = default;
+ 
+ String WorkerNavigator::GetAcceptLanguages() {
+-  auto* global_scope = To<WorkerOrWorkletGlobalScope>(GetExecutionContext());
+-  if (!global_scope) {
+-    // Prospective fix for crbug.com/40945292 and crbug.com/40827704
+-    // Return empty string since it is better than crashing here, and the return
+-    // value is not that important since the worker context is already
+-    // destroyed.
+-    return "";
+-  }
+-
+-  return global_scope->GetAcceptLanguages();
++  // 2026-05-30: Persona-mode override. Mirror Navigator::GetAcceptLanguages
++  // for worker / worklet contexts so navigator.languages stays
++  // ["en-US","en"] no matter where it is read (main thread, dedicated
++  // worker, shared worker, service worker, worklet). fpjs Pro probes the
++  // SDK from inside a sandboxed iframe and additionally cross-checks the
++  // worker scope — without this patch the main-thread Navigator returned
++  // ["en-US","en"] but the worker scope still resolved through the
++  // network fetch context which can collapse to "en-US" alone, and fpjs
++  // flagged the mismatch as Tor-style stripping.
++  return "en-US,en";
+ }
+ 
+ void WorkerNavigator::NotifyUpdate() {
+diff --git a/third_party/blink/renderer/modules/installedapp/navigator_installed_app.cc b/third_party/blink/renderer/modules/installedapp/navigator_installed_app.cc
+index 8cd793a2bc0bc..cc890e5cd0f9f 100644
+--- a/third_party/blink/renderer/modules/installedapp/navigator_installed_app.cc
++++ b/third_party/blink/renderer/modules/installedapp/navigator_installed_app.cc
+@@ -42,11 +42,15 @@ NavigatorInstalledApp::getInstalledRelatedApps(
+     return EmptyPromise();
+   }
+ 
++  // Lightweight-fork: always resolve with an empty array. This API
++  // tells a page which related native apps the user has installed — a
++  // strong per-user fingerprint AND an enumeration vector for installed
++  // PWAs. Tor / privacy browsers always return empty. Skip the platform
++  // round-trip entirely.
+   auto* resolver = MakeGarbageCollected<
+       ScriptPromiseResolver<IDLSequence<RelatedApplication>>>(
+       script_state, exception_state.GetContext());
+-  auto* app_controller = InstalledAppController::From(*navigator.DomWindow());
+-  app_controller->GetInstalledRelatedApps(resolver);
++  resolver->Resolve(HeapVector<Member<RelatedApplication>>());
+   return resolver->Promise();
+ }
+ 
+diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+index 368d39278163d..a6882cd5f1719 100644
+--- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
++++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+@@ -4002,6 +4002,11 @@
+     },
+     {
+       name: "NetInfoConstantType",
++      // ChromiumFish: default ON so NetworkInformation::type() always
++      // returns kUnknown instead of "wifi" / "ethernet" / "wimax" /
++      // "cellular" derived from the host's actual interface (a clear
++      // Linux/Win/Mac tell when the persona claims a Win 11 desktop).
++      status: "stable",
+     },
+     {
+       name: "NetInfoDownlinkMax",
