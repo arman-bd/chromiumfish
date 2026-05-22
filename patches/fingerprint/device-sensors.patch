@@ -1,0 +1,634 @@
+diff --git a/content/browser/gpu/gpu_data_manager_impl_private.cc b/content/browser/gpu/gpu_data_manager_impl_private.cc
+index 97e9f0acbd34f..e0aa15c873442 100644
+--- a/content/browser/gpu/gpu_data_manager_impl_private.cc
++++ b/content/browser/gpu/gpu_data_manager_impl_private.cc
+@@ -72,6 +72,7 @@
+ #include "media/media_buildflags.h"
+ #include "media/mojo/clients/mojo_video_decoder.h"
+ #include "media/mojo/mojom/video_encode_accelerator.mojom.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "ui/base/ui_base_features.h"
+ #include "ui/base/ui_base_switches.h"
+ #include "ui/display/screen.h"
+@@ -1393,6 +1394,16 @@ void GpuDataManagerImplPrivate::UpdateGpuPreferences(
+   DCHECK(gpu_preferences);
+ 
+   gpu_preferences->gpu_program_cache_size = gpu::GetDefaultGpuDiskCacheSize();
++  if (!blink::fingerprinting::Current().webgpu_enabled) {
++    gpu_preferences->enable_webgpu = false;
++    gpu_preferences->enable_unsafe_webgpu = false;
++    gpu_preferences->enable_webgpu_developer_features = false;
++    gpu_preferences->enable_webgpu_experimental_features = false;
++    gpu_preferences->force_webgpu_compat = false;
++    gpu_preferences->use_webgpu_adapter = gpu::WebGPUAdapterName::kDefault;
++    gpu_preferences->use_webgpu_power_preference =
++        gpu::WebGPUPowerPreference::kNone;
++  }
+ #if BUILDFLAG(IS_ANDROID)
+   // Disable WebGPU if Android Advanced Protection is enabled.
+   // Directly toggling preferences instead of kWebGPUService to prevent
+diff --git a/third_party/blink/renderer/modules/battery/battery_manager.cc b/third_party/blink/renderer/modules/battery/battery_manager.cc
+index 51cdc75ceee61..3895cfc53e370 100644
+--- a/third_party/blink/renderer/modules/battery/battery_manager.cc
++++ b/third_party/blink/renderer/modules/battery/battery_manager.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "third_party/blink/renderer/modules/battery/battery_manager.h"
+ 
++#include <limits>
++
+ #include "third_party/blink/public/mojom/frame/lifecycle.mojom-blink.h"
+ #include "third_party/blink/renderer/core/dom/dom_exception.h"
+ #include "third_party/blink/renderer/core/dom/events/event.h"
+@@ -79,20 +81,27 @@ ScriptPromise<BatteryManager> BatteryManager::StartRequest(
+   return battery_property_->Promise(script_state->World());
+ }
+ 
++// Lightweight-fork: BatteryManager getters spoofed to canonical
++// "desktop on AC power" values regardless of host state. Otherwise
++// navigator.getBattery() exposes the host's actual battery — on a
++// MacBook on battery the page sees laptop state while UA claims Win11
++// desktop, a direct persona contradiction. Mirrors what the modal real
++// Win11 user (desktop on AC) reports.
++
+ bool BatteryManager::charging() {
+-  return battery_status_.Charging();
++  return true;
+ }
+ 
+ double BatteryManager::chargingTime() {
+-  return battery_status_.charging_time().InSecondsF();
++  return 0.0;
+ }
+ 
+ double BatteryManager::dischargingTime() {
+-  return battery_status_.discharging_time().InSecondsF();
++  return std::numeric_limits<double>::infinity();
+ }
+ 
+ double BatteryManager::level() {
+-  return battery_status_.Level();
++  return 1.0;
+ }
+ 
+ void BatteryManager::DidUpdateData() {
+diff --git a/third_party/blink/renderer/modules/keyboard/keyboard_layout.cc b/third_party/blink/renderer/modules/keyboard/keyboard_layout.cc
+index e2b697b76831d..742e6ec8963e1 100644
+--- a/third_party/blink/renderer/modules/keyboard/keyboard_layout.cc
++++ b/third_party/blink/renderer/modules/keyboard/keyboard_layout.cc
+@@ -24,17 +24,10 @@ namespace {
+ constexpr char kKeyboardMapFrameDetachedErrorMsg[] =
+     "Current frame is detached.";
+ 
+-constexpr char kFeaturePolicyBlocked[] =
+-    "getLayoutMap() must be called from a top-level browsing context or "
+-    "allowed by the permission policy.";
+-
+-constexpr char kKeyboardMapRequestFailedErrorMsg[] =
+-    "getLayoutMap() request could not be completed.";
+-
+ }
+ 
+ KeyboardLayout::KeyboardLayout(ExecutionContext* context)
+-    : ExecutionContextClient(context), service_(context) {}
++    : ExecutionContextClient(context) {}
+ 
+ ScriptPromise<KeyboardLayoutMap> KeyboardLayout::GetKeyboardLayoutMap(
+     ScriptState* script_state,
+@@ -47,71 +40,54 @@ ScriptPromise<KeyboardLayoutMap> KeyboardLayout::GetKeyboardLayoutMap(
+     return EmptyPromise();
+   }
+ 
+-  if (!EnsureServiceConnected()) {
+-    exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
+-                                      kKeyboardMapRequestFailedErrorMsg);
+-    return EmptyPromise();
+-  }
+-
+-  if (!layout_map_property_) {
+-    layout_map_property_ = MakeGarbageCollected<LayoutMapProperty>(
+-        ExecutionContext::From(script_state));
+-  }
+-
+-  auto promise = layout_map_property_->Promise(script_state->World());
+-
+-  if (!is_request_pending_) {
+-    is_request_pending_ = true;
+-    service_->GetKeyboardLayoutMap(
+-        BindOnce(&KeyboardLayout::GotKeyboardLayoutMap, WrapPersistent(this)));
+-  }
+-  return promise;
++  // Lightweight-fork: return a CANONICAL US-QWERTY layout map regardless
++  // of host OS / installed keyboard. The real per-OS map (Mac §, Win \,
++  // German ß, French ², etc.) is a strong host-OS fingerprint that
++  // contradicts our Windows persona. Skip the IPC to the platform
++  // keyboard service entirely; resolve immediately with our fixed map.
++  HashMap<String, String> canonical_layout = {
++      // Letter keys (KeyA..KeyZ)
++      {"KeyA", "a"}, {"KeyB", "b"}, {"KeyC", "c"}, {"KeyD", "d"},
++      {"KeyE", "e"}, {"KeyF", "f"}, {"KeyG", "g"}, {"KeyH", "h"},
++      {"KeyI", "i"}, {"KeyJ", "j"}, {"KeyK", "k"}, {"KeyL", "l"},
++      {"KeyM", "m"}, {"KeyN", "n"}, {"KeyO", "o"}, {"KeyP", "p"},
++      {"KeyQ", "q"}, {"KeyR", "r"}, {"KeyS", "s"}, {"KeyT", "t"},
++      {"KeyU", "u"}, {"KeyV", "v"}, {"KeyW", "w"}, {"KeyX", "x"},
++      {"KeyY", "y"}, {"KeyZ", "z"},
++      // Digit keys
++      {"Digit0", "0"}, {"Digit1", "1"}, {"Digit2", "2"}, {"Digit3", "3"},
++      {"Digit4", "4"}, {"Digit5", "5"}, {"Digit6", "6"}, {"Digit7", "7"},
++      {"Digit8", "8"}, {"Digit9", "9"},
++      // Common US punctuation
++      {"Backquote", "`"}, {"Minus", "-"}, {"Equal", "="},
++      {"BracketLeft", "["}, {"BracketRight", "]"}, {"Backslash", "\\"},
++      {"Semicolon", ";"}, {"Quote", "'"},
++      {"Comma", ","}, {"Period", "."}, {"Slash", "/"},
++      // ISO/JIS extra (US Windows usually maps these to backslash)
++      {"IntlBackslash", "\\"}, {"IntlRo", "\\"}, {"IntlYen", "\\"},
++      // Numpad
++      {"NumpadDivide", "/"}, {"NumpadMultiply", "*"},
++      {"NumpadSubtract", "-"}, {"NumpadAdd", "+"},
++      {"NumpadDecimal", "."}, {"NumpadEqual", "="},
++      {"Numpad0", "0"}, {"Numpad1", "1"}, {"Numpad2", "2"},
++      {"Numpad3", "3"}, {"Numpad4", "4"}, {"Numpad5", "5"},
++      {"Numpad6", "6"}, {"Numpad7", "7"}, {"Numpad8", "8"},
++      {"Numpad9", "9"},
++      // Space
++      {"Space", " "},
++  };
++
++  auto* property = MakeGarbageCollected<LayoutMapProperty>(
++      ExecutionContext::From(script_state));
++  property->Resolve(MakeGarbageCollected<KeyboardLayoutMap>(canonical_layout));
++  return property->Promise(script_state->World());
+ }
+ 
+ bool KeyboardLayout::IsLocalFrameAttached() {
+   return DomWindow();
+ }
+ 
+-bool KeyboardLayout::EnsureServiceConnected() {
+-  if (!service_.is_bound()) {
+-    if (!DomWindow()) {
+-      return false;
+-    }
+-    DomWindow()->GetBrowserInterfaceBroker().GetInterface(
+-        service_.BindNewPipeAndPassReceiver(
+-            DomWindow()->GetTaskRunner(TaskType::kMiscPlatformAPI)));
+-    DCHECK(service_.is_bound());
+-  }
+-  return true;
+-}
+-
+-void KeyboardLayout::GotKeyboardLayoutMap(
+-    mojom::blink::GetKeyboardLayoutMapResultPtr result) {
+-  DCHECK(layout_map_property_);
+-  DCHECK(is_request_pending_);
+-  is_request_pending_ = false;
+-
+-  switch (result->status) {
+-    case mojom::blink::GetKeyboardLayoutMapStatus::kSuccess:
+-      layout_map_property_->Resolve(
+-          MakeGarbageCollected<KeyboardLayoutMap>(result->layout_map));
+-      break;
+-    case mojom::blink::GetKeyboardLayoutMapStatus::kFail:
+-      layout_map_property_->Reject(MakeGarbageCollected<DOMException>(
+-          DOMExceptionCode::kInvalidStateError,
+-          kKeyboardMapRequestFailedErrorMsg));
+-      break;
+-    case mojom::blink::GetKeyboardLayoutMapStatus::kDenied:
+-      layout_map_property_->Reject(MakeGarbageCollected<DOMException>(
+-          DOMExceptionCode::kSecurityError, kFeaturePolicyBlocked));
+-      break;
+-  }
+-  layout_map_property_ = nullptr;
+-}
+-
+ void KeyboardLayout::Trace(Visitor* visitor) const {
+-  visitor->Trace(layout_map_property_);
+-  visitor->Trace(service_);
+   ExecutionContextClient::Trace(visitor);
+ }
+ 
+diff --git a/third_party/blink/renderer/modules/keyboard/keyboard_layout.h b/third_party/blink/renderer/modules/keyboard/keyboard_layout.h
+index 8faa8d87c3526..3a9d266b264b4 100644
+--- a/third_party/blink/renderer/modules/keyboard/keyboard_layout.h
++++ b/third_party/blink/renderer/modules/keyboard/keyboard_layout.h
+@@ -37,18 +37,8 @@ class KeyboardLayout final : public GarbageCollected<KeyboardLayout>,
+   // Returns true if the local frame is attached to the renderer.
+   bool IsLocalFrameAttached();
+ 
+-  // Returns true if |service_| is initialized and ready to be called.
+-  bool EnsureServiceConnected();
+-
+-  void GotKeyboardLayoutMap(mojom::blink::GetKeyboardLayoutMapResultPtr);
+-
+   using LayoutMapProperty =
+       ScriptPromiseProperty<KeyboardLayoutMap, DOMException>;
+-  Member<LayoutMapProperty> layout_map_property_;
+-
+-  bool is_request_pending_ = false;
+-
+-  HeapMojoRemote<mojom::blink::KeyboardLockService> service_;
+ };
+ 
+ }  // namespace blink
+diff --git a/third_party/blink/renderer/modules/keyboard/navigator_keyboard.idl b/third_party/blink/renderer/modules/keyboard/navigator_keyboard.idl
+index eb17bebfeedce..1fc39d1059f09 100644
+--- a/third_party/blink/renderer/modules/keyboard/navigator_keyboard.idl
++++ b/third_party/blink/renderer/modules/keyboard/navigator_keyboard.idl
+@@ -2,6 +2,13 @@
+ // Use of this source code is governed by a BSD-style license that can be
+ // found in the LICENSE file.
+ 
++// Lightweight-fork: we RESTORED `navigator.keyboard` on the prototype.
++// Hiding it shrank Navigator.prototype below the expected ~82-property
++// count that fpjs Pro reads for Browser-Tampering detection. Better
++// strategy: keep the attribute visible, but neutralise high-entropy
++// leaks at the Keyboard impl layer (getLayoutMap returns a canonical
++// US-QWERTY map regardless of host physical layout) — see the map built
++// in modules/keyboard/keyboard_layout.cc.
+ [
+     ImplementedAs=NavigatorKeyboard
+ ] partial interface Navigator {
+diff --git a/third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc b/third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc
+index 8d900f227005d..368d33d9c9f65 100644
+--- a/third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc
++++ b/third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc
+@@ -155,6 +155,98 @@ CreateResolvedPromiseToDecodingInfoWith(
+   return ToResolvedPromise<MediaCapabilitiesDecodingInfo>(script_state, info);
+ }
+ 
++// Lightweight-fork: derive realistic smooth/powerEfficient for a
++// MediaDecodingConfiguration without querying the host's actual
++// VideoDecodePerfHistory (that would leak host-specific perf signals
++// per playback record). The heuristic matches what a typical Win10/11
++// desktop with hardware-accelerated h264/vp9/aac would report:
++//
++//   * audio-only or HD-or-below video → smooth + powerEfficient
++//   * 4K h264/vp9/aac → smooth + powerEfficient (hw decoded on most modern GPUs)
++//   * >1080p HEVC/AV1 → smooth but NOT powerEfficient (software-decoded on Intel UHD)
++//   * Above 4K (8K+) → neither smooth nor powerEfficient
++//   * >60fps at >1080p → not smooth
++//   * Bitrate >50 Mbps at 1080p+ → not powerEfficient
++//
++// Returns a fixed pair regardless of host hardware so fpjs and similar
++// see the same per-persona values on every host.
++struct PerfHeuristic {
++  bool smooth;
++  bool power_efficient;
++};
++PerfHeuristic DerivePerformanceHeuristic(const MediaDecodingConfiguration* config) {
++  // Audio-only configs: always smooth + powerEfficient.
++  if (!config->hasVideo()) {
++    return {true, true};
++  }
++  const auto* video = config->video();
++  if (!video) {
++    return {true, true};
++  }
++  const uint32_t w = video->hasWidth() ? video->width() : 0u;
++  const uint32_t h = video->hasHeight() ? video->height() : 0u;
++  const double fps = video->hasFramerate() ? video->framerate() : 30.0;
++  const uint64_t bitrate = video->hasBitrate() ? video->bitrate() : 0u;
++  const String content_type =
++      video->hasContentType() ? video->contentType() : String();
++
++  const uint64_t pixels = static_cast<uint64_t>(w) * h;
++  // 1920×1080 = 2,073,600 ; 3840×2160 = 8,294,400 ; 7680×4320 = 33,177,600
++  const bool is_above_hd = pixels > 2'100'000ull;       // > ~1080p
++  const bool is_above_4k = pixels > 8'400'000ull;       // > ~4K
++  const bool is_high_fps_above_hd = is_above_hd && fps > 60.0;
++  const bool is_high_bitrate =
++      bitrate > 50'000'000ull && is_above_hd;  // > 50 Mbps above 1080p
++
++  // Codec category — coarse lowercase match.
++  const String lc = content_type.ToAsciiLower();
++  const std::string lc_utf8 = lc.Utf8();
++  const bool is_hw_codec_friendly =
++      (lc_utf8.find("avc1") != std::string::npos) || (lc_utf8.find("h264") != std::string::npos) ||
++      (lc_utf8.find("vp9") != std::string::npos) || (lc_utf8.find("vp09") != std::string::npos) ||
++      (lc_utf8.find("vp8") != std::string::npos) || (lc_utf8.find("mp4a") != std::string::npos) ||
++      (lc_utf8.find("opus") != std::string::npos) || (lc_utf8.find("aac") != std::string::npos);
++  const bool is_hw_codec_strained =
++      (lc_utf8.find("av01") != std::string::npos) || (lc_utf8.find("av1") != std::string::npos) ||
++      (lc_utf8.find("hev1") != std::string::npos) || (lc_utf8.find("hvc1") != std::string::npos) || (lc_utf8.find("hevc") != std::string::npos) ||
++      (lc_utf8.find("dvh") != std::string::npos) /* Dolby Vision */;
++
++  // 8K+ or high-bitrate-above-HD: choke point for every consumer GPU.
++  if (is_above_4k || is_high_bitrate) {
++    return {false, false};
++  }
++  // 4K HEVC / AV1: hardware-decoded on newer chips, software on older
++  // Intel UHD — be conservative and call it smooth but not powerEfficient.
++  if (is_above_hd && is_hw_codec_strained) {
++    return {true, false};
++  }
++  // High framerate above HD: typically not smooth on integrated GPUs.
++  if (is_high_fps_above_hd) {
++    return {false, true};
++  }
++  // 4K hw-friendly codecs (h264/vp9): smooth + powerEfficient on modern desktop GPUs.
++  if (is_above_hd && is_hw_codec_friendly) {
++    return {true, true};
++  }
++  // HD-or-below: always smooth + powerEfficient.
++  if (!is_above_hd) {
++    return {true, true};
++  }
++  // Anything else above HD: smooth but pessimistic on power efficiency.
++  return {true, false};
++}
++
++ScriptPromise<MediaCapabilitiesDecodingInfo>
++CreateRealisticDecodingInfo(ScriptState* script_state,
++                             const MediaDecodingConfiguration* config) {
++  PerfHeuristic perf = DerivePerformanceHeuristic(config);
++  MediaCapabilitiesDecodingInfo* info = MediaCapabilitiesDecodingInfo::Create();
++  info->setSupported(true);
++  info->setSmooth(perf.smooth);
++  info->setPowerEfficient(perf.power_efficient);
++  return ToResolvedPromise<MediaCapabilitiesDecodingInfo>(script_state, info);
++}
++
+ MediaCapabilitiesDecodingInfo* CreateEncryptedDecodingInfoWith(
+     bool value,
+     MediaKeySystemAccess* access) {
+@@ -1007,19 +1099,16 @@ ScriptPromise<MediaCapabilitiesDecodingInfo> MediaCapabilities::decodingInfo(
+                          exception_state);
+   }
+ 
+-  auto* resolver = MakeGarbageCollected<
+-      ScriptPromiseResolver<MediaCapabilitiesDecodingInfo>>(
+-      script_state, exception_state.GetContext());
+-
+-  // IMPORTANT: Acquire the promise before potentially synchronously resolving
+-  // it in the code that follows. Otherwise the promise returned to JS will be
+-  // undefined. See comment above Promise() in script_promise_resolver.h
+-  auto promise = resolver->Promise();
+-
+-  GetPerfInfo(video_codec, video_profile, video_color_space, config,
+-              request_time, resolver, nullptr /* access */);
+-
+-  return promise;
++  // Lightweight-fork: instead of querying the host's VideoDecodePerfHistory
++  // (which leaks host-specific perf signals), return a CODEC + RESOLUTION +
++  // BITRATE-aware smooth/powerEfficient verdict via DerivePerformanceHeuristic.
++  // Earlier we returned `true/true/true` for every valid config — fpjs Pro
++  // probed ~15 configs per fingerprint scan and noticed we said "smooth +
++  // powerEfficient" even for 8K AV1 etc. that NO consumer GPU can decode
++  // smoothly. That uniformly-yes answer is itself a tell. The heuristic now
++  // returns realistic per-class values that match a typical Win10/11
++  // desktop with hardware h264/vp9/aac + software AV1/HEVC.
++  return CreateRealisticDecodingInfo(script_state, config);
+ }
+ 
+ ScriptPromise<MediaCapabilitiesInfo> MediaCapabilities::encodingInfo(
+diff --git a/third_party/blink/renderer/modules/netinfo/navigator_network_information.idl b/third_party/blink/renderer/modules/netinfo/navigator_network_information.idl
+index 15224cae5caba..8ca95b1df81a4 100644
+--- a/third_party/blink/renderer/modules/netinfo/navigator_network_information.idl
++++ b/third_party/blink/renderer/modules/netinfo/navigator_network_information.idl
+@@ -4,6 +4,13 @@
+ 
+ // https://wicg.github.io/netinfo/#navigatornetworkinformation-interface
+ 
++// Lightweight-fork: we RESTORED `navigator.connection`. Hiding it shrank
++// Navigator.prototype below ~82 properties (fpjs Pro reads the
++// enumeration as a Browser-Tampering signal). Better strategy: keep the
++// attribute visible, but the NetworkInformation impl returns canonical
++// low-entropy values (effectiveType="4g", downlink=10, rtt=50,
++// saveData=false) so the 4-tuple is fixed-per-build instead of
++// host-specific — see modules/netinfo/network_information.cc.
+ [
+     ImplementedAs=NetworkInformation
+ ] interface mixin NavigatorNetworkInformation {
+diff --git a/third_party/blink/renderer/modules/netinfo/network_information.cc b/third_party/blink/renderer/modules/netinfo/network_information.cc
+index 976a3c8c36dbf..404c2fa849d40 100644
+--- a/third_party/blink/renderer/modules/netinfo/network_information.cc
++++ b/third_party/blink/renderer/modules/netinfo/network_information.cc
+@@ -51,22 +51,10 @@ V8ConnectionType::Enum ConnectionTypeToEnum(WebConnectionType type) {
+   NOTREACHED();
+ }
+ 
+-V8EffectiveConnectionType::Enum EffectiveConnectionTypeToEnum(
+-    WebEffectiveConnectionType type) {
+-  switch (type) {
+-    case WebEffectiveConnectionType::kTypeSlow2G:
+-      return V8EffectiveConnectionType::Enum::kSlow2G;
+-    case WebEffectiveConnectionType::kType2G:
+-      return V8EffectiveConnectionType::Enum::k2G;
+-    case WebEffectiveConnectionType::kType3G:
+-      return V8EffectiveConnectionType::Enum::k3G;
+-    case WebEffectiveConnectionType::kTypeUnknown:
+-    case WebEffectiveConnectionType::kTypeOffline:
+-    case WebEffectiveConnectionType::kType4G:
+-      return V8EffectiveConnectionType::Enum::k4G;
+-  }
+-  NOTREACHED();
+-}
++// Lightweight-fork: EffectiveConnectionTypeToEnum removed — our
++// effectiveType() always returns canonical k4G, so the dynamic mapping
++// helper is dead code (and Werror flags it). GetConsoleLogStringForWebHoldback
++// is still used by MaybeShowWebHoldbackConsoleMsg so we keep it.
+ 
+ String GetConsoleLogStringForWebHoldback() {
+   return "Network quality values are overridden using a holdback experiment, "
+@@ -99,78 +87,35 @@ V8ConnectionType NetworkInformation::type() const {
+   return V8ConnectionType(ConnectionTypeToEnum(type_));
+ }
+ 
+-double NetworkInformation::downlinkMax() const {
+-  if (RuntimeEnabledFeatures::NetInfoConstantTypeEnabled()) {
+-    return std::numeric_limits<double>::infinity();
+-  }
+-
+-  if (!IsObserving())
+-    return GetNetworkStateNotifier().MaxBandwidth();
++// Lightweight-fork: NetworkInformation values are now canonical so the
++// 4-tuple (effectiveType, downlink, rtt, saveData) reads the same on every
++// host. Reason: fpjs Pro + similar reads this tuple as a near-unique
++// fingerprint (real values vary per actual link). Returning fixed
++// "typical desktop 4G" values puts every fork instance in the same
++// anonymity bucket without contradicting our Win-Chrome persona.
+ 
+-  return downlink_max_mbps_;
++double NetworkInformation::downlinkMax() const {
++  // Real Chrome desktop usually reports Infinity for downlinkMax.
++  return std::numeric_limits<double>::infinity();
+ }
+ 
+ V8EffectiveConnectionType NetworkInformation::effectiveType() {
+-  MaybeShowWebHoldbackConsoleMsg();
+-  std::optional<WebEffectiveConnectionType> override_ect =
+-      GetNetworkStateNotifier().GetWebHoldbackEffectiveType();
+-  if (override_ect) {
+-    return V8EffectiveConnectionType(
+-        EffectiveConnectionTypeToEnum(override_ect.value()));
+-  }
+-
+-  // effective_type_ is only updated when listening for events, so ask
+-  // networkStateNotifier if not listening (crbug.com/379841).
+-  if (!IsObserving()) {
+-    return V8EffectiveConnectionType(EffectiveConnectionTypeToEnum(
+-        GetNetworkStateNotifier().EffectiveType()));
+-  }
+-
+-  // If observing, return m_type which changes when the event fires, per spec.
+   return V8EffectiveConnectionType(
+-      EffectiveConnectionTypeToEnum(effective_type_));
++      V8EffectiveConnectionType::Enum::k4G);
+ }
+ 
+ uint32_t NetworkInformation::rtt() {
+-  MaybeShowWebHoldbackConsoleMsg();
+-  std::optional<base::TimeDelta> override_rtt =
+-      GetNetworkStateNotifier().GetWebHoldbackHttpRtt();
+-  if (override_rtt) {
+-    return GetNetworkStateNotifier().RoundRtt(Host(), override_rtt.value());
+-  }
+-
+-  if (!IsObserving()) {
+-    return GetNetworkStateNotifier().RoundRtt(
+-        Host(), GetNetworkStateNotifier().HttpRtt());
+-  }
+-
+-  return http_rtt_msec_;
++  // 50ms is the modal Chrome desktop value (4G effective type).
++  return 50u;
+ }
+ 
+ double NetworkInformation::downlink() {
+-  MaybeShowWebHoldbackConsoleMsg();
+-  std::optional<double> override_downlink_mbps =
+-      GetNetworkStateNotifier().GetWebHoldbackDownlinkThroughputMbps();
+-  if (override_downlink_mbps) {
+-    return GetNetworkStateNotifier().RoundMbps(Host(),
+-                                               override_downlink_mbps.value());
+-  }
+-
+-  if (!IsObserving()) {
+-    return GetNetworkStateNotifier().RoundMbps(
+-        Host(), GetNetworkStateNotifier().DownlinkThroughputMbps());
+-  }
+-
+-  return downlink_mbps_;
++  // 10 Mbps — the modal "fast desktop 4G" rounded reading.
++  return 10.0;
+ }
+ 
+ bool NetworkInformation::saveData() const {
+-  bool save_data =
+-      IsObserving() ? save_data_ : GetNetworkStateNotifier().SaveDataEnabled();
+-
+-  probe::ApplyDataSaverOverride(probe::ToCoreProbeSink(GetExecutionContext()),
+-                                save_data);
+-  return save_data;
++  return false;
+ }
+ 
+ void NetworkInformation::ConnectionChange(
+diff --git a/third_party/blink/renderer/modules/speech/speech_synthesis.cc b/third_party/blink/renderer/modules/speech/speech_synthesis.cc
+index a631d4f2b1c25..957729193205c 100644
+--- a/third_party/blink/renderer/modules/speech/speech_synthesis.cc
++++ b/third_party/blink/renderer/modules/speech/speech_synthesis.cc
+@@ -25,9 +25,11 @@
+ 
+ #include "third_party/blink/renderer/modules/speech/speech_synthesis.h"
+ 
++#include <array>
+ #include <tuple>
+ 
+ #include "build/build_config.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
+ #include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
+ #include "third_party/blink/public/platform/platform.h"
+@@ -93,8 +95,43 @@ void SpeechSynthesis::OnSetVoiceList(
+ }
+ 
+ const HeapVector<Member<SpeechSynthesisVoice>>& SpeechSynthesis::getVoices() {
+-  // Kick off initialization here to ensure voice list gets populated.
+-  std::ignore = TryEnsureMojomSynthesis();
++  // Lightweight-fork: speechSynthesis.getVoices() leaks the host's
++  // installed TTS voices — on macOS that's ~191 voices (Samantha, Aaron,
++  // Amélie, ...), each install varies. Empty array was used earlier but
++  // empty list itself is a Tor/anti-detect tell on a Win persona — real
++  // Win11 always exposes at least Microsoft David / Zira / Mark SAPI
++  // voices. Replace the host voices with a canonical 3-voice Win stub
++  // list, same for every persona, so per-host voice entropy = 0 and the
++  // Win persona claim is internally consistent. OS-neutral: this stub is
++  // applied regardless of host (mac/linux fork builds also emit Win
++  // voices when the persona claims Win).
++  voice_list_.clear();
++
++  struct StubVoice {
++    const char* voice_uri;
++    const char* name;
++    const char* lang;
++  };
++  static constexpr std::array<StubVoice, 3> kWinStubVoices = {{
++      {"Microsoft David - English (United States)",
++       "Microsoft David - English (United States)", "en-US"},
++      {"Microsoft Zira - English (United States)",
++       "Microsoft Zira - English (United States)", "en-US"},
++      {"Microsoft Mark - English (United States)",
++       "Microsoft Mark - English (United States)", "en-US"},
++  }};
++  bool is_first = true;
++  for (const StubVoice& v : kWinStubVoices) {
++    auto mojom_voice = mojom::blink::SpeechSynthesisVoice::New();
++    mojom_voice->voice_uri = String(v.voice_uri);
++    mojom_voice->name = String(v.name);
++    mojom_voice->lang = String(v.lang);
++    mojom_voice->is_local_service = true;
++    mojom_voice->is_default = is_first;
++    is_first = false;
++    voice_list_.push_back(
++        MakeGarbageCollected<SpeechSynthesisVoice>(std::move(mojom_voice)));
++  }
+   return voice_list_;
+ }
+ 
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc b/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
+index 9d155705c1350..57c0f90549119 100644
+--- a/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/modules/webgpu/gpu_adapter_info.h"
+ 
++#include "base/no_destructor.h"
+ #include "third_party/blink/renderer/modules/webgpu/gpu_memory_heap_info.h"
+ #include "third_party/blink/renderer/modules/webgpu/gpu_subgroup_matrix_config.h"
+ 
+@@ -46,11 +47,30 @@ void GPUAdapterInfo::AppendSubgroupMatrixConfig(
+ }
+ 
+ const String& GPUAdapterInfo::vendor() const {
+-  return vendor_;
++  // 2026-05-30: Persona-mode spoof. Real Chrome 148 on a Win desktop
++  // with Intel UHD 770 reports vendor="intel". Our SwiftShader backing
++  // reports vendor="google", which fpjs / Cloudflare flag as anti-
++  // detect (WebGL says Intel but WebGPU says SwiftShader = inconsistent).
++  // Lock vendor (and architecture, below) to "intel" so they stop
++  // contradicting the WebGL Intel claim. NOTE: only vendor + architecture
++  // are spoofed; device()/description()/driver()/backend() still return the
++  // real adapter members, so those fields can still leak the SwiftShader
++  // backend.
++  // base::NoDestructor wrapper sidesteps clang's
++  // -Werror,-Wexit-time-destructors warning (enabled on the Mac build,
++  // disabled on the Linux fork build — the difference caused this file
++  // to compile on Linux but not Mac).
++  static const base::NoDestructor<String> kPersonaVendor("intel");
++  return *kPersonaVendor;
+ }
+ 
+ const String& GPUAdapterInfo::architecture() const {
+-  return architecture_;
++  // Same reasoning. Real Intel UHD 770 reports architecture="xe-lp"
++  // (the Tiger Lake / Alder Lake integrated-GPU microarchitecture).
++  // Without the spoof we leak architecture="swiftshader".
++  // See vendor() above for the base::NoDestructor rationale.
++  static const base::NoDestructor<String> kPersonaArch("xe-lp");
++  return *kPersonaArch;
+ }
+ 
+ const String& GPUAdapterInfo::device() const {
