@@ -1,0 +1,590 @@
+diff --git a/third_party/blink/common/BUILD.gn b/third_party/blink/common/BUILD.gn
+index 6f48104544022..ca1df0809b316 100644
+--- a/third_party/blink/common/BUILD.gn
++++ b/third_party/blink/common/BUILD.gn
+@@ -148,6 +148,8 @@ source_set("common") {
+     "fenced_frame/redacted_fenced_frame_config.cc",
+     "fenced_frame/redacted_fenced_frame_config_mojom_traits.cc",
+     "fetch/fetch_api_request_body_mojom_traits.cc",
++    "fingerprinting/fingerprint_audio_isolation.cc",
++    "fingerprinting/fingerprint_profile.cc",
+     "frame/delegated_capability_request_token.cc",
+     "frame/frame_ad_evidence.cc",
+     "frame/frame_ad_evidence_mojom_traits.cc",
+diff --git a/third_party/blink/common/fingerprinting/fingerprint_profile.cc b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
+new file mode 100644
+index 0000000000000..13a605d7b78f9
+--- /dev/null
++++ b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
+@@ -0,0 +1,436 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
++
++#include <array>
++#include <cstdlib>
++#include <mutex>
++#include <random>
++#include <string>
++
++#include "base/command_line.h"
++#include "base/logging.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/stringprintf.h"
++
++namespace blink::fingerprinting {
++
++namespace {
++
++// Cmdline switches read at process startup.
++constexpr char kPersonaSeedSwitch[] = "persona-seed";
++// --persona-os=mac | win  (default: win). Selects which OS family the
++// persona claims. Mac for sites that gate Windows users more strictly
++// (e.g. OOCL where real Mac Chrome bypasses the CF managed challenge
++// that real Win Chrome has to solve). Win for everything else.
++constexpr char kPersonaOsSwitch[] = "persona-os";
++
++// ---- Persona pools ----
++//
++// All pools are std::array of trivially-destructible POD pairs so they
++// satisfy Chromium's `Wexit-time-destructors` policy without needing
++// base::NoDestructor wrapping.
++
++struct ChromeVer {
++  unsigned major;
++  const char* full;       // e.g. "148.0.7595.110"
++};
++
++struct WinVariant {
++  const char* label;      // "win11" | "win10"
++  const char* pv;         // platformVersion: "15.0.0" | "10.0.0"
++};
++
++struct MacVariant {
++  const char* label;      // "macos14" | "macos15"
++  const char* pv;         // platformVersion via UA-CH: "14.0.0" etc.
++};
++
++struct ScreenSize {
++  int w, h, avail_h;
++};
++
++struct WebGLGPU {
++  const char* vendor;
++  const char* renderer;
++};
++
++template <typename T>
++struct WeightedEntry {
++  T value;
++  double weight;
++};
++
++// Pinned to current Chrome 148 stable (148.0.7778.179 = the version
++// shipped by Google as of capture date, captured side-by-side from real
++// chrome.exe on a Win box). Switched FROM 150.0.7844.0: Chrome 150 has
++// no stable release yet, so claiming v150 is itself a bot tell on CF
++// managed-challenge tiers. Pinning to the canonical stable also gives
++// us the matching GREASE brand order automatically (the shuffle is
++// seeded by major version; orders[148%6]={2,0,1} → [Chromium, Google
++// Chrome, Not/A)Brand], matching real Chrome 148 byte-for-byte).
++constexpr std::array<WeightedEntry<ChromeVer>, 1> kChromeVersions = {{
++    {{148, "148.0.7778.179"}, 1.00},
++}};
++
++// Lock to Win 11 (15.0.0). Captured CF WIN traffic on 2026-05-24 showed
++// 19.0.0 on the wire — but that signature is Server 2025 / cloud-VM
++// (build 26100+), NOT consumer desktops. Retail Win 11 22H2/23H2/24H2
++// users keep reporting 15.0.0 via the Sec-CH-UA-Platform-Version path
++// because Chrome's Universal API Contract version table caps at the
++// classical desktop release line. Claiming 19.0.0 would tag us as a
++// server/VM operator — exactly the population CF treats more strictly.
++// Win 10 / 10.0.0 is rarely seen and was being rolled by ~35% of seeds
++// in an earlier version, observable as persona vs UA-CH inconsistency.
++constexpr std::array<WeightedEntry<WinVariant>, 1> kWinVariants = {{
++    {{"win11", "15.0.0"}, 1.00},
++}};
++
++// macOS variants. We lock to a recent Sonoma/Sequoia platformVersion
++// since CF expects "real Mac user" Sec-CH-UA-Platform-Version when it
++// opts into high-entropy hints. The UA string itself is frozen by
++// Chrome's Reduce-User-Agent ("Macintosh; Intel Mac OS X 10_15_7") so
++// the UA major version varies but the OS substring does not.
++constexpr std::array<WeightedEntry<MacVariant>, 1> kMacVariants = {{
++    {{"sonoma", "14.0.0"}, 1.00},
++}};
++
++constexpr std::array<WeightedEntry<ScreenSize>, 9> kScreens = {{
++    {{1920, 1080, 1040}, 0.30},
++    {{1920, 1080, 1080}, 0.10},  // auto-hide taskbar
++    {{1366, 768,  728},  0.15},
++    {{1536, 864,  824},  0.10},
++    {{1440, 900,  860},  0.05},
++    {{2560, 1440, 1400}, 0.10},
++    {{1680, 1050, 1010}, 0.05},
++    {{1600, 900,  860},  0.05},
++    {{3840, 2160, 2120}, 0.10},
++}};
++
++// Hardware tiers: real desktop HW pairs core-count with RAM in
++// strongly-correlated ways. fpjs Pro's anti-detect ML model trained
++// on real users flips to anti_detect_browser=true when it sees
++// implausible combinations (e.g. HC=20 + 16GB RAM — a 10-core HT CPU
++// almost always ships with 32GB+; HC=4 + 32GB — netbook CPU with
++// workstation RAM). Independently sampling HC and mem from flat pools
++// produces those off-distribution combos several percent of the time.
++//
++// Solution: pick a tier first, then draw HC and mem from that tier's
++// constrained pools. Tier weights from Steam Hardware Survey 2025-Q4.
++struct HwTier {
++  std::array<WeightedEntry<unsigned>, 3> hc;
++  std::array<WeightedEntry<float>, 2> mem;
++};
++
++// Tier weights reflect Intel UHD 770 user population on Steam Hardware
++// Survey: heavily weighted toward Tier 1-2 (entry laptop + mainstream
++// desktop). High-end tiers nearly extinct since IGP users rarely build
++// 16+ core workstation rigs. Concentrating mass on Tier 1-2 also drops
++// fpjs VM ML score because integrated-GPU + mid-HW is the largest
++// real-user cluster and SwiftShader's perf signature matches it best.
++// 2026-05-30 reweighting: heavily weight Tier 1 (entry-laptop /
++// older-desktop / cloud-VPS-Win-Server). Real Chrome 148 on a cloud
++// Win VPS (the modal user pattern for our deployment niche) reports
++// HC=4 + 8GB. Tier 1 covers HC ∈ {4,6,8} and mem ∈ {4,8}. Pushing
++// Tier 1 to 75% concentrates personas near the real Win VPS shape
++// fpjs's user histogram weights heaviest, while Tier 2 keeps a
++// small share for typical desktop users.
++constexpr std::array<WeightedEntry<HwTier>, 4> kHwTiers = {{
++    // Tier 1 — entry / older / cloud-Win-Server. 75%.
++    {{{{{4u, 0.65}, {6u, 0.20}, {8u, 0.15}}},
++      {{{4.0f, 0.30}, {8.0f, 0.70}}}}, 0.75},
++    // Tier 2 — mainstream desktop / gaming laptop. 22%.
++    {{{{{8u, 0.65}, {12u, 0.25}, {16u, 0.10}}},
++      {{{8.0f, 0.40}, {16.0f, 0.60}}}}, 0.22},
++    // Tier 3 — high-end gaming desktop. Rare at 2%.
++    {{{{{12u, 0.30}, {16u, 0.55}, {20u, 0.15}}},
++      {{{16.0f, 0.55}, {32.0f, 0.45}}}}, 0.02},
++    // Tier 4 — enthusiast / workstation. Vanishingly rare at 1%.
++    {{{{{16u, 0.30}, {20u, 0.40}, {24u, 0.30}}},
++      {{{32.0f, 0.65}, {64.0f, 0.35}}}}, 0.01},
++}};
++
++// WebGL renderer persona: switched from "Microsoft Basic Render Driver"
++// (WARP, the literal software-fallback for no-GPU Win machines) to a
++// real consumer GPU pool. WARP was the most honest answer for "no GPU
++// available" (since we render via --use-angle=swiftshader) but fpjs
++// Pro's ML scores WARP at virtual_machine=0.985 — almost certain VM
++// classification — and downstream infers bot_type=nodriver from the
++// VM cluster. Claiming a real GPU shifts the inference cluster to
++// "normal desktop Win user".
++//
++// Trade-off: the underlying SwiftShader pixels we actually produce on
++// readPixels won't byte-match what an NVIDIA RTX 3060 + D3D11 ANGLE
++// would produce. Sites that hash readPixels output AND compare against
++// a vendor-specific baseline could catch the mismatch. fpjs Pro's
++// public webgl_basics fingerprint is mostly string-based (vendor +
++// renderer + version) plus the extension/parameter hash list — those
++// we already pin to canonical values via fingerprint_profile, so the
++// hashes stay consistent. Pixel-level vendor-specific quirks (e.g.
++// NVIDIA's specific subpixel rendering of antialiased lines) are NOT
++// in fpjs Pro's standard probe, so this is a low-risk swap.
++//
++// Pool of 3 common Win11 consumer GPUs (weighted by Steam Hardware
++// Survey share, roughly). NOTE: the weights are currently unused —
++// DeriveFromSeed forces index 1 (Intel UHD 770) for every persona (see
++// the WebGL-identity rationale in DeriveFromSeed). The NVIDIA/AMD entries
++// are retained as a menu for re-enabling per-seed GPU selection later.
++constexpr std::array<WeightedEntry<WebGLGPU>, 3> kWebGLGPUs = {{
++    // NVIDIA RTX 3060 — most common gaming desktop GPU on Steam (~7%
++    // share, biggest single discrete-GPU share).
++    {{"Google Inc. (NVIDIA)",
++      "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)"},
++     0.50},
++    // Intel UHD 770 — most common integrated GPU on recent Win11
++    // laptops + low-end desktops. Lower-end persona matches lower
++    // device_memory / hardware_concurrency pools naturally.
++    {{"Google Inc. (Intel)",
++      "ANGLE (Intel, Intel(R) UHD Graphics 770 (0xA780) Direct3D11 vs_5_0 ps_5_0, D3D11)"},
++     0.35},
++    // AMD Radeon Vega — common AMD integrated GPU.
++    {{"Google Inc. (AMD)",
++      "ANGLE (AMD, AMD Radeon(TM) Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)"},
++     0.15},
++}};
++
++// Weighted picker for std::array<WeightedEntry<T>, N>. Returns the
++// chosen entry's value (by const ref).
++template <typename T, size_t N>
++const T& WeightedPick(std::mt19937_64& rng,
++                      const std::array<WeightedEntry<T>, N>& pool) {
++  std::array<double, N> weights;
++  for (size_t i = 0; i < N; ++i) {
++    weights[i] = pool[i].weight;
++  }
++  std::discrete_distribution<size_t> dist(weights.begin(), weights.end());
++  return pool[dist(rng)].value;
++}
++
++}  // namespace
++
++FingerprintProfile DeriveFromSeed(uint64_t seed) {
++  // SplitMix64 decorrelates weak seeds (1, 2, 3 produce visibly similar
++  // streams under vanilla mt19937 init).
++  uint64_t mixed = seed + 0x9E3779B97F4A7C15ull;
++  mixed = (mixed ^ (mixed >> 30)) * 0xBF58476D1CE4E5B9ull;
++  mixed = (mixed ^ (mixed >> 27)) * 0x94D049BB133111EBull;
++  mixed = mixed ^ (mixed >> 31);
++
++  std::mt19937_64 rng(mixed);
++
++  FingerprintProfile p;
++  p.persona_seed = mixed;  // preserve for downstream isolation routines
++
++  // Identity
++  const ChromeVer& cv = WeightedPick(rng, kChromeVersions);
++  p.chrome_major_version = cv.major;
++  p.chrome_full_version = cv.full;
++  p.brand = "Google Chrome";
++
++  // OS variant. `--persona-os=mac` claims macOS Chrome (which CF treats
++  // more leniently on some managed-challenge sites, e.g. OOCL — captured
++  // 2026-05-24 from real Chrome 148 HARs: Mac UA gets 200 directly, Win
++  // UA gets the 307 → 403 → challenge loop). Default is Windows.
++  std::string os_pref = "win";
++  if (auto* cmd = base::CommandLine::ForCurrentProcess();
++      cmd && cmd->HasSwitch(kPersonaOsSwitch)) {
++    os_pref = cmd->GetSwitchValueASCII(kPersonaOsSwitch);
++  }
++
++  if (os_pref == "mac") {
++    const MacVariant& mv = WeightedPick(rng, kMacVariants);
++    // Chrome's Reduce-User-Agent freezes the Mac OS X token at 10_15_7.
++    p.unified_platform = "Macintosh; Intel Mac OS X 10_15_7";
++    p.navigator_platform = "MacIntel";
++    p.ua_metadata_platform = "macOS";
++    p.ua_metadata_platform_version = mv.pv;
++    // Apple Silicon: arm/64. Real Chrome ARM64 build on M1/M2/M3 reports
++    // architecture="arm" bitness="64". Rosetta/Intel Chrome would report
++    // architecture="x86". Our fork builds for arm64 by default so "arm"
++    // is the honest claim.
++    p.ua_metadata_architecture = "arm";
++    p.ua_metadata_bitness = "64";
++    p.ua_metadata_model = "";
++    p.ua_metadata_mobile = false;
++    p.ua_metadata_wow64 = false;
++  } else {
++    const WinVariant& wv = WeightedPick(rng, kWinVariants);
++    p.unified_platform = "Windows NT 10.0; Win64; x64";
++    p.navigator_platform = "Win32";
++    p.ua_metadata_platform = "Windows";
++    p.ua_metadata_platform_version = wv.pv;
++    p.ua_metadata_architecture = "x86";
++    p.ua_metadata_bitness = "64";
++    p.ua_metadata_model = "";
++    p.ua_metadata_mobile = false;
++    p.ua_metadata_wow64 = false;
++  }
++
++  // Full UA string built from chosen platform + major.
++  p.user_agent = base::StringPrintf(
++      "Mozilla/5.0 (%s) AppleWebKit/537.36 (KHTML, like Gecko) "
++      "Chrome/%u.0.0.0 Safari/537.36",
++      p.unified_platform.c_str(), p.chrome_major_version);
++
++  // Hardware — pick a CPU/RAM tier first, then draw from its
++  // constrained pools so HC and mem stay correlated (see kHwTiers
++  // comment for why). Save tier index for GPU pool selection below.
++  std::array<double, kHwTiers.size()> tier_weights;
++  for (size_t i = 0; i < kHwTiers.size(); ++i)
++    tier_weights[i] = kHwTiers[i].weight;
++  std::discrete_distribution<size_t> tier_dist(tier_weights.begin(),
++                                                tier_weights.end());
++  const size_t tier_idx = tier_dist(rng);
++  const HwTier& tier = kHwTiers[tier_idx].value;
++  p.hardware_concurrency = WeightedPick(rng, tier.hc);
++  p.device_memory_gb = WeightedPick(rng, tier.mem);
++  // 2026-06-01 cluster routing UNLOCKED. The previous override pinned
++  // every persona to HC=8/mem=16 to ride the "modal Win 11 desktop"
++  // ML cluster (VM ML floor of ~0.65). Empirically (3 different
++  // --persona-seed values via fpjs Pro) this also pinned every
++  // persona to the same fpjs visitor_id, defeating the per-seed
++  // cross-session-anonymity goal. The Steam-Hardware-Survey-weighted
++  // kHwTiers pool above already constrains HC/mem to combos that
++  // actually exist on real desktops, so unlocking is safe vs the
++  // "anti_detect_browser" ML model.
++
++  // Screen — pick once from kScreens. Earlier code picked AND then
++  // overwrote with hardcoded 1920×1080; that override is gone now.
++  // Variance here is one of the strongest fpjs-visitor-id drivers.
++  const ScreenSize& sc = WeightedPick(rng, kScreens);
++  p.screen_width = sc.w;
++  p.screen_height = sc.h;
++  p.available_screen_left = 0;
++  p.available_screen_top = 0;
++  p.available_screen_width = sc.w;
++  p.available_screen_height = sc.avail_h;
++
++  // Color depth. Real Win 11 desktops overwhelmingly report 24, but
++  // HDR / DCI-P3 / multi-monitor configs can report 30 or 32. Pool
++  // 24 at 92 % and 30 / 32 at 4 % each gives per-seed variance
++  // (different visitor_id per persona) without hitting fpjs's
++  // "color_depth=32 with Win UA" anti-detect signal — 24 stays the
++  // overwhelming default and the minority values are within real-
++  // world prior distribution.
++  constexpr std::array<WeightedEntry<unsigned>, 3> kColorDepths = {{
++      {24u, 0.92},
++      {30u, 0.04},
++      {32u, 0.04},
++  }};
++  p.color_depth = WeightedPick(rng, kColorDepths);
++  p.device_pixel_ratio = 1.0;
++  // outer_window picks the inner content area dimensions of a real
++  // maximised browser on this screen size. Keep available_height as
++  // the cap (taskbar already accounted for in kScreens.avail_h).
++  p.outer_window_width = sc.w;
++  p.outer_window_height = sc.avail_h;
++
++  // Hardware (HC / memory_gb): chosen per persona above via WeightedPick
++  // over the tier-based picker (kHwTiers), which constrains the
++  // (CPU-cores, RAM) pair to combos that exist in the wild — no HC=20 with
++  // 16GB, no HC=4 with 32GB. Locking to a single (8, 8) collapsed every
++  // persona to the same fpjs Pro visitor_id; independent draws produced
++  // ~5% off-distribution personas the anti-detect ML flagged as tampered.
++  // We deliberately do NOT override HC / memory_gb here.
++
++  // WebGL identity. EMPIRICAL FINDING (2026-05-30 fpjs Pro tests):
++  // claiming NVIDIA RTX 3060 with SwiftShader as the actual backend
++  // makes fpjs's VM ML jump to 0.95+ because it has a strong expected-
++  // perf profile for that GPU that we can't meet. Intel UHD 770 (and
++  // similar integrated IGPs) drops VM ML to ~0.85 because the perf
++  // expectation is low enough that SwiftShader's actual output looks
++  // plausible. Stock SwiftShader claiming "SwiftShader driver" itself
++  // scores VM ML 0.16 — fpjs treats honest software rendering as
++  // legitimate.
++  //
++  // Choice: force Intel UHD 770 for all tiers. Loses some persona
++  // diversity (no NVIDIA / AMD options) but avoids the high-end-GPU-
++  // claim mismatch. tier_idx unused for GPU but still drives HC/mem.
++  // Index 1 = Intel UHD 770 in kWebGLGPUs.
++  (void)tier_idx;
++  const WebGLGPU& gpu = kWebGLGPUs[1].value;
++  // WebGPU re-enabled 2026-05-25: real Chrome 148 exposes navigator.gpu
++  // AND navigator.gpu.requestAdapter() returns a real GPUAdapter with
++  // info { vendor, architecture, ... }. Previous design left the surface
++  // present but had requestAdapter() return null, which Cloudflare
++  // Turnstile flags as "anti-detect surface fakery". Re-enabling the
++  // WebGPU service lets requestAdapter return the host's actual adapter
++  // — which on the Mac host exposes Apple/metal-3, contradicting the
++  // Win persona. The remaining work (out of scope of this fix) is to
++  // route adapter.info through the persona so it claims WARP / D3D12
++  // instead of leaking Apple. For now, having SOME adapter is better
++  // than having none: most real Chrome 148 users get an adapter.
++  p.webgpu_enabled = true;
++  p.webgl_vendor = gpu.vendor;
++  p.webgl_renderer = gpu.renderer;
++
++  // WebGL canonical limits — calibrated to Intel UHD 770 D3D11 on real
++  // Win 11. EMPIRICAL: matching SwiftShader's actual values exactly
++  // (8192/8192/etc) pushed fpjs's VM ML to 0.97 because it maps us
++  // into the "Win Server on cloud VM" cluster (which scores VM=1.0).
++  // Keeping the Intel UHD spoof intentional-mismatch keeps us in the
++  // "weird-but-real Win user" cluster (VM ~0.72).
++  p.webgl_max_texture_size = 16384;
++  p.webgl_max_cube_map_texture_size = 16384;
++  p.webgl_max_renderbuffer_size = 16384;
++  p.webgl_max_viewport_dim = 32767;
++  p.webgl_max_vertex_attribs = 16;
++  // Real Win Chrome 148: MAX_VERTEX_UNIFORM_VECTORS = 4096 (not 1024 — earlier
++  // comment was wrong; ground truth from Win11 Chrome 148 dump).
++  // Intel UHD 770 D3D11 baseline (REVERTED 2026-05-30 — SwiftShader-
++  // exact alignment scored VM=0.97 cluster).
++  p.webgl_max_vertex_uniform_vectors = 4096;
++  p.webgl_max_fragment_uniform_vectors = 1024;
++  p.webgl_max_varying_vectors = 30;
++  p.webgl_max_texture_image_units = 16;
++  p.webgl_max_vertex_texture_image_units = 16;
++  p.webgl_max_combined_texture_image_units = 32;
++  p.webgl_max_draw_buffers = 8;
++  p.webgl_max_color_attachments = 8;
++  p.webgl_3d_max_texture_size = 2048;
++  p.webgl_max_array_texture_layers = 2048;
++  p.webgl_max_samples = 8;
++  p.webgl_max_vertex_uniform_blocks = 14;
++  p.webgl_max_fragment_uniform_blocks = 14;
++  p.webgl_max_uniform_block_size = 65536;
++  p.webgl_precision_float_bits = 23;
++  p.webgl_precision_range_min = 127;
++  p.webgl_precision_range_max = 127;
++
++  // Canvas / audio behavior (constant)
++  p.canvas_readback_enabled = true;
++  p.media_device_enumeration_enabled = false;
++  p.audio_sample_rate = 48000.0f;
++  p.audio_base_latency = 0.01;
++  // Win Chrome 148 WASAPI shared-mode typical: 0.01-0.02. Our prior
++  // 0.04 was Mac/Linux-typical, off-distribution for Win → small VM
++  // ML contribution.
++  p.audio_output_latency = 0.015;
++
++  return p;
++}
++
++const FingerprintProfile& Current() {
++  static FingerprintProfile* profile = nullptr;
++  static std::once_flag init_flag;
++  std::call_once(init_flag, []() {
++    uint64_t seed = 0;
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (cmd && cmd->HasSwitch(kPersonaSeedSwitch)) {
++      const std::string raw = cmd->GetSwitchValueASCII(kPersonaSeedSwitch);
++      uint64_t parsed = 0;
++      if (base::StringToUint64(raw, &parsed)) {
++        seed = parsed;
++      } else {
++        // Non-numeric seed: hash the raw string to a stable uint64, not 0.
++        seed = static_cast<uint64_t>(std::hash<std::string>{}(raw));
++      }
++    }
++    profile = new FingerprintProfile(DeriveFromSeed(seed));
++  });
++  return *profile;
++}
++
++}  // namespace blink::fingerprinting
+diff --git a/third_party/blink/public/common/BUILD.gn b/third_party/blink/public/common/BUILD.gn
+index 15ef3766c1593..fc9807c1a3a68 100644
+--- a/third_party/blink/public/common/BUILD.gn
++++ b/third_party/blink/public/common/BUILD.gn
+@@ -147,6 +147,9 @@ source_set("headers") {
+     "fenced_frame/redacted_fenced_frame_config_mojom_traits.h",
+     "fetch/fetch_api_request_headers_map.h",
+     "fetch/fetch_api_request_headers_mojom_traits.h",
++    "fingerprinting/fingerprint_audio_isolation.h",
++    "fingerprinting/fingerprint_profile.h",
++    "fingerprinting/font_allowlist.h",
+     "fingerprinting_protection/noise_token.h",
+     "fingerprinting_protection/noise_token_mojom_traits.h",
+     "frame/delegated_capability_request_token.h",
+diff --git a/third_party/blink/public/common/fingerprinting/fingerprint_profile.h b/third_party/blink/public/common/fingerprinting/fingerprint_profile.h
+new file mode 100644
+index 0000000000000..9c6078b9d6db4
+--- /dev/null
++++ b/third_party/blink/public/common/fingerprinting/fingerprint_profile.h
+@@ -0,0 +1,115 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_FINGERPRINTING_FINGERPRINT_PROFILE_H_
++#define THIRD_PARTY_BLINK_PUBLIC_COMMON_FINGERPRINTING_FINGERPRINT_PROFILE_H_
++
++#include <cstdint>
++#include <string>
++
++#include "third_party/blink/public/common/common_export.h"
++
++namespace blink::fingerprinting {
++
++// Seed-derived runtime persona. Every field that the fork spoofs lives
++// here so a single uint64 controls the entire persona surface. Same seed
++// → identical persona across processes (browser + every renderer in a
++// session must observe the same values, so we derive deterministically).
++struct BLINK_COMMON_EXPORT FingerprintProfile {
++  // ---- Seed (preserved for downstream isolation routines) ----
++  // Mixed-via-SplitMix64 64-bit seed used to derive this persona. Kept on
++  // the profile so per-seed routines (e.g. the audio-sample isolation in
++  // fingerprint_audio_isolation) can mix it in: same seed → same output,
++  // different seeds → divergent output.
++  uint64_t persona_seed;
++
++  // ---- Identity ----
++  unsigned chrome_major_version;             // 148
++  std::string chrome_full_version;           // "148.0.7778.179"
++  std::string brand;                         // "Google Chrome"
++
++  // ---- UA + OS ----
++  std::string user_agent;                    // Full UA string
++  std::string unified_platform;              // "Windows NT 10.0; Win64; x64"
++  std::string navigator_platform;            // "Win32"
++  std::string ua_metadata_platform;          // "Windows"
++  std::string ua_metadata_platform_version;  // "15.0.0" (Win11) | "10.0.0" (Win10)
++  std::string ua_metadata_architecture;      // "x86"
++  std::string ua_metadata_bitness;           // "64"
++  std::string ua_metadata_model;             // ""
++  bool ua_metadata_mobile;                   // false
++  bool ua_metadata_wow64;                    // false
++
++  // ---- Hardware ----
++  unsigned hardware_concurrency;             // 8
++  float device_memory_gb;                    // 8.0
++
++  // ---- Screen ----
++  int screen_width;                          // 1920
++  int screen_height;                         // 1080
++  int available_screen_left;                 // 0
++  int available_screen_top;                  // 0
++  int available_screen_width;                // 1920
++  int available_screen_height;               // 1040 (Win taskbar = 40px)
++  unsigned color_depth;                      // 24
++  double device_pixel_ratio;                 // 1.0
++  int outer_window_width;                    // = screen width (content area)
++  int outer_window_height;                   // = available screen height
++
++  // ---- WebGL ----
++  bool webgpu_enabled;                       // true
++  std::string webgl_vendor;                  // "Google Inc. (Intel)"
++  std::string webgl_renderer;                // ANGLE string
++
++  // WebGL parameter limits — canonical Win+ANGLE values.
++  int webgl_max_texture_size;
++  int webgl_max_cube_map_texture_size;
++  int webgl_max_renderbuffer_size;
++  int webgl_max_viewport_dim;
++  int webgl_max_vertex_attribs;
++  int webgl_max_vertex_uniform_vectors;
++  int webgl_max_fragment_uniform_vectors;
++  int webgl_max_varying_vectors;
++  int webgl_max_texture_image_units;
++  int webgl_max_vertex_texture_image_units;
++  int webgl_max_combined_texture_image_units;
++  int webgl_max_draw_buffers;
++  int webgl_max_color_attachments;
++  int webgl_3d_max_texture_size;
++  int webgl_max_array_texture_layers;
++  int webgl_max_samples;
++  int webgl_max_vertex_uniform_blocks;
++  int webgl_max_fragment_uniform_blocks;
++  int webgl_max_uniform_block_size;
++  int webgl_precision_float_bits;
++  int webgl_precision_range_min;
++  int webgl_precision_range_max;
++
++  // ---- Canvas / audio / device behavior ----
++  bool canvas_readback_enabled;              // true (return pixels, don't block)
++  bool media_device_enumeration_enabled;     // false
++  float audio_sample_rate;                   // 48000.0 (Win WASAPI default)
++  double audio_base_latency;                 // 0.01
++  double audio_output_latency;               // 0.015
++};
++
++// Derives a coherent persona from a seed. Same seed → same persona.
++// Pools are curated to match common Chrome-on-Windows distributions
++// (StatCounter / amiunique 30-day aggregates). Coherence rules ensure
++// e.g. the WebGL renderer string matches the GPU vendor field and the UA
++// platform-version matches the Win10/11 variant.
++BLINK_COMMON_EXPORT FingerprintProfile DeriveFromSeed(uint64_t seed);
++
++// Process-wide singleton. First call reads `--persona-seed=N` from the
++// process command line (via base::CommandLine::ForCurrentProcess()); if
++// the switch is absent or invalid, defaults to seed 0 (the canonical
++// reference persona — Chrome 148 / Win 11 / Intel UHD 770 / 1920x1080).
++// Subsequent calls return the same profile.
++//
++// Thread-safe: lazy-initialized with std::call_once.
++BLINK_COMMON_EXPORT const FingerprintProfile& Current();
++
++}  // namespace blink::fingerprinting
++
++#endif  // THIRD_PARTY_BLINK_PUBLIC_COMMON_FINGERPRINTING_FINGERPRINT_PROFILE_H_
