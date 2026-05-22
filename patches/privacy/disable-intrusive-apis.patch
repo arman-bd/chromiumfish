@@ -1,0 +1,109 @@
+diff --git a/content/public/common/content_features.cc b/content/public/common/content_features.cc
+index dd7b9aa06b988..0359b4b2d6811 100644
+--- a/content/public/common/content_features.cc
++++ b/content/public/common/content_features.cc
+@@ -1277,7 +1277,7 @@ BASE_FEATURE(kWebUIInProcessResourceLoadingV2,
+ 
+ // Controls whether the WebUSB API is enabled:
+ // https://wicg.github.io/webusb
+-BASE_FEATURE(kWebUsb, "WebUSB", base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kWebUsb, "WebUSB", base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ // Apply `PrefetchPriority::kHighest` for Webview Prefetch API.
+ BASE_FEATURE(kWebViewPrefetchHighestPrefetchPriority,
+diff --git a/third_party/blink/common/features.cc b/third_party/blink/common/features.cc
+index 594cd59a601c2..3ad9dd4c20499 100644
+--- a/third_party/blink/common/features.cc
++++ b/third_party/blink/common/features.cc
+@@ -233,11 +233,11 @@ BASE_FEATURE(kBrowsingTopicsBypassIPIsPubliclyRoutableCheck,
+ // feature has to be enabled first (i.e. `kBrowsingTopics` is enabled, and,
+ // either a valid Origin Trial token exists or `kPrivacySandboxAdsAPIsOverride`
+ // is enabled.)
+-BASE_FEATURE(kBrowsingTopicsDocumentAPI, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kBrowsingTopicsDocumentAPI, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ // Decoupled with the main `kBrowsingTopics` feature, so it allows us to
+ // decouple the server side configs.
+-BASE_FEATURE(kBrowsingTopicsParameters, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kBrowsingTopicsParameters, base::FEATURE_DISABLED_BY_DEFAULT);
+ // The periodic topics calculation interval.
+ BASE_FEATURE_PARAM(base::TimeDelta,
+                    kBrowsingTopicsTimePeriodPerEpoch,
+@@ -833,11 +833,12 @@ BASE_FEATURE_PARAM(std::string,
+ 
+ // See https://github.com/WICG/turtledove/blob/main/FLEDGE.md
+ // Enables FLEDGE implementation. See https://crbug.com/1186444.
+-BASE_FEATURE(kFledge, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kFledge, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ // See
+ // https://github.com/WICG/turtledove/blob/main/FLEDGE_browser_bidding_and_auction_API.md
+-BASE_FEATURE(kFledgeBiddingAndAuctionServer, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kFledgeBiddingAndAuctionServer,
++             base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE_PARAM(std::string,
+                    kFledgeBiddingAndAuctionKeyURL,
+                    &kFledgeBiddingAndAuctionServer,
+@@ -850,7 +851,7 @@ BASE_FEATURE_PARAM(std::string,
+                    "");
+ 
+ // See https://github.com/WICG/turtledove/issues/1334
+-BASE_FEATURE(kFledgeOriginScopedKeys, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kFledgeOriginScopedKeys, base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE_PARAM(std::string,
+                    kFledgeOriginScopedKeyConfig,
+                    &kFledgeOriginScopedKeys,
+@@ -878,7 +879,8 @@ BASE_FEATURE_PARAM(int,
+                    "SelectableBuyerAndSellerReportingIdsHardLimit",
+                    -1);
+ 
+-BASE_FEATURE(kFledgeMaxGroupLifetimeFeature, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kFledgeMaxGroupLifetimeFeature,
++             base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE_PARAM(base::TimeDelta,
+                    kFledgeMaxGroupLifetime,
+                    &kFledgeMaxGroupLifetimeFeature,
+@@ -893,7 +895,7 @@ BASE_FEATURE_PARAM(base::TimeDelta,
+ BASE_FEATURE(kFledgeEnableSampleDebugReportOnCookieSetting,
+              base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+-BASE_FEATURE(kFledgeSampleDebugReports, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kFledgeSampleDebugReports, base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE_PARAM(base::TimeDelta,
+                    kFledgeDebugReportLockout,
+                    &kFledgeSampleDebugReports,
+@@ -2127,7 +2129,7 @@ BASE_FEATURE(kPrerender2EarlyDocumentLifecycleUpdate,
+              base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ // Enables the Private Aggregation API.
+-BASE_FEATURE(kPrivateAggregationApi, base::FEATURE_ENABLED_BY_DEFAULT);
++BASE_FEATURE(kPrivateAggregationApi, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ // Selectively allows the JavaScript API to be disabled in just one of the
+ // contexts. The Protected Audience param's name has not been updated (from
+@@ -2156,7 +2158,7 @@ BASE_FEATURE_PARAM(bool,
+ // to things enabled by
+ // kPrivateAggregationApiEnabledInProtectedAudience.
+ BASE_FEATURE(kPrivateAggregationApiProtectedAudienceAdditionalExtensions,
+-             base::FEATURE_ENABLED_BY_DEFAULT);
++             base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kProcessHtmlDataImmediately, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+@@ -2334,13 +2336,13 @@ BASE_FEATURE(kSharedStorageWorkletSharedBackingThreadImplementation,
+              base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kSharedStorageCreateWorkletCustomDataOrigin,
+-             base::FEATURE_ENABLED_BY_DEFAULT);
++             base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kSharedStorageSelectURLSavedQueries,
+-             base::FEATURE_ENABLED_BY_DEFAULT);
++             base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kSharedStorageAPIEnableWALForDatabase,
+-             base::FEATURE_ENABLED_BY_DEFAULT);
++             base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ const char kSkipTouchEventFilterTypeParamName[] = "type";
+ const char kSkipTouchEventFilterTypeParamValueDiscrete[] = "discrete";
