@@ -1,0 +1,366 @@
+diff --git a/third_party/blink/renderer/core/css/media_values.cc b/third_party/blink/renderer/core/css/media_values.cc
+index 0d60244742506..4dfc4636dad74 100644
+--- a/third_party/blink/renderer/core/css/media_values.cc
++++ b/third_party/blink/renderer/core/css/media_values.cc
+@@ -353,20 +353,32 @@ mojom::blink::PointerType MediaValues::CalculatePrimaryPointerType(
+     LocalFrame* frame) {
+   DCHECK(frame);
+   DCHECK(frame->GetSettings());
+-  return frame->GetSettings()->GetPrimaryPointerType();
++  // 2026-05-30: Persona override — Win desktop persona always has a mouse,
++  // so report kPointerFineType. Without this, headless Ozone (no real input
++  // device) reports kPointerNone, and CSS @media (pointer: fine) evaluates
++  // false even though navigator.userAgent says "Windows NT 10.0; Win64".
++  // Bot detectors (CreepJS, fpjs) cross-check: UA=desktop + pointer=none =>
++  // headless/automated. Override at the MediaValues layer so all four
++  // (any-pointer, pointer, any-hover, hover) match real Win Chrome.
++  return mojom::blink::PointerType::kPointerFineType;
+ }
+ 
+ int MediaValues::CalculateAvailablePointerTypes(LocalFrame* frame) {
+   DCHECK(frame);
+   DCHECK(frame->GetSettings());
+-  return frame->GetSettings()->GetAvailablePointerTypes();
++  // Match primary: Win desktop reports only the fine pointer (kPointerFineType
++  // bit set). A Surface / convertible would additionally OR in kPointerCoarse,
++  // but our persona is a non-touch desktop, so single-bit is correct.
++  return static_cast<int>(mojom::blink::PointerType::kPointerFineType);
+ }
+ 
+ mojom::blink::HoverType MediaValues::CalculatePrimaryHoverType(
+     LocalFrame* frame) {
+   DCHECK(frame);
+   DCHECK(frame->GetSettings());
+-  return frame->GetSettings()->GetPrimaryHoverType();
++  // 2026-05-30: Persona override — Win desktop with mouse hovers. See
++  // CalculatePrimaryPointerType above for the rationale; both must agree.
++  return mojom::blink::HoverType::kHoverHoverType;
+ }
+ 
+ mojom::blink::OutputDeviceUpdateAbilityType
+@@ -379,7 +391,8 @@ MediaValues::CalculateOutputDeviceUpdateAbilityType(LocalFrame* frame) {
+ int MediaValues::CalculateAvailableHoverTypes(LocalFrame* frame) {
+   DCHECK(frame);
+   DCHECK(frame->GetSettings());
+-  return frame->GetSettings()->GetAvailableHoverTypes();
++  // Match primary: Win desktop with mouse reports kHoverHoverType only.
++  return static_cast<int>(mojom::blink::HoverType::kHoverHoverType);
+ }
+ 
+ ColorSpaceGamut MediaValues::CalculateColorGamut(LocalFrame* frame) {
+diff --git a/third_party/blink/renderer/core/css/media_values_cached.cc b/third_party/blink/renderer/core/css/media_values_cached.cc
+index 0294d2ba1c8f9..e3c9ce724830a 100644
+--- a/third_party/blink/renderer/core/css/media_values_cached.cc
++++ b/third_party/blink/renderer/core/css/media_values_cached.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/core/css/media_values_cached.h"
+ 
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/renderer/core/dom/document.h"
+ #include "third_party/blink/renderer/core/frame/local_frame.h"
+ #include "ui/base/mojom/window_show_state.mojom-blink.h"
+@@ -226,15 +227,16 @@ int MediaValuesCached::DeviceHeight() const {
+ }
+ 
+ float MediaValuesCached::DevicePixelRatio() const {
+-  return data_.device_pixel_ratio;
++  // Lightweight-fork: see media_values_dynamic.cc — same canonicalization.
++  return static_cast<float>(fingerprinting::Current().device_pixel_ratio);
+ }
+ 
+ bool MediaValuesCached::DeviceSupportsHDR() const {
+-  return data_.device_supports_hdr;
++  return false;
+ }
+ 
+ int MediaValuesCached::ColorBitsPerComponent() const {
+-  return data_.color_bits_per_component;
++  return 8;
+ }
+ 
+ int MediaValuesCached::MonochromeBitsPerComponent() const {
+@@ -305,33 +307,36 @@ void MediaValuesCached::OverrideViewportDimensions(double width,
+ }
+ 
+ ColorSpaceGamut MediaValuesCached::ColorGamut() const {
+-  return data_.color_gamut;
++  return ColorSpaceGamut::SRGB;
+ }
+ 
+ mojom::blink::PreferredColorScheme MediaValuesCached::GetPreferredColorScheme()
+     const {
+-  return data_.preferred_color_scheme;
++  // Lightweight-fork: see media_values_dynamic.cc for rationale. The
++  // host's appearance / accessibility preferences leak per-user state
++  // via CSS media queries. Force canonical "no preference" defaults.
++  return mojom::blink::PreferredColorScheme::kLight;
+ }
+ 
+ mojom::blink::PreferredContrast MediaValuesCached::GetPreferredContrast()
+     const {
+-  return data_.preferred_contrast;
++  return mojom::blink::PreferredContrast::kNoPreference;
+ }
+ 
+ bool MediaValuesCached::PrefersReducedMotion() const {
+-  return data_.prefers_reduced_motion;
++  return false;
+ }
+ 
+ bool MediaValuesCached::PrefersReducedData() const {
+-  return data_.prefers_reduced_data;
++  return false;
+ }
+ 
+ bool MediaValuesCached::PrefersReducedTransparency() const {
+-  return data_.prefers_reduced_transparency;
++  return false;
+ }
+ 
+ ForcedColors MediaValuesCached::GetForcedColors() const {
+-  return data_.forced_colors;
++  return ForcedColors::kNone;
+ }
+ 
+ NavigationControls MediaValuesCached::GetNavigationControls() const {
+diff --git a/third_party/blink/renderer/core/css/media_values_dynamic.cc b/third_party/blink/renderer/core/css/media_values_dynamic.cc
+index b0caa1bb2ae11..6566a5e8ce5cd 100644
+--- a/third_party/blink/renderer/core/css/media_values_dynamic.cc
++++ b/third_party/blink/renderer/core/css/media_values_dynamic.cc
+@@ -5,6 +5,7 @@
+ #include "third_party/blink/renderer/core/css/media_values_dynamic.h"
+ 
+ #include "third_party/blink/public/common/css/forced_colors.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/public/common/css/navigation_controls.h"
+ #include "third_party/blink/public/common/css/scripting.h"
+ #include "third_party/blink/renderer/core/css/css_primitive_value.h"
+@@ -177,15 +178,24 @@ int MediaValuesDynamic::DeviceHeight() const {
+ }
+ 
+ float MediaValuesDynamic::DevicePixelRatio() const {
+-  return CalculateDevicePixelRatio(frame_);
++  // Lightweight-fork: route through the persona's claimed DPR (typically
++  // 1.0 for Windows desktop) so CSS `@media (resolution: 1dppx)` doesn't
++  // leak the real retina 2x display. Persona's value is what JS sees via
++  // window.devicePixelRatio; make CSS consistent with it.
++  return static_cast<float>(fingerprinting::Current().device_pixel_ratio);
+ }
+ 
+ bool MediaValuesDynamic::DeviceSupportsHDR() const {
+-  return CalculateDeviceSupportsHDR(frame_);
++  // Lightweight-fork: Mac M-series displays support HDR (`dynamic-range:
++  // high`). Windows monitors rarely do. Force `standard` to match the
++  // Windows persona — also hides any HDR-capable display the user has.
++  return false;
+ }
+ 
+ int MediaValuesDynamic::ColorBitsPerComponent() const {
+-  return CalculateColorBitsPerComponent(frame_);
++  // Lightweight-fork: persona reports color_depth=24 (=8 bpc). Force CSS
++  // `@media (color: N)` to match so 10-bit HDR Mac displays don't leak.
++  return 8;
+ }
+ 
+ int MediaValuesDynamic::MonochromeBitsPerComponent() const {
+@@ -242,33 +252,43 @@ bool MediaValuesDynamic::StrictMode() const {
+ }
+ 
+ ColorSpaceGamut MediaValuesDynamic::ColorGamut() const {
+-  return CalculateColorGamut(frame_);
++  // Lightweight-fork: Mac M-series + many recent Win laptops have P3
++  // color displays. Old Win desktops are sRGB-only. Force sRGB to match
++  // the most-common Win desktop persona and hide the actual display
++  // gamut. CSS `@media (color-gamut: p3)` returns false; `srgb` returns
++  // true.
++  return ColorSpaceGamut::SRGB;
+ }
+ 
+ mojom::blink::PreferredColorScheme MediaValuesDynamic::GetPreferredColorScheme()
+     const {
+-  return CalculatePreferredColorScheme(frame_);
++  // Lightweight-fork: return canonical defaults instead of the host OS's
++  // setting. The user's macOS appearance preference (light/dark, reduced
++  // motion, increased contrast) leaks per-user state via CSS media
++  // queries — a fingerprint every page can read with no permission. Tor
++  // Browser hardcodes "light + no reduced-motion + no increased-contrast".
++  return mojom::blink::PreferredColorScheme::kLight;
+ }
+ 
+ mojom::blink::PreferredContrast MediaValuesDynamic::GetPreferredContrast()
+     const {
+-  return CalculatePreferredContrast(frame_);
++  return mojom::blink::PreferredContrast::kNoPreference;
+ }
+ 
+ bool MediaValuesDynamic::PrefersReducedMotion() const {
+-  return CalculatePrefersReducedMotion(frame_);
++  return false;
+ }
+ 
+ bool MediaValuesDynamic::PrefersReducedData() const {
+-  return CalculatePrefersReducedData(frame_);
++  return false;
+ }
+ 
+ bool MediaValuesDynamic::PrefersReducedTransparency() const {
+-  return CalculatePrefersReducedTransparency(frame_);
++  return false;
+ }
+ 
+ ForcedColors MediaValuesDynamic::GetForcedColors() const {
+-  return CalculateForcedColors(frame_);
++  return ForcedColors::kNone;
+ }
+ 
+ NavigationControls MediaValuesDynamic::GetNavigationControls() const {
+diff --git a/third_party/blink/renderer/core/frame/screen.cc b/third_party/blink/renderer/core/frame/screen.cc
+index 69ffc2b05f75d..d694daadecec7 100644
+--- a/third_party/blink/renderer/core/frame/screen.cc
++++ b/third_party/blink/renderer/core/frame/screen.cc
+@@ -28,8 +28,8 @@
+ 
+ #include "third_party/blink/renderer/core/frame/screen.h"
+ 
+-#include "base/numerics/safe_conversions.h"
+ #include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-blink.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/renderer/core/event_target_names.h"
+ #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+ #include "third_party/blink/renderer/core/frame/local_frame.h"
+@@ -81,28 +81,20 @@ bool Screen::AreWebExposedScreenPropertiesEqual(
+ int Screen::height() const {
+   if (!DomWindow())
+     return 0;
+-  return GetRect(/*available=*/false).height();
++  return fingerprinting::Current().screen_height;
+ }
+ 
+ int Screen::width() const {
+   if (!DomWindow())
+     return 0;
+-  return GetRect(/*available=*/false).width();
++  return fingerprinting::Current().screen_width;
+ }
+ 
+ unsigned Screen::colorDepth() const {
+-  // "If the user agent does not know the color depth or does not want to
+-  // return it for privacy considerations, it should return 24."
+-  //
+-  // https://drafts.csswg.org/cssom-view/#dom-screen-colordepth
+-  unsigned unknown_color_depth = 24u;
+-
+   if (!DomWindow()) {
+-    return unknown_color_depth;
++    return fingerprinting::Current().color_depth;
+   }
+-  return GetScreenInfo().depth == 0
+-             ? unknown_color_depth
+-             : base::saturated_cast<unsigned>(GetScreenInfo().depth);
++  return fingerprinting::Current().color_depth;
+ }
+ 
+ unsigned Screen::pixelDepth() const {
+@@ -112,25 +104,25 @@ unsigned Screen::pixelDepth() const {
+ int Screen::availLeft() const {
+   if (!DomWindow())
+     return 0;
+-  return GetRect(/*available=*/true).x();
++  return fingerprinting::Current().available_screen_left;
+ }
+ 
+ int Screen::availTop() const {
+   if (!DomWindow())
+     return 0;
+-  return GetRect(/*available=*/true).y();
++  return fingerprinting::Current().available_screen_top;
+ }
+ 
+ int Screen::availHeight() const {
+   if (!DomWindow())
+     return 0;
+-  return GetRect(/*available=*/true).height();
++  return fingerprinting::Current().available_screen_height;
+ }
+ 
+ int Screen::availWidth() const {
+   if (!DomWindow())
+     return 0;
+-  return GetRect(/*available=*/true).width();
++  return fingerprinting::Current().available_screen_width;
+ }
+ 
+ void Screen::Trace(Visitor* visitor) const {
+@@ -160,17 +152,6 @@ bool Screen::isExtended() const {
+   return GetScreenInfo().is_extended;
+ }
+ 
+-gfx::Rect Screen::GetRect(bool available) const {
+-  if (!DomWindow())
+-    return gfx::Rect();
+-  LocalFrame* frame = DomWindow()->GetFrame();
+-  const display::ScreenInfo& screen_info = GetScreenInfo();
+-  gfx::Rect rect = available ? screen_info.available_rect : screen_info.rect;
+-  if (frame->GetSettings()->GetReportScreenSizeInPhysicalPixelsQuirk())
+-    return gfx::ScaleToRoundedRect(rect, screen_info.device_scale_factor);
+-  return rect;
+-}
+-
+ const display::ScreenInfo& Screen::GetScreenInfo() const {
+   DCHECK(DomWindow());
+   LocalFrame* frame = DomWindow()->GetFrame();
+diff --git a/third_party/blink/renderer/core/frame/screen.h b/third_party/blink/renderer/core/frame/screen.h
+index 787aa750ae6e4..4855bc12255b5 100644
+--- a/third_party/blink/renderer/core/frame/screen.h
++++ b/third_party/blink/renderer/core/frame/screen.h
+@@ -85,8 +85,7 @@ class CORE_EXPORT Screen : public EventTarget,
+   void UpdateDisplayId(int64_t display_id) { display_id_ = display_id; }
+ 
+  protected:
+-  // Helpers to access screen information.
+-  gfx::Rect GetRect(bool available) const;
++  // Helper to access screen information.
+   const display::ScreenInfo& GetScreenInfo() const;
+ 
+   // The internal id of the underlying display, to support multi-screen devices.
+diff --git a/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc b/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc
+index 8f88c4c102d62..843920c65cb16 100644
+--- a/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc
++++ b/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc
+@@ -330,7 +330,14 @@ int ScrollbarThemeMac::ScrollbarThickness(
+ }
+ 
+ bool ScrollbarThemeMac::UsesOverlayScrollbars() const {
+-  return PreferOverlayScrollerStyle();
++  // Persona-mode: force classic-style scrollbars even on macOS so that
++  // div.offsetWidth > div.clientWidth for overflow:scroll elements (i.e.
++  // scrollbars take layout width like they do on Windows/Linux). Defeats
++  // the FingerprintJS Pro signal s204 (rt()) that creates a hidden
++  // overflow:scroll div and infers Mac vs Win from offsetWidth ===
++  // clientWidth. The fork's persona claims Windows; this was the single
++  // biggest "platform != UA" inconsistency at the layout layer.
++  return false;
+ }
+ 
+ bool ScrollbarThemeMac::HasThumb(const Scrollbar& scrollbar) const {
+diff --git a/third_party/blink/renderer/modules/screen_details/screen_detailed.cc b/third_party/blink/renderer/modules/screen_details/screen_detailed.cc
+index 490cda360093f..2da2b3b011855 100644
+--- a/third_party/blink/renderer/modules/screen_details/screen_detailed.cc
++++ b/third_party/blink/renderer/modules/screen_details/screen_detailed.cc
+@@ -104,13 +104,13 @@ bool ScreenDetailed::AreHdrHeadroomEqual(const display::ScreenInfo& prev,
+ int ScreenDetailed::left() const {
+   if (!DomWindow())
+     return 0;
+-  return GetRect(/*available=*/false).x();
++  return 0;  /* persona: screen at origin */
+ }
+ 
+ int ScreenDetailed::top() const {
+   if (!DomWindow())
+     return 0;
+-  return GetRect(/*available=*/false).y();
++  return 0;  /* persona: screen at origin */
+ }
+ 
+ bool ScreenDetailed::isPrimary() const {
