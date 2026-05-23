@@ -1,0 +1,85 @@
+diff --git a/third_party/lean_windows_fonts/Arimo-VF-Italic.ttf b/third_party/lean_windows_fonts/Arimo-VF-Italic.ttf
+new file mode 100644
+index 0000000000000..bafff59536fce
+Binary files /dev/null and b/third_party/lean_windows_fonts/Arimo-VF-Italic.ttf differ
+diff --git a/third_party/lean_windows_fonts/Arimo-VF.ttf b/third_party/lean_windows_fonts/Arimo-VF.ttf
+new file mode 100644
+index 0000000000000..a4721e1f03aea
+Binary files /dev/null and b/third_party/lean_windows_fonts/Arimo-VF.ttf differ
+diff --git a/third_party/lean_windows_fonts/Caladea-Bold.ttf b/third_party/lean_windows_fonts/Caladea-Bold.ttf
+new file mode 100644
+index 0000000000000..e4a94d90e7f71
+Binary files /dev/null and b/third_party/lean_windows_fonts/Caladea-Bold.ttf differ
+diff --git a/third_party/lean_windows_fonts/Caladea-BoldItalic.ttf b/third_party/lean_windows_fonts/Caladea-BoldItalic.ttf
+new file mode 100644
+index 0000000000000..a5df758d8cac3
+Binary files /dev/null and b/third_party/lean_windows_fonts/Caladea-BoldItalic.ttf differ
+diff --git a/third_party/lean_windows_fonts/Caladea-Italic.ttf b/third_party/lean_windows_fonts/Caladea-Italic.ttf
+new file mode 100644
+index 0000000000000..d2829dee7de5b
+Binary files /dev/null and b/third_party/lean_windows_fonts/Caladea-Italic.ttf differ
+diff --git a/third_party/lean_windows_fonts/Caladea-Regular.ttf b/third_party/lean_windows_fonts/Caladea-Regular.ttf
+new file mode 100644
+index 0000000000000..b6092a04bf337
+Binary files /dev/null and b/third_party/lean_windows_fonts/Caladea-Regular.ttf differ
+diff --git a/third_party/lean_windows_fonts/Carlito-Bold.ttf b/third_party/lean_windows_fonts/Carlito-Bold.ttf
+new file mode 100644
+index 0000000000000..fb6cbcb68501c
+Binary files /dev/null and b/third_party/lean_windows_fonts/Carlito-Bold.ttf differ
+diff --git a/third_party/lean_windows_fonts/Carlito-BoldItalic.ttf b/third_party/lean_windows_fonts/Carlito-BoldItalic.ttf
+new file mode 100644
+index 0000000000000..0f4cc77a5cc97
+Binary files /dev/null and b/third_party/lean_windows_fonts/Carlito-BoldItalic.ttf differ
+diff --git a/third_party/lean_windows_fonts/Carlito-Italic.ttf b/third_party/lean_windows_fonts/Carlito-Italic.ttf
+new file mode 100644
+index 0000000000000..a1120c7dc0ff8
+Binary files /dev/null and b/third_party/lean_windows_fonts/Carlito-Italic.ttf differ
+diff --git a/third_party/lean_windows_fonts/Carlito-Regular.ttf b/third_party/lean_windows_fonts/Carlito-Regular.ttf
+new file mode 100644
+index 0000000000000..bff4a05f8e6e6
+Binary files /dev/null and b/third_party/lean_windows_fonts/Carlito-Regular.ttf differ
+diff --git a/third_party/lean_windows_fonts/ComicRelief-Bold.ttf b/third_party/lean_windows_fonts/ComicRelief-Bold.ttf
+new file mode 100644
+index 0000000000000..a2b1956a69a51
+Binary files /dev/null and b/third_party/lean_windows_fonts/ComicRelief-Bold.ttf differ
+diff --git a/third_party/lean_windows_fonts/ComicRelief-Regular.ttf b/third_party/lean_windows_fonts/ComicRelief-Regular.ttf
+new file mode 100644
+index 0000000000000..769b2b21390ff
+Binary files /dev/null and b/third_party/lean_windows_fonts/ComicRelief-Regular.ttf differ
+diff --git a/third_party/lean_windows_fonts/Cousine-Bold.ttf b/third_party/lean_windows_fonts/Cousine-Bold.ttf
+new file mode 100644
+index 0000000000000..c38c4d58cb6ed
+Binary files /dev/null and b/third_party/lean_windows_fonts/Cousine-Bold.ttf differ
+diff --git a/third_party/lean_windows_fonts/Cousine-BoldItalic.ttf b/third_party/lean_windows_fonts/Cousine-BoldItalic.ttf
+new file mode 100644
+index 0000000000000..c4411606b6c6e
+Binary files /dev/null and b/third_party/lean_windows_fonts/Cousine-BoldItalic.ttf differ
+diff --git a/third_party/lean_windows_fonts/Cousine-Italic.ttf b/third_party/lean_windows_fonts/Cousine-Italic.ttf
+new file mode 100644
+index 0000000000000..9c3de58916550
+Binary files /dev/null and b/third_party/lean_windows_fonts/Cousine-Italic.ttf differ
+diff --git a/third_party/lean_windows_fonts/Cousine-Regular.ttf b/third_party/lean_windows_fonts/Cousine-Regular.ttf
+new file mode 100644
+index 0000000000000..bcb3cfd2540f2
+Binary files /dev/null and b/third_party/lean_windows_fonts/Cousine-Regular.ttf differ
+diff --git a/third_party/lean_windows_fonts/OpenSans-Regular.ttf b/third_party/lean_windows_fonts/OpenSans-Regular.ttf
+new file mode 100644
+index 0000000000000..28d3ec4f8518f
+Binary files /dev/null and b/third_party/lean_windows_fonts/OpenSans-Regular.ttf differ
+diff --git a/third_party/lean_windows_fonts/Tinos-Bold.ttf b/third_party/lean_windows_fonts/Tinos-Bold.ttf
+new file mode 100644
+index 0000000000000..f58653ef24d40
+Binary files /dev/null and b/third_party/lean_windows_fonts/Tinos-Bold.ttf differ
+diff --git a/third_party/lean_windows_fonts/Tinos-BoldItalic.ttf b/third_party/lean_windows_fonts/Tinos-BoldItalic.ttf
+new file mode 100644
+index 0000000000000..5470ae0f08159
+Binary files /dev/null and b/third_party/lean_windows_fonts/Tinos-BoldItalic.ttf differ
+diff --git a/third_party/lean_windows_fonts/Tinos-Italic.ttf b/third_party/lean_windows_fonts/Tinos-Italic.ttf
+new file mode 100644
+index 0000000000000..60eac69866f87
+Binary files /dev/null and b/third_party/lean_windows_fonts/Tinos-Italic.ttf differ
+diff --git a/third_party/lean_windows_fonts/Tinos-Regular.ttf b/third_party/lean_windows_fonts/Tinos-Regular.ttf
+new file mode 100644
+index 0000000000000..47a96034e4460
+Binary files /dev/null and b/third_party/lean_windows_fonts/Tinos-Regular.ttf differ
+
