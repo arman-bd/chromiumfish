@@ -1,0 +1,717 @@
+diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+index 172759394d7e0..91d91afabe393 100644
+--- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+@@ -25,6 +25,7 @@
+ 
+ #include "third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h"
+ 
++#include <cstring>
+ #include <memory>
+ #include <utility>
+ 
+@@ -59,6 +60,9 @@
+ #include "media/base/video_frame.h"
+ #include "media/renderers/paint_canvas_video_renderer.h"
+ #include "media/renderers/video_frame_shared_image_cache.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h"
+ #include "third_party/blink/public/common/features.h"
+ #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
+ #include "third_party/blink/public/mojom/gpu/gpu.mojom-blink.h"
+@@ -2479,6 +2483,12 @@ void WebGLRenderingContextBase::attachShader(WebGLProgram* program,
+                       "shader attachment already has shader");
+     return;
+   }
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLAttachShader(
++            id, ObjectOrZero(program), ObjectOrZero(shader)));
++  }
+   ContextGL()->AttachShader(ObjectOrZero(program), ObjectOrZero(shader));
+   shader->OnAttached();
+ }
+@@ -2534,6 +2544,12 @@ void WebGLRenderingContextBase::bindBuffer(GLenum target, WebGLBuffer* buffer) {
+     return;
+   if (!ValidateAndUpdateBufferBindTarget("bindBuffer", target, buffer))
+     return;
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLBindBuffer(
++            id, target, ObjectOrZero(buffer)));
++  }
+   ContextGL()->BindBuffer(target, ObjectOrZero(buffer));
+ }
+ 
+@@ -2701,6 +2717,20 @@ void WebGLRenderingContextBase::BufferDataImpl(GLenum target,
+ 
+   buffer->SetSize(size);
+ 
++  // Lightweight-fork: forward to canvas-bridge. Send raw bytes so the
++  // server can populate its mirror buffer; for size-only calls (null
++  // data) send an empty span and let server allocate untracked storage.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    base::span<const uint8_t> data_span;
++    if (data && size > 0) {
++      data_span = UNSAFE_TODO(base::span<const uint8_t>(
++          static_cast<const uint8_t*>(data), static_cast<size_t>(size)));
++    }
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLBufferData(
++            id, target, data_span, usage));
++  }
++
+   ContextGL()->BufferData(target, static_cast<GLsizeiptr>(size), data, usage);
+ }
+ 
+@@ -2844,6 +2874,11 @@ void WebGLRenderingContextBase::clear(GLbitfield mask) {
+     }
+     ContextGL()->Clear(mask);
+   }
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLClear(id, mask));
++  }
+   MarkContextChanged(kCanvasChanged,
+                      CanvasPerformanceMonitor::DrawType::kOther);
+ }
+@@ -2866,6 +2901,12 @@ void WebGLRenderingContextBase::clearColor(GLfloat r,
+   clear_color_[1] = g;
+   clear_color_[2] = b;
+   clear_color_[3] = a;
++  // Lightweight-fork: forward to canvas-bridge so the remote render
++  // server can replay the op when readPixels is requested.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLClearColor(id, r, g, b, a));
++  }
+   ContextGL()->ClearColor(r, g, b, a);
+ }
+ 
+@@ -2899,6 +2940,11 @@ void WebGLRenderingContextBase::colorMask(GLboolean red,
+ void WebGLRenderingContextBase::compileShader(WebGLShader* shader) {
+   if (!ValidateWebGLProgramOrShader("compileShader", shader))
+     return;
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLCompileShader(
++            id, ObjectOrZero(shader)));
++  }
+   ContextGL()->CompileShader(ObjectOrZero(shader));
+ }
+ 
+@@ -3056,7 +3102,15 @@ void WebGLRenderingContextBase::copyTexSubImage2D(GLenum target,
+ }
+ 
+ WebGLBuffer* WebGLRenderingContextBase::createBuffer() {
+-  return MakeGarbageCollected<WebGLBuffer>(this);
++  auto* buf = MakeGarbageCollected<WebGLBuffer>(this);
++  // Lightweight-fork: forward the buffer's GL handle to the bridge so
++  // the server can allocate its own mirror buffer with the same id.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLCreateBuffer(
++            id, ObjectOrZero(buf)));
++  }
++  return buf;
+ }
+ 
+ WebGLFramebuffer* WebGLRenderingContextBase::createFramebuffer() {
+@@ -3068,7 +3122,13 @@ WebGLTexture* WebGLRenderingContextBase::createTexture() {
+ }
+ 
+ WebGLProgram* WebGLRenderingContextBase::createProgram() {
+-  return MakeGarbageCollected<WebGLProgram>(this);
++  auto* prog = MakeGarbageCollected<WebGLProgram>(this);
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLCreateProgram(
++            id, ObjectOrZero(prog)));
++  }
++  return prog;
+ }
+ 
+ WebGLRenderbuffer* WebGLRenderingContextBase::createRenderbuffer() {
+@@ -3088,7 +3148,13 @@ WebGLShader* WebGLRenderingContextBase::createShader(GLenum type) {
+     return nullptr;
+   }
+ 
+-  return MakeGarbageCollected<WebGLShader>(this, type);
++  auto* shader = MakeGarbageCollected<WebGLShader>(this, type);
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLCreateShader(
++            id, ObjectOrZero(shader), type));
++  }
++  return shader;
+ }
+ 
+ void WebGLRenderingContextBase::cullFace(GLenum mode) {
+@@ -3256,6 +3322,11 @@ void WebGLRenderingContextBase::detachShader(WebGLProgram* program,
+ void WebGLRenderingContextBase::disable(GLenum cap) {
+   if (isContextLost() || !ValidateCapability("disable", cap))
+     return;
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLDisable(id, cap));
++  }
+   if (cap == GL_STENCIL_TEST) {
+     stencil_enabled_ = false;
+     ApplyDepthAndStencilTest();
+@@ -3363,6 +3434,11 @@ void WebGLRenderingContextBase::drawArrays(GLenum mode,
+   if (!ValidateDrawArrays("drawArrays"))
+     return;
+ 
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLDrawArrays(id, mode, first, count));
++  }
+   DrawWrapper("drawArrays", CanvasPerformanceMonitor::DrawType::kDrawArrays,
+               [&]() { ContextGL()->DrawArrays(mode, first, count); });
+ }
+@@ -3374,6 +3450,12 @@ void WebGLRenderingContextBase::drawElements(GLenum mode,
+   if (!ValidateDrawElements("drawElements", type, offset))
+     return;
+ 
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLDrawElements(
++            id, mode, count, type, static_cast<int32_t>(offset)));
++  }
+   DrawWrapper("drawElements", CanvasPerformanceMonitor::DrawType::kDrawElements,
+               [&]() {
+                 ContextGL()->DrawElements(
+@@ -3416,6 +3498,12 @@ void WebGLRenderingContextBase::DrawElementsInstancedANGLE(GLenum mode,
+ void WebGLRenderingContextBase::enable(GLenum cap) {
+   if (isContextLost() || !ValidateCapability("enable", cap))
+     return;
++  // Lightweight-fork: forward to canvas-bridge BEFORE the depth/stencil
++  // early-returns so the server sees the full state changes.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLEnable(id, cap));
++  }
+   if (cap == GL_STENCIL_TEST) {
+     stencil_enabled_ = true;
+     ApplyDepthAndStencilTest();
+@@ -3443,6 +3531,11 @@ void WebGLRenderingContextBase::enableVertexAttribArray(GLuint index) {
+   }
+ 
+   bound_vertex_array_object_->SetAttribEnabled(index, true);
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLEnableVertexAttribArray(id, index));
++  }
+   ContextGL()->EnableVertexAttribArray(index);
+ }
+ 
+@@ -3896,10 +3989,24 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+   switch (pname) {
+     case GL_ACTIVE_TEXTURE:
+       return GetUnsignedIntParameter(script_state, pname);
+-    case GL_ALIASED_LINE_WIDTH_RANGE:
+-      return GetWebGLFloatArrayParameter(script_state, pname);
+-    case GL_ALIASED_POINT_SIZE_RANGE:
+-      return GetWebGLFloatArrayParameter(script_state, pname);
++    case GL_ALIASED_LINE_WIDTH_RANGE: {
++      // Lightweight-fork: canonical [1, 1] — WebGL spec locks line width
++      // to 1 on every modern GL backend, regardless of host.
++      DOMFloat32Array* result = DOMFloat32Array::Create(2);
++      result->AsSpan()[0] = 1.0f;
++      result->AsSpan()[1] = 1.0f;
++      return WebGLAny(script_state, result);
++    }
++    case GL_ALIASED_POINT_SIZE_RANGE: {
++      // REVERTED 2026-05-30 from [1,1023] back to [1,1024]. Matching
++      // SwiftShader exactly mapped us into the Win-VPS-VM cluster
++      // (VM=0.97). The Intel UHD spoof at 1024 keeps us in the
++      // weird-but-real Win user bucket.
++      DOMFloat32Array* result = DOMFloat32Array::Create(2);
++      result->AsSpan()[0] = 1.0f;
++      result->AsSpan()[1] = 1024.0f;
++      return WebGLAny(script_state, result);
++    }
+     case GL_ALPHA_BITS:
+       if (drawing_buffer_->RequiresAlphaChannelToBePreserved())
+         return WebGLAny(script_state, 0);
+@@ -3970,28 +4077,48 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+       return GetIntParameter(script_state, pname);
+     case GL_LINE_WIDTH:
+       return GetFloatParameter(script_state, pname);
++    // Fingerprint isolation (FINGERPRINT_ISOLATION_PLAN.md row #18 —
++    // WebGL limits): return canonical Intel-class values for every
++    // pname Cloudflare Turnstile / FingerprintJS / amiunique probe.
++    // Real values are GPU-driver-derived and per-host unique.
+     case GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_combined_texture_image_units);
+     case GL_MAX_CUBE_MAP_TEXTURE_SIZE:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_cube_map_texture_size);
+     case GL_MAX_FRAGMENT_UNIFORM_VECTORS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_fragment_uniform_vectors);
+     case GL_MAX_RENDERBUFFER_SIZE:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_renderbuffer_size);
+     case GL_MAX_TEXTURE_IMAGE_UNITS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_texture_image_units);
+     case GL_MAX_TEXTURE_SIZE:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_texture_size);
+     case GL_MAX_VARYING_VECTORS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_varying_vectors);
+     case GL_MAX_VERTEX_ATTRIBS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_vertex_attribs);
+     case GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_vertex_texture_image_units);
+     case GL_MAX_VERTEX_UNIFORM_VECTORS:
+-      return GetIntParameter(script_state, pname);
+-    case GL_MAX_VIEWPORT_DIMS:
+-      return GetWebGLIntArrayParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_vertex_uniform_vectors);
++    case GL_MAX_VIEWPORT_DIMS: {
++      // Return a fixed [N, N] Int32Array instead of querying the GPU.
++      std::array<GLint, 2> dims = {
++          fingerprinting::Current().webgl_max_viewport_dim,
++          fingerprinting::Current().webgl_max_viewport_dim};
++      return WebGLAny(script_state,
++                      DOMInt32Array::Create(base::span(dims)));
++    }
+     case GL_PACK_ALIGNMENT:
+       return GetIntParameter(script_state, pname);
+     case GL_POLYGON_OFFSET_FACTOR:
+@@ -4023,11 +4150,15 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+     case GL_SCISSOR_TEST:
+       return GetBooleanParameter(script_state, pname);
+     case GL_SHADING_LANGUAGE_VERSION:
++      // Lightweight-fork: return the canonical Chromium string without the
++      // host backend's GLSL version appended (which would leak Mac Metal /
++      // SwiftShader). Real Chrome on every platform returns this exact
++      // string when the page calls getParameter(GL_SHADING_LANGUAGE_VERSION).
+       return WebGLAny(
+           script_state,
+-          StrCat({"WebGL GLSL ES 1.0 (",
+-                  String(ContextGL()->GetString(GL_SHADING_LANGUAGE_VERSION)),
+-                  ")"}));
++          String(IsWebGL2()
++                     ? "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
++                     : "WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)"));
+     case GL_STENCIL_BACK_FAIL:
+       return GetUnsignedIntParameter(script_state, pname);
+     case GL_STENCIL_BACK_FUNC:
+@@ -4085,10 +4216,13 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+     case GL_VENDOR:
+       return WebGLAny(script_state, String("WebKit"));
+     case GL_VERSION:
++      // Lightweight-fork: same as GL_SHADING_LANGUAGE_VERSION — strip
++      // the host backend version interpolation so Mac/Win/Linux all
++      // report identical canonical strings.
+       return WebGLAny(
+           script_state,
+-          StrCat({"WebGL 1.0 (", String(ContextGL()->GetString(GL_VERSION)),
+-                  ")"}));
++          String(IsWebGL2() ? "WebGL 2.0 (OpenGL ES 3.0 Chromium)"
++                            : "WebGL 1.0 (OpenGL ES 2.0 Chromium)"));
+     case GL_VIEWPORT:
+       return GetWebGLIntArrayParameter(script_state, pname);
+     case GL_FRAGMENT_SHADER_DERIVATIVE_HINT_OES:  // OES_standard_derivatives
+@@ -4101,8 +4235,16 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+       return ScriptValue::CreateNull(script_state->GetIsolate());
+     case WebGLDebugRendererInfo::kUnmaskedRendererWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
++        // EMPIRICAL (2026-05-30 fpjs Pro tests): Win UA + honest
++        // SwiftShader renderer scores VM ML ~0.97 (fpjs's model treats
++        // Win+SwiftShader as "anti-detect browser pretending to be
++        // Win on Linux"). Win UA + spoofed Intel UHD scores ~0.85
++        // (better — fpjs treats it as "Win user with integrated GPU"
++        // even though actual rendering is software). The Intel UHD
++        // spoof keeps Win persona coherent despite the renderer/perf
++        // mismatch. For Linux persona, fpjs prefers honest SwiftShader.
+         return WebGLAny(script_state,
+-                        String(ContextGL()->GetString(GL_RENDERER)));
++                        String::FromUtf8(fingerprinting::Current().webgl_renderer));
+       }
+       SynthesizeGLError(
+           GL_INVALID_ENUM, "getParameter",
+@@ -4110,8 +4252,7 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+       return ScriptValue::CreateNull(script_state->GetIsolate());
+     case WebGLDebugRendererInfo::kUnmaskedVendorWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
+-        return WebGLAny(script_state,
+-                        String(ContextGL()->GetString(GL_VENDOR)));
++        return WebGLAny(script_state, String::FromUtf8(fingerprinting::Current().webgl_vendor));
+       }
+       SynthesizeGLError(
+           GL_INVALID_ENUM, "getParameter",
+@@ -4180,19 +4321,14 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+           "invalid parameter name, WEBGL_blend_func_extended not enabled");
+       return ScriptValue::CreateNull(script_state->GetIsolate());
+     case GL_MAX_COLOR_ATTACHMENTS_EXT:  // EXT_draw_buffers BEGIN
+-      if (ExtensionEnabled(kWebGLDrawBuffersName) || IsWebGL2())
+-        return WebGLAny(script_state, MaxColorAttachments());
+-      SynthesizeGLError(
+-          GL_INVALID_ENUM, "getParameter",
+-          "invalid parameter name, WEBGL_draw_buffers not enabled");
+-      return ScriptValue::CreateNull(script_state->GetIsolate());
++      // Lightweight-fork: return canonical from persona (matches real
++      // Chrome's 8 across Apple/Intel/NVIDIA), not whatever SwiftShader
++      // reports for the host backend.
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_color_attachments);
+     case GL_MAX_DRAW_BUFFERS_EXT:
+-      if (ExtensionEnabled(kWebGLDrawBuffersName) || IsWebGL2())
+-        return WebGLAny(script_state, MaxDrawBuffers());
+-      SynthesizeGLError(
+-          GL_INVALID_ENUM, "getParameter",
+-          "invalid parameter name, WEBGL_draw_buffers not enabled");
+-      return ScriptValue::CreateNull(script_state->GetIsolate());
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_draw_buffers);
+     case GL_TIMESTAMP_EXT:
+       if (ExtensionEnabled(kEXTDisjointTimerQueryName))
+         return WebGLAny(script_state, 0);
+@@ -4407,10 +4543,43 @@ WebGLShaderPrecisionFormat* WebGLRenderingContextBase::getShaderPrecisionFormat(
+       return nullptr;
+   }
+ 
+-  GLint range[2] = {0, 0};
+-  GLint precision = 0;
+-  ContextGL()->GetShaderPrecisionFormat(shader_type, precision_type, range,
+-                                        &precision);
++  // Fingerprint isolation (FINGERPRINT_ISOLATION_PLAN.md row #17 — WebGL
++  // shader-precision): return IEEE-754 single-precision constants for
++  // every (shader, precision_type) tuple. Real values come from the
++  // host's GL driver and vary slightly across Intel/NVIDIA/AMD even
++  // though the underlying spec only allows a few values. Cloudflare
++  // Turnstile calls this 13× per scan to detect the GPU.
++  // INT precisions return precision=0 / range=[31,30] in the canonical
++  // ANGLE/D3D11 build; FLOAT precisions return precision=23 (mantissa
++  // bits of single-precision IEEE 754) with range=[127,127] (exponent
++  // bias).
++  GLint range[2];
++  GLint precision;
++  // REVERTED 2026-05-30: all FLOAT precisions back to [127,127,23]
++  // (Intel UHD 770 D3D11 baseline). Differentiating LOW/MED at
++  // [15,15,10] mapped us into the SwiftShader/Win-VPS cluster
++  // (VM=0.97).
++  switch (precision_type) {
++    case GL_LOW_FLOAT:
++    case GL_MEDIUM_FLOAT:
++    case GL_HIGH_FLOAT:
++      range[0] = fingerprinting::Current().webgl_precision_range_min;
++      range[1] = fingerprinting::Current().webgl_precision_range_max;
++      precision = fingerprinting::Current().webgl_precision_float_bits;
++      break;
++    case GL_LOW_INT:
++    case GL_MEDIUM_INT:
++    case GL_HIGH_INT:
++      range[0] = 31;
++      range[1] = 30;
++      precision = 0;
++      break;
++    default:
++      range[0] = 0;
++      range[1] = 0;
++      precision = 0;
++      break;
++  }
+   return MakeGarbageCollected<WebGLShaderPrecisionFormat>(range[0], range[1],
+                                                           precision);
+ }
+@@ -4426,14 +4595,82 @@ WebGLRenderingContextBase::getSupportedExtensions() {
+   if (isContextLost())
+     return std::nullopt;
+ 
++  // Lightweight-fork: return the canonical Win-Chrome-on-WARP extension
++  // list — captured side-by-side against chrome.exe 148.0.7778.179 on a
++  // cloud Win Server 2025 VM (no GPU, ANGLE falls back to D3D11 WARP).
++  // Our underlying backend is SwiftShader Vulkan; its native extension
++  // list differs (extra: EXT_disjoint_timer_query, compressed_texture_*;
++  // missing: KHR_parallel_shader_compile, WEBGL_blend_func_extended).
++  // Reporting our underlying list directly leaks the SwiftShader backend
++  // even though the renderer string claims WARP — CF cross-checks the
++  // two and flags the inconsistency.
++  //
++  // NOTE: the list below is the WebGL1 capture. The WebGL2 path appends
++  // kCanonicalWebGL2Extensions on top of the full WebGL1 list; real Chrome
++  // WebGL2 promotes several of these WebGL1 entries to core and drops them
++  // from getSupportedExtensions(), so the WebGL2 result here is an
++  // approximation, not a byte-exact match (TODO: capture a WebGL2 surface).
+   Vector<String> result;
+-
+-  for (ExtensionTracker* tracker : extensions_) {
+-    if (ExtensionSupportedAndAllowed(tracker)) {
+-      result.push_back(tracker->ExtensionName());
++  static const char* const kCanonicalWebGL1Extensions[] = {
++      "ANGLE_instanced_arrays",
++      "EXT_blend_minmax",
++      "EXT_clip_control",
++      "EXT_color_buffer_half_float",
++      "EXT_depth_clamp",
++      "EXT_float_blend",
++      "EXT_frag_depth",
++      "EXT_polygon_offset_clamp",
++      "EXT_shader_texture_lod",
++      "EXT_texture_compression_bptc",
++      "EXT_texture_compression_rgtc",
++      "EXT_texture_filter_anisotropic",
++      "EXT_texture_mirror_clamp_to_edge",
++      "EXT_sRGB",
++      // KHR_parallel_shader_compile and WEBGL_blend_func_extended removed
++      // from the canonical list: SwiftShader (our underlying GL backend)
++      // doesn't implement them, so listing them in getSupportedExtensions
++      // while getExtension() returns null was the inconsistency fpjs Pro
++      // surfaces as `unsupported_extensions` — a strong VM/anti-detect ML
++      // input. Better to under-claim and match SwiftShader honestly.
++      "OES_element_index_uint",
++      "OES_fbo_render_mipmap",
++      "OES_standard_derivatives",
++      "OES_texture_float",
++      "OES_texture_float_linear",
++      "OES_texture_half_float",
++      "OES_texture_half_float_linear",
++      "OES_vertex_array_object",
++      "WEBGL_color_buffer_float",
++      // REVERTED 2026-05-30: removed astc/etc/etc1 to keep us off the
++      // Win-VPS-VM-cluster which scores VM=1.0. Intel UHD 770 D3D11
++      // on real Win 11 desktops doesn't expose these (real Intel UHD
++      // baseline omits compressed_texture_astc/etc/etc1).
++      "WEBGL_compressed_texture_s3tc",
++      "WEBGL_compressed_texture_s3tc_srgb",
++      "WEBGL_debug_renderer_info",
++      "WEBGL_debug_shaders",
++      "WEBGL_depth_texture",
++      "WEBGL_draw_buffers",
++      "WEBGL_lose_context",
++      "WEBGL_multi_draw",
++      "WEBGL_polygon_mode",
++  };
++  static const char* const kCanonicalWebGL2Extensions[] = {
++      "EXT_color_buffer_float",
++      "EXT_conservative_depth",
++      "EXT_render_snorm",
++      "EXT_texture_norm16",
++      "OES_draw_buffers_indexed",
++      "OVR_multiview2",
++  };
++  for (const char* name : kCanonicalWebGL1Extensions) {
++    result.push_back(String(name));
++  }
++  if (IsWebGL2()) {
++    for (const char* name : kCanonicalWebGL2Extensions) {
++      result.push_back(String(name));
+     }
+   }
+-
+   return result;
+ }
+ 
+@@ -4972,6 +5209,12 @@ void WebGLRenderingContextBase::linkProgram(WebGLProgram* program) {
+     ContextGL()->GenQueriesEXT(1, &query);
+     ContextGL()->BeginQueryEXT(GL_PROGRAM_COMPLETION_QUERY_CHROMIUM, query);
+   }
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLLinkProgram(
++            id, ObjectOrZero(program)));
++  }
+   ContextGL()->LinkProgram(ObjectOrZero(program));
+   if (ExtensionEnabled(kKHRParallelShaderCompileName)) {
+     ContextGL()->EndQueryEXT(GL_PROGRAM_COMPLETION_QUERY_CHROMIUM);
+@@ -5228,8 +5471,6 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+                                         buffer_size.ValueOrDie())) {
+     return;
+   }
+-  ClearIfComposited(kClearCallerOther);
+-
+   uint8_t* data = static_cast<uint8_t*>(pixels->BaseAddressMaybeShared()) +
+                   offset_in_bytes.ValueOrDie();
+ 
+@@ -5245,6 +5486,8 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+     data = buffer->data();
+   }
+ 
++  ClearIfComposited(kClearCallerOther);
++
+   // Last-chance early-out, in case somehow the context was lost during
+   // the above ClearIfComposited operation.
+   if (isContextLost() || !GetDrawingBuffer())
+@@ -5257,6 +5500,31 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+     }
+     ContextGL()->ReadPixels(x, y, width, height, format, type, data);
+   }
++
++  // Lightweight-fork: if the canvas-bridge is active for this context,
++  // OVERWRITE the local pixel output with the server's authoritative
++  // pixels. The server has replayed the full op stream (every WebGL
++  // call we forwarded above) on its real GPU and is the source of
++  // truth for "what Win Chrome 148 + Intel UHD 770 would have
++  // produced." Only the RGBA8 / UNSIGNED_BYTE path is overwritten —
++  // other format/type combos use the local rendering.
++  if (data && format == GL_RGBA && type == GL_UNSIGNED_BYTE && width > 0 &&
++      height > 0) {
++    if (uint32_t id = EnsureBridgeWebGL()) {
++      auto reply = blink::canvas_bridge::CanvasBridgeClient::Get()
++                        ->RequestWebGLPixels(id, x, y,
++                                              static_cast<uint32_t>(width),
++                                              static_cast<uint32_t>(height),
++                                              format, type);
++      if (reply.has_value()) {
++        const size_t expected =
++            static_cast<size_t>(width) * static_cast<size_t>(height) * 4u;
++        if (reply->pixels.size() == expected) {
++          UNSAFE_TODO(std::memcpy(data, reply->pixels.data(), expected));
++        }
++      }
++    }
++  }
+ }
+ 
+ void WebGLRenderingContextBase::RenderbufferStorageImpl(
+@@ -5370,6 +5638,12 @@ void WebGLRenderingContextBase::shaderSource(WebGLShader* shader,
+   DCHECK(ascii_string.Is8Bit() && ascii_string.ContainsOnlyAsciiOrEmpty());
+   const GLchar* shader_data = base::as_chars(ascii_string.Span8()).data();
+   const GLint shader_length = ascii_string.length();
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLShaderSource(
++            id, ObjectOrZero(shader), ascii_string.Utf8()));
++  }
+   ContextGL()->ShaderSource(ObjectOrZero(shader), 1, &shader_data,
+                             &shader_length);
+ }
+@@ -7348,6 +7622,12 @@ void WebGLRenderingContextBase::useProgram(WebGLProgram* program) {
+     if (current_program_)
+       current_program_->OnDetached(ContextGL());
+     current_program_ = program;
++    // Lightweight-fork: forward to canvas-bridge.
++    if (uint32_t id = EnsureBridgeWebGL()) {
++      blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++          blink::canvas_bridge::MsgBuilder::WebGLUseProgram(
++              id, ObjectOrZero(program)));
++    }
+     ContextGL()->UseProgram(ObjectOrZero(program));
+     if (program)
+       program->OnAttached();
+@@ -7475,6 +7755,13 @@ void WebGLRenderingContextBase::vertexAttribPointer(GLuint index,
+ 
+   bound_vertex_array_object_->SetArrayBufferForAttrib(
+       index, bound_array_buffer_.Get());
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLVertexAttribPointer(
++            id, index, size, type, normalized != 0, stride,
++            static_cast<int32_t>(offset)));
++  }
+   ContextGL()->VertexAttribPointer(
+       index, size, type, normalized, stride,
+       reinterpret_cast<void*>(static_cast<intptr_t>(offset)));
+@@ -7500,6 +7787,11 @@ void WebGLRenderingContextBase::viewport(GLint x,
+                                          GLsizei height) {
+   if (isContextLost())
+     return;
++  // Lightweight-fork: forward to canvas-bridge.
++  if (uint32_t id = EnsureBridgeWebGL()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::WebGLViewport(id, x, y, width, height));
++  }
+   ContextGL()->Viewport(x, y, width, height);
+ }
+ 
+@@ -9349,4 +9641,38 @@ bool WebGLRenderingContextBase::checkProgramCompletionQueryAvailable(
+   }
+   return false;
+ }
++
++// Lightweight-fork: lazy-allocate a bridge WebGL canvas id and send
++// CreateWebGL. Returns 0 if the bridge isn't enabled or the context has
++// no host HTMLCanvasElement (e.g. OffscreenCanvas — we skip those for
++// now since the bridge protocol's CanvasId space is shared with Canvas2D
++// and the visibility of OffscreenCanvas to JS-driven fingerprinting is
++// low).
++uint32_t WebGLRenderingContextBase::EnsureBridgeWebGL() {
++  if (bridge_webgl_id_) {
++    return bridge_webgl_id_;
++  }
++  auto* bridge = blink::canvas_bridge::CanvasBridgeClient::Get();
++  if (!bridge || !bridge->IsEnabled()) {
++    return 0;
++  }
++  HTMLCanvasElement* host = canvas();
++  if (!host) {
++    return 0;
++  }
++  uint32_t id = bridge->AllocateCanvasId();
++  if (!id) {
++    return 0;
++  }
++  bridge_webgl_id_ = id;
++  const auto& attrs = CreationAttributes();
++  uint8_t version = IsWebGL2() ? 2 : 1;
++  bridge->Send(blink::canvas_bridge::MsgBuilder::CreateWebGL(
++      id, host->width(), host->height(),
++      attrs.alpha, attrs.depth, attrs.stencil, attrs.antialias,
++      attrs.premultiplied_alpha, attrs.preserve_drawing_buffer,
++      attrs.fail_if_major_performance_caveat, version));
++  return id;
++}
++
+ }  // namespace blink
+diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
+index aaee965c67969..ad5a589cf1579 100644
+--- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
++++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
+@@ -690,6 +690,14 @@ class MODULES_EXPORT WebGLRenderingContextBase
+   static constexpr size_t kMaximumSupportedArrayBufferSize =
+       ::partition_alloc::internal::MaxDirectMapped();
+ 
++ public:
++  // Lightweight-fork: canvas-bridge wiring. Returns the per-context bridge
++  // canvas id (lazy-allocated on first call), or 0 if the bridge is not
++  // connected. Callers gate every WebGL op on a non-zero return so ops
++  // are forwarded to the remote render server only when the bridge is
++  // ready. CreateWebGL is sent on first allocation.
++  uint32_t EnsureBridgeWebGL();
++
+  protected:
+   // Implementation helpers.
+   friend class ScopedPixelLocalStorageInterrupt;
+@@ -2012,6 +2020,12 @@ class MODULES_EXPORT WebGLRenderingContextBase
+ 
+   const Platform::WebGLContextType context_type_;
+ 
++  // Lightweight-fork: canvas-bridge state. bridge_webgl_id_ is 0 until the
++  // first call to EnsureBridgeWebGL() succeeds in allocating an id from
++  // the bridge and sending CreateWebGL. After that every WebGL op forwards
++  // to the bridge keyed by this id.
++  uint32_t bridge_webgl_id_ = 0;
++
+   bool IsPaintable() const final { return GetDrawingBuffer(); }
+ 
+   void HoldReferenceToDrawingBuffer(DrawingBuffer*);
