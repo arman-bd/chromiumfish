@@ -1,0 +1,2274 @@
+diff --git a/components/canvas_bridge/BUILD.gn b/components/canvas_bridge/BUILD.gn
+new file mode 100644
+index 0000000000000..9a70a31617e78
+--- /dev/null
++++ b/components/canvas_bridge/BUILD.gn
+@@ -0,0 +1,8 @@
++# Copyright (c) 2026 Arman Hossain <arman@bytetunnels.com>. ChromiumFish authors.
++source_set("canvas_bridge") {
++  sources = [
++    "canvas_bridge_switches.cc",
++    "public/canvas_bridge_switches.h",
++  ]
++  public_deps = [ "//base" ]
++}
+diff --git a/components/canvas_bridge/canvas_bridge_switches.cc b/components/canvas_bridge/canvas_bridge_switches.cc
+new file mode 100644
+index 0000000000000..720ecbf00c2be
+--- /dev/null
++++ b/components/canvas_bridge/canvas_bridge_switches.cc
+@@ -0,0 +1,10 @@
++// Copyright (c) 2026 Arman Hossain <arman@bytetunnels.com>. ChromiumFish authors. All rights reserved.
++
++#include "components/canvas_bridge/public/canvas_bridge_switches.h"
++
++namespace canvas_bridge::switches {
++
++const char kCanvasBridgeUrl[] = "canvas-bridge-url";
++const char kCanvasBridgeAuth[] = "canvas-bridge-auth";
++
++}  // namespace canvas_bridge::switches
+diff --git a/components/canvas_bridge/public/canvas_bridge_switches.h b/components/canvas_bridge/public/canvas_bridge_switches.h
+new file mode 100644
+index 0000000000000..828fdcb718b55
+--- /dev/null
++++ b/components/canvas_bridge/public/canvas_bridge_switches.h
+@@ -0,0 +1,27 @@
++// Copyright (c) 2026 Arman Hossain <arman@bytetunnels.com>. ChromiumFish authors. All rights reserved.
++//
++// canvas-bridge command-line switches. Two flags, both optional. The
++// browser process forwards them to renderers via
++// RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer (the
++// CopySwitchesFrom allowlist); the renderer's CanvasBridgeClient reads
++// them at construction time to decide whether to open a WebSocket.
++
++#ifndef COMPONENTS_CANVAS_BRIDGE_PUBLIC_CANVAS_BRIDGE_SWITCHES_H_
++#define COMPONENTS_CANVAS_BRIDGE_PUBLIC_CANVAS_BRIDGE_SWITCHES_H_
++
++namespace canvas_bridge::switches {
++
++// `ws://host:port/path` — when present, the renderer opens a
++// persistent connection to this URL for canvas / WebGL / font
++// remoting. Missing = bridge stays dormant, browser renders locally.
++// NOTE: only plaintext ws:// is implemented; a wss:// value is accepted
++// but falls back to plaintext ws:// (see ParseWsUrl in the client).
++extern const char kCanvasBridgeUrl[];
++
++// `user:secret` — HTTP Basic credentials sent on the WebSocket
++// upgrade. Required if kCanvasBridgeUrl is present.
++extern const char kCanvasBridgeAuth[];
++
++}  // namespace canvas_bridge::switches
++
++#endif  // COMPONENTS_CANVAS_BRIDGE_PUBLIC_CANVAS_BRIDGE_SWITCHES_H_
+diff --git a/third_party/blink/renderer/controller/blink_initializer.cc b/third_party/blink/renderer/controller/blink_initializer.cc
+index 4d1f2acf58e43..92ace9029b594 100644
+--- a/third_party/blink/renderer/controller/blink_initializer.cc
++++ b/third_party/blink/renderer/controller/blink_initializer.cc
+@@ -30,6 +30,9 @@
+ 
+ #include "third_party/blink/renderer/controller/blink_initializer.h"
+ 
++// Lightweight-fork: needed for pre-warm Get() call below.
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h"
++
+ #include <algorithm>
+ #include <memory>
+ #include <utility>
+@@ -169,6 +172,18 @@ void InitializeCommon(Platform* platform, mojo::BinderMap* binders) {
+   // Initialize performance manager.
+   RendererResourceCoordinatorImpl::MaybeInitialize();
+ 
++  // Lightweight-fork: pre-warm the canvas-bridge client so its TCP +
++  // WebSocket connect (~500-700ms to remote Win VPS) happens during
++  // renderer startup instead of on the first canvas op. Without this
++  // pre-warm, canvas ops on the first page fire at ~50-200ms after page
++  // load — well before the bridge finishes its handshake — so they bail
++  // out with "bridge not enabled" and render locally with Mac Skia,
++  // defeating the entire bridge architecture. Calling Get() here
++  // triggers the singleton's StartUp() which kicks off the async
++  // connect on a dedicated I/O thread. By the time a page actually
++  // renders a canvas, the bridge should be in kReady state.
++  blink::canvas_bridge::CanvasBridgeClient::Get();
++
+   // The ArrayBuffer partition is placed inside V8's virtual memory cage if it
+   // is enabled. For that reason, the partition can only be initialized after V8
+   // has been initialized.
+diff --git a/third_party/blink/renderer/platform/BUILD.gn b/third_party/blink/renderer/platform/BUILD.gn
+index bdc38284d22fd..97c26caabaf57 100644
+--- a/third_party/blink/renderer/platform/BUILD.gn
++++ b/third_party/blink/renderer/platform/BUILD.gn
+@@ -1784,6 +1784,7 @@ component("platform") {
+     "//third_party/blink/public/mojom:color_scheme_mojo_bindings",
+     "//third_party/blink/public/mojom:embedded_frame_sink_mojo_bindings_blink",
+     "//third_party/blink/renderer/platform/blob",
++    "//third_party/blink/renderer/platform/canvas_bridge",
+     "//third_party/blink/renderer/platform/heap",
+     "//third_party/blink/renderer/platform/image-decoders:image_decoders",
+     "//third_party/blink/renderer/platform/instrumentation",
+diff --git a/third_party/blink/renderer/platform/canvas_bridge/BUILD.gn b/third_party/blink/renderer/platform/canvas_bridge/BUILD.gn
+new file mode 100644
+index 0000000000000..62b65070b5302
+--- /dev/null
++++ b/third_party/blink/renderer/platform/canvas_bridge/BUILD.gn
+@@ -0,0 +1,20 @@
++# Copyright (c) 2026 Arman Hossain <arman@bytetunnels.com>. ChromiumFish authors. All rights reserved.
++
++import("//third_party/blink/renderer/platform/platform.gni")
++
++blink_platform_sources("canvas_bridge") {
++  sources = [
++    "canvas_bridge_client.cc",
++    "canvas_bridge_client.h",
++    "canvas_bridge_codec.cc",
++    "canvas_bridge_codec.h",
++  ]
++
++  deps = [
++    "//base",
++    "//components/canvas_bridge",
++    # Lightweight-fork: needed to read fingerprinting::Current() so the
++    # bridge can include the persona seed in its Hello message.
++    "//third_party/blink/public/common:headers",
++  ]
++}
+diff --git a/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.cc b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.cc
+new file mode 100644
+index 0000000000000..a8b283e2dcdeb
+--- /dev/null
++++ b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.cc
+@@ -0,0 +1,550 @@
++// Copyright (c) 2026 Arman Hossain <arman@bytetunnels.com>. ChromiumFish authors. All rights reserved.
++
++#ifdef UNSAFE_BUFFERS_BUILD
++// TODO(chromiumfish): self-contained WebSocket framing uses raw byte buffers.
++#pragma allow_unsafe_buffers
++#endif
++
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h"
++
++#include <fcntl.h>
++#include <netdb.h>
++#include <netinet/in.h>
++#include <netinet/tcp.h>
++#include <sys/socket.h>
++#include <unistd.h>
++
++#include <cstring>
++
++#include "base/base64.h"
++#include "base/command_line.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
++#include "base/functional/bind.h"
++#include "base/hash/sha1.h"
++#include "base/logging.h"
++#include "base/rand_util.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/string_split.h"
++#include "base/strings/stringprintf.h"
++#include "components/canvas_bridge/public/canvas_bridge_switches.h"
++
++// Self-contained raw TCP + WebSocket framing. POSIX sockets only —
++// this is renderer-process I/O on its own thread, so we don't go
++// through the network service.  No TLS yet (use ws://, run over
++// Tailscale / SSH tunnel / private network).
++
++namespace blink::canvas_bridge {
++
++namespace {
++
++bool ReadSwitches(std::string* url, std::string* auth) {
++  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++  if (!cmd->HasSwitch(::canvas_bridge::switches::kCanvasBridgeUrl)) {
++    return false;
++  }
++  *url = cmd->GetSwitchValueASCII(::canvas_bridge::switches::kCanvasBridgeUrl);
++  if (cmd->HasSwitch(::canvas_bridge::switches::kCanvasBridgeAuth)) {
++    *auth =
++        cmd->GetSwitchValueASCII(::canvas_bridge::switches::kCanvasBridgeAuth);
++  }
++  return !url->empty() && !auth->empty();
++}
++
++// Parse ws://host[:port][/path]. Returns false on malformed input.
++bool ParseWsUrl(const std::string& url,
++                std::string* host,
++                int* port,
++                std::string* path) {
++  std::string remainder;
++  if (url.rfind("ws://", 0) == 0) {
++    remainder = url.substr(5);
++    *port = 80;
++  } else if (url.rfind("wss://", 0) == 0) {
++    // TLS not supported in this minimal impl. Caller should be aware
++    // and use ws:// over a Tailscale/SSH-encrypted underlying path.
++    LOG(WARNING) << "[canvas-bridge] wss:// requested but not implemented; "
++                 << "falling back to plaintext ws://";
++    remainder = url.substr(6);
++    *port = 443;
++  } else {
++    return false;
++  }
++  size_t slash = remainder.find('/');
++  std::string host_port =
++      (slash == std::string::npos) ? remainder : remainder.substr(0, slash);
++  *path = (slash == std::string::npos) ? "/" : remainder.substr(slash);
++  size_t colon = host_port.find(':');
++  if (colon == std::string::npos) {
++    *host = host_port;
++  } else {
++    *host = host_port.substr(0, colon);
++    *port = std::atoi(host_port.substr(colon + 1).c_str());
++  }
++  return !host->empty() && *port > 0 && *port < 65536;
++}
++
++// Resolve + TCP connect. Returns fd on success, -1 on failure.
++int TcpConnect(const std::string& host, int port) {
++  struct addrinfo hints {};
++  hints.ai_family = AF_UNSPEC;
++  hints.ai_socktype = SOCK_STREAM;
++  struct addrinfo* res = nullptr;
++  std::string port_str = base::NumberToString(port);
++  if (getaddrinfo(host.c_str(), port_str.c_str(), &hints, &res) != 0) {
++    return -1;
++  }
++  int fd = -1;
++  for (struct addrinfo* p = res; p; p = p->ai_next) {
++    fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
++    if (fd < 0) continue;
++    if (connect(fd, p->ai_addr, p->ai_addrlen) == 0) {
++      // Disable Nagle for the small ops we send.
++      int flag = 1;
++      setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
++      break;
++    }
++    close(fd);
++    fd = -1;
++  }
++  freeaddrinfo(res);
++  return fd;
++}
++
++bool WriteAll(int fd, const uint8_t* data, size_t len) {
++  size_t off = 0;
++  while (off < len) {
++    ssize_t n = send(fd, data + off, len - off, 0);
++    if (n <= 0) {
++      if (errno == EINTR) continue;
++      return false;
++    }
++    off += static_cast<size_t>(n);
++  }
++  return true;
++}
++
++bool ReadAll(int fd, uint8_t* buf, size_t len) {
++  size_t off = 0;
++  while (off < len) {
++    ssize_t n = recv(fd, buf + off, len - off, 0);
++    if (n == 0) return false;  // EOF
++    if (n < 0) {
++      if (errno == EINTR) continue;
++      return false;
++    }
++    off += static_cast<size_t>(n);
++  }
++  return true;
++}
++
++// Read until \r\n\r\n (HTTP response head). Returns the full text or
++// empty on failure.
++std::string ReadHttpHead(int fd) {
++  std::string buf;
++  uint8_t b;
++  while (true) {
++    ssize_t n = recv(fd, &b, 1, 0);
++    if (n <= 0) {
++      if (n < 0 && errno == EINTR) continue;
++      return {};
++    }
++    buf.push_back(static_cast<char>(b));
++    if (buf.size() >= 4 && buf.substr(buf.size() - 4) == "\r\n\r\n") {
++      return buf;
++    }
++    if (buf.size() > 16 * 1024) {
++      return {};  // sanity cap
++    }
++  }
++}
++
++// RFC 6455 frame writer (client→server, always masked).
++bool WriteWsBinaryFrame(int fd, const uint8_t* payload, size_t len) {
++  uint8_t hdr[14];
++  size_t hdr_len = 0;
++  hdr[hdr_len++] = 0x82;  // FIN + binary
++  uint8_t mask_bit = 0x80;
++  if (len < 126) {
++    hdr[hdr_len++] = mask_bit | static_cast<uint8_t>(len);
++  } else if (len <= 0xFFFF) {
++    hdr[hdr_len++] = mask_bit | 126;
++    hdr[hdr_len++] = (len >> 8) & 0xFF;
++    hdr[hdr_len++] = len & 0xFF;
++  } else {
++    hdr[hdr_len++] = mask_bit | 127;
++    for (int i = 7; i >= 0; --i) {
++      hdr[hdr_len++] = (len >> (i * 8)) & 0xFF;
++    }
++  }
++  uint8_t mask[4];
++  base::RandBytes(mask);
++  std::memcpy(hdr + hdr_len, mask, 4);
++  hdr_len += 4;
++  if (!WriteAll(fd, hdr, hdr_len)) return false;
++
++  // Mask + send payload in 4 KB chunks.
++  std::vector<uint8_t> chunk(4096);
++  size_t off = 0;
++  while (off < len) {
++    size_t n = std::min(chunk.size(), len - off);
++    for (size_t i = 0; i < n; ++i) {
++      chunk[i] = payload[off + i] ^ mask[(off + i) & 3];
++    }
++    if (!WriteAll(fd, chunk.data(), n)) return false;
++    off += n;
++  }
++  return true;
++}
++
++// Read one full WebSocket frame; returns the payload. opcode is set
++// on success. Returns false on EOF / error.
++bool ReadWsFrame(int fd, std::vector<uint8_t>* payload, uint8_t* opcode) {
++  uint8_t h[2];
++  if (!ReadAll(fd, h, 2)) return false;
++  bool fin = h[0] & 0x80;
++  *opcode = h[0] & 0x0F;
++  bool masked = h[1] & 0x80;
++  uint64_t plen = h[1] & 0x7F;
++  if (plen == 126) {
++    uint8_t b[2];
++    if (!ReadAll(fd, b, 2)) return false;
++    plen = (static_cast<uint64_t>(b[0]) << 8) | b[1];
++  } else if (plen == 127) {
++    uint8_t b[8];
++    if (!ReadAll(fd, b, 8)) return false;
++    plen = 0;
++    for (int i = 0; i < 8; ++i) {
++      plen = (plen << 8) | b[i];
++    }
++  }
++  uint8_t mask[4] = {0};
++  if (masked && !ReadAll(fd, mask, 4)) return false;
++  payload->resize(static_cast<size_t>(plen));
++  if (plen > 0 && !ReadAll(fd, payload->data(), payload->size())) return false;
++  if (masked) {
++    for (size_t i = 0; i < payload->size(); ++i) {
++      (*payload)[i] ^= mask[i & 3];
++    }
++  }
++  if (!fin) {
++    // Read continuation frames (rare; servers usually don't fragment)
++    while (true) {
++      uint8_t cont_op = 0;
++      std::vector<uint8_t> next;
++      if (!ReadWsFrame(fd, &next, &cont_op)) return false;
++      payload->insert(payload->end(), next.begin(), next.end());
++      if (cont_op == 0x80) break;  // FIN set on next (cont_op was masked)
++      // For simplicity: any subsequent frame ends the message in our case.
++      break;
++    }
++  }
++  return true;
++}
++
++}  // namespace
++
++CanvasBridgeClient* CanvasBridgeClient::Get() {
++  static base::NoDestructor<CanvasBridgeClient> kSingleton;
++  return kSingleton.get();
++}
++
++CanvasBridgeClient::CanvasBridgeClient() {
++  StartUp();
++}
++
++CanvasBridgeClient::~CanvasBridgeClient() = default;
++
++void CanvasBridgeClient::StartUp() {
++  State expected = State::kUninitialized;
++  if (!state_.compare_exchange_strong(expected, State::kConnecting)) {
++    return;
++  }
++  if (!ReadSwitches(&url_, &auth_)) {
++    Disable("--canvas-bridge-url / --canvas-bridge-auth not set");
++    return;
++  }
++  // Lightweight-fork: pull the persona seed from the fingerprinting profile
++  // so the server sees a non-zero seed and can isolate per-persona render
++  // state (different seeds get different per-pixel noise, font hint
++  // variants, etc.). Without this the server was getting persona_seed=0
++  // for every session, making all fork instances render identically.
++  persona_seed_ = fingerprinting::Current().persona_seed;
++  io_thread_ = std::make_unique<base::Thread>("canvas-bridge-io");
++  base::Thread::Options opts;
++  opts.message_pump_type = base::MessagePumpType::IO;
++  if (!io_thread_->StartWithOptions(std::move(opts))) {
++    Disable("failed to start canvas-bridge I/O thread");
++    return;
++  }
++  io_thread_->task_runner()->PostTask(
++      FROM_HERE,
++      base::BindOnce(&CanvasBridgeClient::IoThreadLoop, base::Unretained(this)));
++}
++
++void CanvasBridgeClient::IoThreadLoop() {
++  if (!DoConnect(url_, auth_)) {
++    Disable("canvas-bridge server unreachable / handshake failed");
++    return;
++  }
++  state_.store(State::kReady);
++  LOG(INFO) << "[canvas-bridge] connected to " << url_;
++  // Sends an Hello, waits for Welcome, then loops reading frames
++  // forever. Currently Hello is sent inside DoConnect.
++  ReadLoop();
++}
++
++bool CanvasBridgeClient::DoConnect(const std::string& url,
++                                   const std::string& auth) {
++  std::string host, path;
++  int port = 80;
++  if (!ParseWsUrl(url, &host, &port, &path)) {
++    LOG(WARNING) << "[canvas-bridge] bad URL: " << url;
++    return false;
++  }
++  int fd = TcpConnect(host, port);
++  if (fd < 0) {
++    LOG(WARNING) << "[canvas-bridge] TCP connect to " << host << ":" << port
++                 << " failed: " << std::strerror(errno);
++    return false;
++  }
++
++  // Build HTTP/1.1 Upgrade request.
++  uint8_t key_raw[16];
++  base::RandBytes(key_raw);
++  std::string key_b64 =
++      base::Base64Encode(std::string(reinterpret_cast<char*>(key_raw), 16));
++  std::string auth_b64 = base::Base64Encode(auth);
++  std::string req = base::StringPrintf(
++      "GET %s HTTP/1.1\r\n"
++      "Host: %s:%d\r\n"
++      "Upgrade: websocket\r\n"
++      "Connection: Upgrade\r\n"
++      "Sec-WebSocket-Key: %s\r\n"
++      "Sec-WebSocket-Version: 13\r\n"
++      "Authorization: Basic %s\r\n"
++      "\r\n",
++      path.c_str(), host.c_str(), port, key_b64.c_str(), auth_b64.c_str());
++  if (!WriteAll(fd, reinterpret_cast<const uint8_t*>(req.data()), req.size())) {
++    close(fd);
++    return false;
++  }
++
++  std::string resp = ReadHttpHead(fd);
++  if (resp.empty() || resp.find("101") == std::string::npos) {
++    LOG(WARNING) << "[canvas-bridge] handshake rejected: "
++                 << resp.substr(0, 120);
++    close(fd);
++    return false;
++  }
++  // Verify Sec-WebSocket-Accept (best-effort; server already validated).
++  std::string magic = key_b64 + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
++  auto digest = base::SHA1Hash(base::as_byte_span(magic));
++  std::string expected = base::Base64Encode(digest);
++  if (resp.find(expected) == std::string::npos) {
++    LOG(WARNING) << "[canvas-bridge] Sec-WebSocket-Accept mismatch";
++    close(fd);
++    return false;
++  }
++
++  socket_fd_ = fd;
++
++  // Send Hello frame, expect a Welcome reply (logged for diagnostics).
++  auto hello = MsgBuilder::Hello("chromiumfish/0.1", persona_seed_);
++  if (!WriteWsBinaryFrame(socket_fd_, hello.data(), hello.size())) {
++    LOG(WARNING) << "[canvas-bridge] Hello send failed";
++    close(socket_fd_);
++    socket_fd_ = -1;
++    return false;
++  }
++  std::vector<uint8_t> welcome_buf;
++  uint8_t opcode = 0;
++  if (!ReadWsFrame(socket_fd_, &welcome_buf, &opcode) || opcode != 0x2) {
++    LOG(WARNING) << "[canvas-bridge] no Welcome reply";
++    close(socket_fd_);
++    socket_fd_ = -1;
++    return false;
++  }
++  auto welcome = MsgParser::ParseWelcome(welcome_buf);
++  if (welcome.has_value()) {
++    LOG(INFO) << "[canvas-bridge] server " << welcome->server_version
++              << " os=" << welcome->os
++              << " gpu=" << welcome->gpu_vendor << "/" << welcome->gpu_renderer
++              << " proto=" << welcome->protocol_version;
++  }
++  return true;
++}
++
++void CanvasBridgeClient::SendOnIoThread(std::vector<uint8_t> frame) {
++  // Called inline from the renderer thread (not posted) because the I/O
++  // thread is blocked in ReadLoop. write_lock_ serializes concurrent
++  // writers.
++  base::AutoLock lock(write_lock_);
++  int fd = socket_fd_;
++  if (fd < 0) return;
++  if (!WriteWsBinaryFrame(fd, frame.data(), frame.size())) {
++    LOG(WARNING) << "[canvas-bridge] send failed; disabling";
++    Disable("socket write failed");
++    close(fd);
++    socket_fd_ = -1;
++  }
++}
++
++void CanvasBridgeClient::ReadLoop() {
++  while (state_.load() == State::kReady && socket_fd_ >= 0) {
++    std::vector<uint8_t> payload;
++    uint8_t opcode = 0;
++    if (!ReadWsFrame(socket_fd_, &payload, &opcode)) {
++      LOG(INFO) << "[canvas-bridge] socket closed by server";
++      Disable("server closed connection");
++      close(socket_fd_);
++      socket_fd_ = -1;
++      break;
++    }
++    if (opcode == 0x8) {  // close
++      Disable("server sent close");
++      close(socket_fd_);
++      socket_fd_ = -1;
++      break;
++    }
++    if (opcode == 0x9 || opcode == 0xA) {
++      // ping/pong — handled silently for our use case
++      continue;
++    }
++    HandleIncoming(payload);
++  }
++}
++
++void CanvasBridgeClient::HandleIncoming(const std::vector<uint8_t>& frame) {
++  if (auto img = MsgParser::ParseImageData(frame); img.has_value()) {
++    base::AutoLock lock(pending_lock_);
++    auto it = pending_replies_.find(img->canvas_id);
++    if (it == pending_replies_.end()) return;
++    it->second->reply = std::move(*img);
++    it->second->fulfilled = true;
++    it->second->done.Signal();
++    return;
++  }
++  if (auto tm = MsgParser::ParseTextMetrics(frame); tm.has_value()) {
++    base::AutoLock lock(pending_lock_);
++    if (!pending_text_metric_) return;
++    pending_text_metric_->reply = *tm;
++    pending_text_metric_->fulfilled = true;
++    pending_text_metric_->done.Signal();
++    return;
++  }
++  // Unknown / error messages are dropped silently.
++}
++
++uint32_t CanvasBridgeClient::AllocateCanvasId() {
++  if (!IsEnabled()) {
++    return 0;
++  }
++  return next_canvas_id_.fetch_add(1);
++}
++
++void CanvasBridgeClient::Send(std::vector<uint8_t> frame) {
++  if (!IsEnabled()) return;
++  // Write inline; ReadLoop owns the I/O thread, so posting there would
++  // deadlock until a server frame arrives.
++  SendOnIoThread(std::move(frame));
++}
++
++std::optional<ImageDataReply> CanvasBridgeClient::RequestImageData(
++    uint32_t canvas_id,
++    int32_t x,
++    int32_t y,
++    uint32_t w,
++    uint32_t h,
++    int timeout_ms) {
++  if (!IsEnabled()) {
++    return std::nullopt;
++  }
++  PendingReadback pending;
++  pending.canvas_id = canvas_id;
++  {
++    base::AutoLock lock(pending_lock_);
++    pending_replies_[canvas_id] = &pending;
++  }
++  // Send the request through the I/O thread queue.
++  Send(MsgBuilder::GetCanvas2DImageData(canvas_id, x, y, w, h));
++  bool ok = pending.done.TimedWait(base::Milliseconds(timeout_ms));
++  {
++    base::AutoLock lock(pending_lock_);
++    pending_replies_.erase(canvas_id);
++  }
++  if (!ok || !pending.fulfilled) {
++    return std::nullopt;
++  }
++  return pending.reply;
++}
++
++std::optional<ImageDataReply> CanvasBridgeClient::RequestWebGLPixels(
++    uint32_t webgl_id,
++    int32_t x,
++    int32_t y,
++    uint32_t w,
++    uint32_t h,
++    uint32_t format,
++    uint32_t type,
++    int timeout_ms) {
++  // Reuses the same pending_replies_ machinery as RequestImageData. The
++  // server returns an `ImageData` reply tagged with the canvas id, so as
++  // long as WebGL ids and Canvas2D ids are drawn from the same
++  // AllocateCanvasId() pool (they are), the dispatch routes correctly.
++  if (!IsEnabled()) {
++    return std::nullopt;
++  }
++  PendingReadback pending;
++  pending.canvas_id = webgl_id;
++  {
++    base::AutoLock lock(pending_lock_);
++    pending_replies_[webgl_id] = &pending;
++  }
++  Send(MsgBuilder::WebGLReadPixels(webgl_id, x, y, w, h, format, type));
++  bool ok = pending.done.TimedWait(base::Milliseconds(timeout_ms));
++  {
++    base::AutoLock lock(pending_lock_);
++    pending_replies_.erase(webgl_id);
++  }
++  if (!ok || !pending.fulfilled) {
++    return std::nullopt;
++  }
++  return pending.reply;
++}
++
++std::optional<TextMetricReply> CanvasBridgeClient::RequestTextMetrics(
++    const String& text,
++    const String& family,
++    float size_px,
++    int timeout_ms) {
++  if (!IsEnabled()) {
++    return std::nullopt;
++  }
++  PendingTextMetric pending;
++  {
++    base::AutoLock lock(pending_lock_);
++    if (pending_text_metric_) {
++      // Another renderer thread is already mid-request. Skip the bridge
++      // and fall back to local for this call rather than serializing.
++      return std::nullopt;
++    }
++    pending_text_metric_ = &pending;
++  }
++  Send(MsgBuilder::MeasureText(text, family, size_px));
++  bool ok = pending.done.TimedWait(base::Milliseconds(timeout_ms));
++  {
++    base::AutoLock lock(pending_lock_);
++    pending_text_metric_ = nullptr;
++  }
++  if (!ok || !pending.fulfilled) {
++    return std::nullopt;
++  }
++  return pending.reply;
++}
++
++void CanvasBridgeClient::Disable(const std::string& reason) {
++  state_.store(State::kDisabled);
++  LOG(INFO) << "[canvas-bridge] disabled: " << reason;
++}
++
++}  // namespace blink::canvas_bridge
+diff --git a/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h
+new file mode 100644
+index 0000000000000..6bd366f5d481a
+--- /dev/null
++++ b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h
+@@ -0,0 +1,165 @@
++// Copyright (c) 2026 Arman Hossain <arman@bytetunnels.com>. ChromiumFish authors. All rights reserved.
++//
++// CanvasBridgeClient — per-renderer-process singleton that owns the
++// WebSocket connection to the remote render server. Blink call sites
++// (html_canvas_element.cc, base_rendering_context_2d.cc) call into
++// this from the renderer main thread; the client thunks the request
++// to its dedicated I/O thread, which speaks the protocol.
++//
++// Lifetime: a process-wide singleton created on the first Get() call,
++// which the renderer makes eagerly at startup (from blink_initializer).
++// IsEnabled() returns false if the --canvas-bridge-url switch wasn't
++// supplied or the initial Hello/Welcome handshake failed. Once disabled,
++// stays disabled for the rest of the process.
++
++#ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_CANVAS_BRIDGE_CANVAS_BRIDGE_CLIENT_H_
++#define THIRD_PARTY_BLINK_RENDERER_PLATFORM_CANVAS_BRIDGE_CANVAS_BRIDGE_CLIENT_H_
++
++#include <atomic>
++#include <cstdint>
++#include <memory>
++#include <optional>
++#include <string>
++#include <vector>
++
++#include <map>
++
++#include "base/memory/raw_ptr.h"
++#include "base/no_destructor.h"
++#include "base/synchronization/lock.h"
++#include "base/synchronization/waitable_event.h"
++#include "base/threading/thread.h"
++#include "base/time/time.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h"
++#include "third_party/blink/renderer/platform/platform_export.h"
++#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
++
++namespace blink::canvas_bridge {
++
++class PLATFORM_EXPORT CanvasBridgeClient {
++ public:
++  // Returns the process-wide singleton. Always non-null; check
++  // IsEnabled() before issuing ops.
++  static CanvasBridgeClient* Get();
++
++  // True iff the --canvas-bridge-url switch is set and the server
++  // handshook successfully. Cheap to call from the renderer main
++  // thread.
++  bool IsEnabled() const { return state_.load() == State::kReady; }
++
++  // Allocate a unique CanvasId for a new HTMLCanvasElement. Returns 0
++  // if the bridge is disabled.
++  uint32_t AllocateCanvasId();
++
++  // Async fire-and-forget op send. The op is queued for the I/O thread.
++  // No-op if disabled. Caller-owned buffer is copied.
++  void Send(std::vector<uint8_t> frame);
++
++  // Synchronous readback. Sends a GetCanvas2DImageData and blocks the
++  // calling thread up to `timeout_ms` for the reply. Returns nullopt
++  // on timeout / network error / disabled bridge.
++  std::optional<ImageDataReply> RequestImageData(uint32_t canvas_id,
++                                                  int32_t x,
++                                                  int32_t y,
++                                                  uint32_t w,
++                                                  uint32_t h,
++                                                  int timeout_ms = 5000);
++
++  // Synchronous text metrics query. Resolves `family` against the
++  // server's font catalog (Win DirectWrite when the server runs on
++  // Windows) and returns the box for `text` at `size_px`. Returns
++  // nullopt on timeout / network error / disabled bridge.
++  std::optional<TextMetricReply> RequestTextMetrics(const String& text,
++                                                     const String& family,
++                                                     float size_px,
++                                                     int timeout_ms = 5000);
++
++  // WebGL readback. Sends a WebGLReadPixels and blocks the calling
++  // thread up to `timeout_ms` for the ImageData reply. Returns nullopt
++  // on timeout / network error / disabled bridge. The server replays
++  // the per-context op stream before reading back, so the returned
++  // pixels reflect the full set of WebGL ops issued so far on this id.
++  std::optional<ImageDataReply> RequestWebGLPixels(uint32_t webgl_id,
++                                                    int32_t x,
++                                                    int32_t y,
++                                                    uint32_t w,
++                                                    uint32_t h,
++                                                    uint32_t format,
++                                                    uint32_t type,
++                                                    int timeout_ms = 5000);
++
++  // Disable the bridge permanently. Called when an unrecoverable
++  // protocol or network error occurs.
++  void Disable(const std::string& reason);
++
++ private:
++  friend class base::NoDestructor<CanvasBridgeClient>;
++
++  enum class State : uint8_t { kUninitialized, kConnecting, kReady, kDisabled };
++
++  CanvasBridgeClient();
++  ~CanvasBridgeClient();
++
++  void StartUp();         // called on main thread
++  void IoThreadLoop();    // I/O thread entry: connect + read loop
++
++  // I/O thread methods.
++  bool DoConnect(const std::string& url, const std::string& auth);
++  void SendOnIoThread(std::vector<uint8_t> frame);
++  void ReadLoop();
++  void HandleIncoming(const std::vector<uint8_t>& frame);
++
++  std::atomic<State> state_{State::kUninitialized};
++  std::atomic<uint32_t> next_canvas_id_{1};
++
++  std::unique_ptr<base::Thread> io_thread_;
++
++  // The open TCP socket fd; -1 when not connected. Read/written by the I/O
++  // thread, but also touched by renderer threads during sends — accesses are
++  // guarded by `write_lock_` (see SendOnIoThread).
++  int socket_fd_ = -1;
++
++  // Sync wait machinery for RequestImageData. Renderer thread creates
++  // a PendingReadback, registers it in pending_replies_, posts the
++  // request to the I/O thread, then blocks on `done`. I/O thread
++  // reads ImageData replies and signals matching PendingReadbacks.
++  struct PendingReadback {
++    uint32_t canvas_id;
++    ImageDataReply reply;
++    bool fulfilled = false;
++    base::WaitableEvent done{
++        base::WaitableEvent::ResetPolicy::MANUAL,
++        base::WaitableEvent::InitialState::NOT_SIGNALED};
++  };
++  base::Lock pending_lock_;
++  std::map<uint32_t, PendingReadback*> pending_replies_
++      ALLOW_DISCOURAGED_TYPE("interop with sync canvas-bridge readbacks");
++
++  // MeasureText replies don't carry a canvas id. There's at most one
++  // measureText call in flight per renderer thread because the API is
++  // synchronous, but multiple renderer threads can race — so guard with
++  // pending_lock_ and use a single pending slot, rejecting a second
++  // concurrent caller (RequestTextMetrics returns nullopt when busy and
++  // the caller falls back to local).
++  struct PendingTextMetric {
++    TextMetricReply reply;
++    bool fulfilled = false;
++    base::WaitableEvent done{
++        base::WaitableEvent::ResetPolicy::MANUAL,
++        base::WaitableEvent::InitialState::NOT_SIGNALED};
++  };
++  raw_ptr<PendingTextMetric> pending_text_metric_ = nullptr;
++
++  // Serializes writes to socket_fd_ across renderer threads. TCP send +
++  // recv can run concurrently on the same fd, so the I/O thread can be
++  // blocked in read while callers write.
++  base::Lock write_lock_;
++
++  std::string url_;
++  std::string auth_;
++  uint64_t persona_seed_ = 0;
++};
++
++}  // namespace blink::canvas_bridge
++
++#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_CANVAS_BRIDGE_CANVAS_BRIDGE_CLIENT_H_
+diff --git a/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.cc b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.cc
+new file mode 100644
+index 0000000000000..8d65a9dd73d52
+--- /dev/null
++++ b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.cc
+@@ -0,0 +1,1143 @@
++// Copyright (c) 2026 Arman Hossain <arman@bytetunnels.com>. ChromiumFish authors. All rights reserved.
++
++#ifdef UNSAFE_BUFFERS_BUILD
++// TODO(chromiumfish): msgpack codec uses raw pointer arithmetic.
++#pragma allow_unsafe_buffers
++#endif
++
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h"
++
++#include "base/memory/raw_span.h"
++#include "base/notreached.h"
++#include "third_party/blink/renderer/platform/allow_discouraged_type.h"
++
++namespace blink::canvas_bridge {
++
++namespace {
++
++// Tiny hand-rolled msgpack writer for the subset of types we need
++// (fixmap, str, bin, positive fixint, uint8/16/32, float32, bool).
++// Keeps Blink free of a third-party msgpack dependency.
++
++class Writer {
++ public:
++  Writer() = default;
++
++  void U8(uint8_t v) { buf_.push_back(v); }
++
++  // Tagged messages serialize as fixmap { "t": <tag>, "v": <payload> }.
++  void StartEnvelope(const char* tag) {
++    BeginMap(2);
++    Str("t");
++    Str(tag);
++    Str("v");
++    // Caller writes the payload (a map) next.
++  }
++
++  void BeginMap(uint32_t n) {
++    if (n <= 0x0f) {
++      U8(0x80 | static_cast<uint8_t>(n));
++    } else if (n <= 0xffff) {
++      U8(0xde);
++      U16(n);
++    } else {
++      U8(0xdf);
++      U32(n);
++    }
++  }
++
++  void BeginArray(uint32_t n) {
++    if (n <= 0x0f) {
++      U8(0x90 | static_cast<uint8_t>(n));
++    } else if (n <= 0xffff) {
++      U8(0xdc);
++      U16(n);
++    } else {
++      U8(0xdd);
++      U32(n);
++    }
++  }
++
++  void Str(const char* s) { Str(std::string(s)); }
++  void Str(const std::string& s) {
++    if (s.size() <= 31) {
++      U8(0xa0 | static_cast<uint8_t>(s.size()));
++    } else if (s.size() <= 0xff) {
++      U8(0xd9);
++      U8(static_cast<uint8_t>(s.size()));
++    } else if (s.size() <= 0xffff) {
++      U8(0xda);
++      U16(static_cast<uint16_t>(s.size()));
++    } else {
++      U8(0xdb);
++      U32(static_cast<uint32_t>(s.size()));
++    }
++    buf_.insert(buf_.end(), s.begin(), s.end());
++  }
++
++  void StrUtf8(const String& s) { Str(s.Utf8()); }
++
++  void Bin(const uint8_t* data, size_t n) {
++    if (n <= 0xff) {
++      U8(0xc4);
++      U8(static_cast<uint8_t>(n));
++    } else if (n <= 0xffff) {
++      U8(0xc5);
++      U16(static_cast<uint16_t>(n));
++    } else {
++      U8(0xc6);
++      U32(static_cast<uint32_t>(n));
++    }
++    buf_.insert(buf_.end(), data, data + n);
++  }
++
++  void Uint(uint64_t v) {
++    if (v <= 0x7f) {
++      U8(static_cast<uint8_t>(v));
++    } else if (v <= 0xff) {
++      U8(0xcc);
++      U8(static_cast<uint8_t>(v));
++    } else if (v <= 0xffff) {
++      U8(0xcd);
++      U16(static_cast<uint16_t>(v));
++    } else if (v <= 0xffffffffULL) {
++      U8(0xce);
++      U32(static_cast<uint32_t>(v));
++    } else {
++      U8(0xcf);
++      U64(v);
++    }
++  }
++
++  void Int32(int32_t v) {
++    if (v >= 0) {
++      Uint(static_cast<uint64_t>(v));
++    } else {
++      U8(0xd2);
++      U32(static_cast<uint32_t>(v));
++    }
++  }
++
++  void Float32(float v) {
++    U8(0xca);
++    uint32_t bits;
++    static_assert(sizeof(bits) == sizeof(v));
++    std::memcpy(&bits, &v, sizeof(bits));
++    U32(bits);
++  }
++
++  void Bool(bool v) { U8(v ? 0xc3 : 0xc2); }
++  void Null() { U8(0xc0); }
++
++  std::vector<uint8_t> Take() && { return std::move(buf_); }
++
++ private:
++  void U16(uint16_t v) {
++    U8(static_cast<uint8_t>(v >> 8));
++    U8(static_cast<uint8_t>(v));
++  }
++  void U32(uint32_t v) {
++    U8(static_cast<uint8_t>(v >> 24));
++    U8(static_cast<uint8_t>(v >> 16));
++    U8(static_cast<uint8_t>(v >> 8));
++    U8(static_cast<uint8_t>(v));
++  }
++  void U64(uint64_t v) {
++    U32(static_cast<uint32_t>(v >> 32));
++    U32(static_cast<uint32_t>(v));
++  }
++
++  std::vector<uint8_t> buf_
++      ALLOW_DISCOURAGED_TYPE("msgpack scratch buffer");
++};
++
++// Writes the canonical Canvas2DOp envelope: { id, op: { op: <name>, args: <args> } }.
++void WriteCanvas2DOpHeader(Writer& w,
++                           uint32_t id,
++                           const char* op_name) {
++  w.StartEnvelope("Canvas2DOp");
++  w.BeginMap(2);
++  w.Str("id");
++  w.Uint(id);
++  w.Str("op");
++  w.BeginMap(2);
++  w.Str("op");
++  w.Str(op_name);
++  w.Str("args");
++}
++
++}  // namespace
++
++std::vector<uint8_t> MsgBuilder::Hello(const std::string& client_version,
++                                       uint64_t persona_seed) {
++  Writer w;
++  w.StartEnvelope("Hello");
++  w.BeginMap(3);
++  w.Str("protocol_version");
++  w.Uint(kProtocolVersion);
++  w.Str("client_version");
++  w.Str(client_version);
++  w.Str("persona_seed");
++  w.Uint(persona_seed);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::CreateCanvas2D(uint32_t id,
++                                                 uint32_t width,
++                                                 uint32_t height,
++                                                 bool opaque) {
++  Writer w;
++  w.StartEnvelope("CreateCanvas2D");
++  w.BeginMap(4);
++  w.Str("id");
++  w.Uint(id);
++  w.Str("width");
++  w.Uint(width);
++  w.Str("height");
++  w.Uint(height);
++  w.Str("opaque");
++  w.Bool(opaque);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::SetFillStyleColor(uint32_t id,
++                                                    const String& css) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "SetFillStyle");
++  w.BeginMap(2);
++  w.Str("k");
++  w.Str("Color");
++  w.Str("v");
++  w.StrUtf8(css);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::SetStrokeStyleColor(uint32_t id,
++                                                      const String& css) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "SetStrokeStyle");
++  w.BeginMap(2);
++  w.Str("k");
++  w.Str("Color");
++  w.Str("v");
++  w.StrUtf8(css);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::SetFont(uint32_t id, const String& font) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "SetFont");
++  w.StrUtf8(font);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::SetTextAlign(uint32_t id, const String& align) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "SetTextAlign");
++  w.StrUtf8(align);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::SetTextBaseline(uint32_t id,
++                                                  const String& baseline) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "SetTextBaseline");
++  w.StrUtf8(baseline);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::FillRect(uint32_t id,
++                                           float x,
++                                           float y,
++                                           float w_,
++                                           float h_) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "FillRect");
++  w.BeginMap(4);
++  w.Str("x");
++  w.Float32(x);
++  w.Str("y");
++  w.Float32(y);
++  w.Str("w");
++  w.Float32(w_);
++  w.Str("h");
++  w.Float32(h_);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::StrokeRect(uint32_t id,
++                                             float x,
++                                             float y,
++                                             float w_,
++                                             float h_) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "StrokeRect");
++  w.BeginMap(4);
++  w.Str("x");
++  w.Float32(x);
++  w.Str("y");
++  w.Float32(y);
++  w.Str("w");
++  w.Float32(w_);
++  w.Str("h");
++  w.Float32(h_);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::FillText(uint32_t id,
++                                           const String& text,
++                                           float x,
++                                           float y,
++                                           std::optional<float> max_width) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "FillText");
++  w.BeginMap(4);
++  w.Str("text");
++  w.StrUtf8(text);
++  w.Str("x");
++  w.Float32(x);
++  w.Str("y");
++  w.Float32(y);
++  w.Str("max_width");
++  if (max_width.has_value()) {
++    w.Float32(*max_width);
++  } else {
++    w.Null();
++  }
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::Save(uint32_t id) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "Save");
++  w.Null();
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::Restore(uint32_t id) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "Restore");
++  w.Null();
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::ClearRect(uint32_t id,
++                                            float x,
++                                            float y,
++                                            float w_,
++                                            float h_) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "ClearRect");
++  w.BeginMap(4);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  w.Str("w"); w.Float32(w_);
++  w.Str("h"); w.Float32(h_);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::StrokeText(uint32_t id,
++                                             const String& text,
++                                             float x,
++                                             float y,
++                                             std::optional<float> max_width) {
++  Writer w;
++  WriteCanvas2DOpHeader(w, id, "StrokeText");
++  w.BeginMap(4);
++  w.Str("text"); w.StrUtf8(text);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  w.Str("max_width");
++  if (max_width.has_value()) w.Float32(*max_width); else w.Null();
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::BeginPath(uint32_t id) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "BeginPath"); w.Null();
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::ClosePath(uint32_t id) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "ClosePath"); w.Null();
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::Fill(uint32_t id) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "Fill"); w.Null();
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::Stroke(uint32_t id) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "Stroke"); w.Null();
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::MoveTo(uint32_t id, float x, float y) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "MoveTo");
++  w.BeginMap(2);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::LineTo(uint32_t id, float x, float y) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "LineTo");
++  w.BeginMap(2);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::Rect(uint32_t id,
++                                       float x, float y, float w_, float h_) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "Rect");
++  w.BeginMap(4);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  w.Str("w"); w.Float32(w_);
++  w.Str("h"); w.Float32(h_);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::Arc(uint32_t id,
++                                      float x, float y, float r,
++                                      float start, float end,
++                                      bool counter_clockwise) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "Arc");
++  w.BeginMap(6);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  w.Str("r"); w.Float32(r);
++  w.Str("start"); w.Float32(start);
++  w.Str("end"); w.Float32(end);
++  w.Str("counter_clockwise"); w.Bool(counter_clockwise);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::QuadraticCurveTo(uint32_t id,
++                                                   float cpx, float cpy,
++                                                   float x, float y) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "QuadraticCurveTo");
++  w.BeginMap(4);
++  w.Str("cpx"); w.Float32(cpx);
++  w.Str("cpy"); w.Float32(cpy);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::BezierCurveTo(uint32_t id,
++                                                float cp1x, float cp1y,
++                                                float cp2x, float cp2y,
++                                                float x, float y) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "BezierCurveTo");
++  w.BeginMap(6);
++  w.Str("cp1x"); w.Float32(cp1x);
++  w.Str("cp1y"); w.Float32(cp1y);
++  w.Str("cp2x"); w.Float32(cp2x);
++  w.Str("cp2y"); w.Float32(cp2y);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::SetTransform(uint32_t id,
++                                               float a, float b, float c,
++                                               float d, float e, float f) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "SetTransform");
++  w.BeginMap(6);
++  w.Str("a"); w.Float32(a);
++  w.Str("b"); w.Float32(b);
++  w.Str("c"); w.Float32(c);
++  w.Str("d"); w.Float32(d);
++  w.Str("e"); w.Float32(e);
++  w.Str("f"); w.Float32(f);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::Translate(uint32_t id, float x, float y) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "Translate");
++  w.BeginMap(2);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::Rotate(uint32_t id, float angle) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "Rotate");
++  w.BeginMap(1);
++  w.Str("angle"); w.Float32(angle);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::Scale(uint32_t id, float x, float y) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "Scale");
++  w.BeginMap(2);
++  w.Str("x"); w.Float32(x);
++  w.Str("y"); w.Float32(y);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::SetGlobalAlpha(uint32_t id, float alpha) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "SetGlobalAlpha");
++  w.Float32(alpha);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::SetGlobalCompositeOperation(
++    uint32_t id, const String& op) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "SetGlobalCompositeOperation");
++  w.StrUtf8(op);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::SetLineWidth(uint32_t id, float width) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "SetLineWidth");
++  w.Float32(width);
++  return std::move(w).Take();
++}
++std::vector<uint8_t> MsgBuilder::SetDirection(uint32_t id, const String& dir) {
++  Writer w; WriteCanvas2DOpHeader(w, id, "SetDirection");
++  w.StrUtf8(dir);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::GetCanvas2DImageData(uint32_t id,
++                                                       int32_t x,
++                                                       int32_t y,
++                                                       uint32_t w_,
++                                                       uint32_t h_) {
++  Writer w;
++  w.StartEnvelope("GetCanvas2DImageData");
++  w.BeginMap(5);
++  w.Str("id");
++  w.Uint(id);
++  w.Str("x");
++  w.Int32(x);
++  w.Str("y");
++  w.Int32(y);
++  w.Str("w");
++  w.Uint(w_);
++  w.Str("h");
++  w.Uint(h_);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::DestroyCanvas(uint32_t id) {
++  Writer w;
++  w.StartEnvelope("DestroyCanvas");
++  w.BeginMap(1);
++  w.Str("id");
++  w.Uint(id);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::MeasureText(const String& text,
++                                              const String& family,
++                                              float size_px) {
++  Writer w;
++  w.StartEnvelope("MeasureText");
++  w.BeginMap(3);
++  w.Str("text");
++  w.StrUtf8(text);
++  w.Str("families");
++  w.BeginArray(1);
++  w.StrUtf8(family);
++  w.Str("sizes_px");
++  w.BeginArray(1);
++  w.Float32(size_px);
++  return std::move(w).Take();
++}
++
++/* ---------------- parser ---------------- */
++
++namespace {
++
++// Minimal msgpack reader. Returns false on malformed input. Supports
++// only the subset our server emits.
++class Reader {
++ public:
++  Reader(base::span<const uint8_t> buf) : buf_(buf) {}
++
++  bool ReadMapHeader(uint32_t* n) {
++    if (Empty()) return false;
++    uint8_t t = Next();
++    if ((t & 0xf0) == 0x80) {
++      *n = t & 0x0f;
++      return true;
++    }
++    if (t == 0xde) return Read16(n);
++    if (t == 0xdf) return Read32(n);
++    return false;
++  }
++
++  bool ReadStr(std::string* out) {
++    if (Empty()) return false;
++    uint8_t t = Next();
++    uint32_t n = 0;
++    if ((t & 0xe0) == 0xa0) {
++      n = t & 0x1f;
++    } else if (t == 0xd9) {
++      uint8_t v;
++      if (!Read8(&v)) return false;
++      n = v;
++    } else if (t == 0xda) {
++      uint16_t v;
++      if (!Read16(&v)) return false;
++      n = v;
++    } else if (t == 0xdb) {
++      uint32_t v;
++      if (!Read32(&v)) return false;
++      n = v;
++    } else {
++      return false;
++    }
++    if (buf_.size() < n) return false;
++    out->assign(reinterpret_cast<const char*>(buf_.data()),
++                reinterpret_cast<const char*>(buf_.data()) + n);
++    buf_ = buf_.subspan(n);
++    return true;
++  }
++
++  bool ReadBin(std::vector<uint8_t>* out) {
++    if (Empty()) return false;
++    uint8_t t = Next();
++    uint32_t n = 0;
++    if (t == 0xc4) {
++      uint8_t v;
++      if (!Read8(&v)) return false;
++      n = v;
++    } else if (t == 0xc5) {
++      uint16_t v;
++      if (!Read16(&v)) return false;
++      n = v;
++    } else if (t == 0xc6) {
++      if (!Read32(&n)) return false;
++    } else {
++      return false;
++    }
++    if (buf_.size() < n) return false;
++    out->assign(buf_.data(), buf_.data() + n);
++    buf_ = buf_.subspan(n);
++    return true;
++  }
++
++  bool ReadUint(uint64_t* out) {
++    if (Empty()) return false;
++    uint8_t t = Next();
++    if ((t & 0x80) == 0) {
++      *out = t;
++      return true;
++    }
++    switch (t) {
++      case 0xcc: {
++        uint8_t v;
++        if (!Read8(&v)) return false;
++        *out = v;
++        return true;
++      }
++      case 0xcd: {
++        uint16_t v;
++        if (!Read16(&v)) return false;
++        *out = v;
++        return true;
++      }
++      case 0xce: {
++        uint32_t v;
++        if (!Read32(&v)) return false;
++        *out = v;
++        return true;
++      }
++      case 0xcf: {
++        uint64_t v;
++        if (!Read64(&v)) return false;
++        *out = v;
++        return true;
++      }
++      default:
++        return false;
++    }
++  }
++
++  bool ReadArrayHeader(uint32_t* n) {
++    if (Empty()) return false;
++    uint8_t t = Next();
++    if ((t & 0xf0) == 0x90) {
++      *n = t & 0x0f;
++      return true;
++    }
++    if (t == 0xdc) return Read16(n);
++    if (t == 0xdd) return Read32(n);
++    return false;
++  }
++
++  bool ReadFloat32(float* out) {
++    if (Empty()) return false;
++    uint8_t t = Next();
++    if (t == 0xca) {
++      uint32_t bits;
++      if (!Read32(&bits)) return false;
++      static_assert(sizeof(bits) == sizeof(*out));
++      std::memcpy(out, &bits, sizeof(*out));
++      return true;
++    }
++    if (t == 0xcb) {
++      uint64_t bits;
++      if (!Read64(&bits)) return false;
++      double d;
++      static_assert(sizeof(bits) == sizeof(d));
++      std::memcpy(&d, &bits, sizeof(d));
++      *out = static_cast<float>(d);
++      return true;
++    }
++    // Tolerate int-encoded numbers (server sometimes round-trips
++    // small whole-number metrics as ints).
++    if ((t & 0x80) == 0) {
++      *out = static_cast<float>(t);
++      return true;
++    }
++    return false;
++  }
++
++  // Skip one value (any type). Returns false on malformed input.
++  bool Skip();
++
++ private:
++  bool Empty() const { return buf_.empty(); }
++  uint8_t Next() {
++    uint8_t v = buf_.front();
++    buf_ = buf_.subspan(1u);
++    return v;
++  }
++  bool Read8(uint8_t* v) {
++    if (buf_.empty()) return false;
++    *v = buf_.front();
++    buf_ = buf_.subspan(1u);
++    return true;
++  }
++  bool Read16(uint16_t* v) {
++    if (buf_.size() < 2u) return false;
++    *v = (static_cast<uint16_t>(buf_[0u]) << 8) | buf_[1u];
++    buf_ = buf_.subspan(2u);
++    return true;
++  }
++  bool Read16(uint32_t* v) {
++    uint16_t x;
++    if (!Read16(&x)) return false;
++    *v = x;
++    return true;
++  }
++  bool Read32(uint32_t* v) {
++    if (buf_.size() < 4u) return false;
++    *v = (static_cast<uint32_t>(buf_[0u]) << 24) |
++         (static_cast<uint32_t>(buf_[1u]) << 16) |
++         (static_cast<uint32_t>(buf_[2u]) << 8) | buf_[3u];
++    buf_ = buf_.subspan(4u);
++    return true;
++  }
++  bool Read64(uint64_t* v) {
++    uint32_t hi, lo;
++    if (!Read32(&hi) || !Read32(&lo)) return false;
++    *v = (static_cast<uint64_t>(hi) << 32) | lo;
++    return true;
++  }
++  base::raw_span<const uint8_t> buf_;
++};
++
++bool Reader::Skip() {
++  if (buf_.empty()) return false;
++  uint8_t t = buf_.front();
++  std::string s;
++  std::vector<uint8_t> b;
++  uint64_t u;
++  if (t == 0xc0 || t == 0xc2 || t == 0xc3) {
++    buf_ = buf_.subspan(1u);
++    return true;
++  }
++  if ((t & 0xe0) == 0xa0 || t == 0xd9 || t == 0xda || t == 0xdb) {
++    return ReadStr(&s);
++  }
++  if (t == 0xc4 || t == 0xc5 || t == 0xc6) {
++    return ReadBin(&b);
++  }
++  if ((t & 0x80) == 0 || (t >= 0xcc && t <= 0xcf)) {
++    return ReadUint(&u);
++  }
++  if ((t & 0xf0) == 0x80 || t == 0xde || t == 0xdf) {
++    uint32_t n;
++    if (!ReadMapHeader(&n)) return false;
++    for (uint32_t i = 0; i < n * 2; ++i) {
++      if (!Skip()) return false;
++    }
++    return true;
++  }
++  // Other types (arrays, floats, signed ints) never appear as skippable
++  // values in this protocol — every map we parse uses string keys with
++  // string / uint / bool / bin values. Reaching here means malformed input.
++  NOTREACHED();
++}
++
++}  // namespace
++
++std::optional<WelcomeReply> MsgParser::ParseWelcome(
++    base::span<const uint8_t> frame) {
++  Reader r(frame);
++  uint32_t n = 0;
++  if (!r.ReadMapHeader(&n) || n != 2) return std::nullopt;
++  std::string key;
++  if (!r.ReadStr(&key) || key != "t") return std::nullopt;
++  std::string tag;
++  if (!r.ReadStr(&tag) || tag != "Welcome") return std::nullopt;
++  if (!r.ReadStr(&key) || key != "v") return std::nullopt;
++  uint32_t pn = 0;
++  if (!r.ReadMapHeader(&pn)) return std::nullopt;
++  WelcomeReply out{};
++  for (uint32_t i = 0; i < pn; ++i) {
++    std::string k;
++    if (!r.ReadStr(&k)) return std::nullopt;
++    if (k == "protocol_version") {
++      uint64_t v;
++      if (!r.ReadUint(&v)) return std::nullopt;
++      out.protocol_version = static_cast<uint32_t>(v);
++    } else if (k == "server_version") {
++      if (!r.ReadStr(&out.server_version)) return std::nullopt;
++    } else if (k == "os") {
++      if (!r.ReadStr(&out.os)) return std::nullopt;
++    } else if (k == "gpu_renderer") {
++      if (!r.ReadStr(&out.gpu_renderer)) return std::nullopt;
++    } else if (k == "gpu_vendor") {
++      if (!r.ReadStr(&out.gpu_vendor)) return std::nullopt;
++    } else {
++      if (!r.Skip()) return std::nullopt;
++    }
++  }
++  return out;
++}
++
++std::optional<ImageDataReply> MsgParser::ParseImageData(
++    base::span<const uint8_t> frame) {
++  Reader r(frame);
++  uint32_t n = 0;
++  if (!r.ReadMapHeader(&n) || n != 2) return std::nullopt;
++  std::string key;
++  if (!r.ReadStr(&key) || key != "t") return std::nullopt;
++  std::string tag;
++  if (!r.ReadStr(&tag) || tag != "ImageData") return std::nullopt;
++  if (!r.ReadStr(&key) || key != "v") return std::nullopt;
++  uint32_t pn = 0;
++  if (!r.ReadMapHeader(&pn)) return std::nullopt;
++  ImageDataReply out{};
++  for (uint32_t i = 0; i < pn; ++i) {
++    std::string k;
++    if (!r.ReadStr(&k)) return std::nullopt;
++    if (k == "id") {
++      uint64_t v;
++      if (!r.ReadUint(&v)) return std::nullopt;
++      out.canvas_id = static_cast<uint32_t>(v);
++    } else if (k == "w") {
++      uint64_t v;
++      if (!r.ReadUint(&v)) return std::nullopt;
++      out.width = static_cast<uint32_t>(v);
++    } else if (k == "h") {
++      uint64_t v;
++      if (!r.ReadUint(&v)) return std::nullopt;
++      out.height = static_cast<uint32_t>(v);
++    } else if (k == "pixels") {
++      if (!r.ReadBin(&out.pixels)) return std::nullopt;
++    } else {
++      if (!r.Skip()) return std::nullopt;
++    }
++  }
++  return out;
++}
++
++std::optional<TextMetricReply> MsgParser::ParseTextMetrics(
++    base::span<const uint8_t> frame) {
++  Reader r(frame);
++  uint32_t n = 0;
++  if (!r.ReadMapHeader(&n) || n != 2) return std::nullopt;
++  std::string key;
++  if (!r.ReadStr(&key) || key != "t") return std::nullopt;
++  std::string tag;
++  if (!r.ReadStr(&tag) || tag != "TextMetrics") return std::nullopt;
++  if (!r.ReadStr(&key) || key != "v") return std::nullopt;
++  // v: { "metrics": [[TextMetric, ...], ...] } — outer array per family,
++  // inner per size. We always request 1×1.
++  uint32_t pn = 0;
++  if (!r.ReadMapHeader(&pn) || pn < 1) return std::nullopt;
++  if (!r.ReadStr(&key) || key != "metrics") return std::nullopt;
++  uint32_t outer = 0;
++  if (!r.ReadArrayHeader(&outer) || outer < 1) return std::nullopt;
++  uint32_t inner = 0;
++  if (!r.ReadArrayHeader(&inner) || inner < 1) return std::nullopt;
++  // Single TextMetric struct.
++  uint32_t mn = 0;
++  if (!r.ReadMapHeader(&mn)) return std::nullopt;
++  TextMetricReply out{};
++  for (uint32_t i = 0; i < mn; ++i) {
++    std::string k;
++    if (!r.ReadStr(&k)) return std::nullopt;
++    float v = 0.0f;
++    if (k == "width") {
++      if (!r.ReadFloat32(&v)) return std::nullopt;
++      out.width = v;
++    } else if (k == "actual_bounding_box_ascent") {
++      if (!r.ReadFloat32(&v)) return std::nullopt;
++      out.actual_bounding_box_ascent = v;
++    } else if (k == "actual_bounding_box_descent") {
++      if (!r.ReadFloat32(&v)) return std::nullopt;
++      out.actual_bounding_box_descent = v;
++    } else if (k == "font_bounding_box_ascent") {
++      if (!r.ReadFloat32(&v)) return std::nullopt;
++      out.font_bounding_box_ascent = v;
++    } else if (k == "font_bounding_box_descent") {
++      if (!r.ReadFloat32(&v)) return std::nullopt;
++      out.font_bounding_box_descent = v;
++    } else {
++      if (!r.Skip()) return std::nullopt;
++    }
++  }
++  return out;
++}
++
++// =============================================================================
++// WebGL bridge encoders.
++// =============================================================================
++
++namespace {
++// Mirrors WriteCanvas2DOpHeader but with a WebGLOp envelope.
++void WriteWebGLOpHeader(Writer& w, uint32_t id, const char* op_name) {
++  w.StartEnvelope("WebGLOp");
++  w.BeginMap(2);
++  w.Str("id");
++  w.Uint(id);
++  w.Str("op");
++  w.BeginMap(2);
++  w.Str("op");
++  w.Str(op_name);
++  w.Str("args");
++}
++}  // namespace
++
++std::vector<uint8_t> MsgBuilder::CreateWebGL(
++    uint32_t id, uint32_t width, uint32_t height,
++    bool alpha, bool depth, bool stencil, bool antialias,
++    bool premultiplied_alpha, bool preserve_drawing_buffer,
++    bool fail_if_major_performance_caveat, uint8_t version) {
++  Writer w;
++  w.StartEnvelope("CreateWebGL");
++  w.BeginMap(5);
++  w.Str("id");                w.Uint(id);
++  w.Str("width");             w.Uint(width);
++  w.Str("height");            w.Uint(height);
++  w.Str("attrs");
++  w.BeginMap(7);
++  w.Str("alpha");                            w.Bool(alpha);
++  w.Str("depth");                            w.Bool(depth);
++  w.Str("stencil");                          w.Bool(stencil);
++  w.Str("antialias");                        w.Bool(antialias);
++  w.Str("premultiplied_alpha");              w.Bool(premultiplied_alpha);
++  w.Str("preserve_drawing_buffer");          w.Bool(preserve_drawing_buffer);
++  w.Str("fail_if_major_performance_caveat"); w.Bool(fail_if_major_performance_caveat);
++  w.Str("version");           w.Uint(version);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLClearColor(
++    uint32_t id, float r, float g, float b, float a) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "ClearColor");
++  w.BeginMap(4);
++  w.Str("r"); w.Float32(r);
++  w.Str("g"); w.Float32(g);
++  w.Str("b"); w.Float32(b);
++  w.Str("a"); w.Float32(a);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLClear(uint32_t id, uint32_t mask) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "Clear");
++  w.BeginMap(1);
++  w.Str("mask"); w.Uint(mask);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLEnable(uint32_t id, uint32_t cap) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "Enable");
++  w.Uint(cap);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLDisable(uint32_t id, uint32_t cap) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "Disable");
++  w.Uint(cap);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLViewport(
++    uint32_t id, int32_t x, int32_t y, int32_t w_, int32_t h_) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "Viewport");
++  w.BeginMap(4);
++  w.Str("x"); w.Int32(x);
++  w.Str("y"); w.Int32(y);
++  w.Str("w"); w.Int32(w_);
++  w.Str("h"); w.Int32(h_);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLCreateProgram(uint32_t id, uint32_t handle) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "CreateProgram");
++  w.BeginMap(1);
++  w.Str("handle"); w.Uint(handle);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLCreateShader(
++    uint32_t id, uint32_t handle, uint32_t type) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "CreateShader");
++  w.BeginMap(2);
++  w.Str("handle"); w.Uint(handle);
++  w.Str("ty"); w.Uint(type);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLShaderSource(
++    uint32_t id, uint32_t shader, const std::string& source) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "ShaderSource");
++  w.BeginMap(2);
++  w.Str("shader"); w.Uint(shader);
++  w.Str("source"); w.Str(source);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLCompileShader(uint32_t id, uint32_t shader) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "CompileShader");
++  w.BeginMap(1);
++  w.Str("shader"); w.Uint(shader);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLAttachShader(
++    uint32_t id, uint32_t program, uint32_t shader) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "AttachShader");
++  w.BeginMap(2);
++  w.Str("program"); w.Uint(program);
++  w.Str("shader");  w.Uint(shader);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLLinkProgram(uint32_t id, uint32_t program) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "LinkProgram");
++  w.BeginMap(1);
++  w.Str("program"); w.Uint(program);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLUseProgram(uint32_t id, uint32_t program) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "UseProgram");
++  w.BeginMap(1);
++  w.Str("program"); w.Uint(program);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLCreateBuffer(uint32_t id, uint32_t handle) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "CreateBuffer");
++  w.BeginMap(1);
++  w.Str("handle"); w.Uint(handle);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLBindBuffer(
++    uint32_t id, uint32_t target, uint32_t buffer) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "BindBuffer");
++  w.BeginMap(2);
++  w.Str("target"); w.Uint(target);
++  w.Str("buffer"); w.Uint(buffer);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLBufferData(
++    uint32_t id, uint32_t target, base::span<const uint8_t> data, uint32_t usage) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "BufferData");
++  w.BeginMap(3);
++  w.Str("target"); w.Uint(target);
++  w.Str("data");   w.Bin(data.data(), data.size());
++  w.Str("usage");  w.Uint(usage);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLGetAttribLocation(
++    uint32_t id, uint32_t program, const std::string& name, uint32_t slot) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "GetAttribLocation");
++  w.BeginMap(3);
++  w.Str("program"); w.Uint(program);
++  w.Str("name");    w.Str(name);
++  w.Str("slot");    w.Uint(slot);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLEnableVertexAttribArray(
++    uint32_t id, uint32_t index) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "EnableVertexAttribArray");
++  w.Uint(index);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLVertexAttribPointer(
++    uint32_t id, uint32_t index, int32_t size, uint32_t type,
++    bool normalized, int32_t stride, int32_t offset) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "VertexAttribPointer");
++  w.BeginMap(6);
++  w.Str("index");      w.Uint(index);
++  w.Str("size");       w.Int32(size);
++  w.Str("ty");         w.Uint(type);
++  w.Str("normalized"); w.Bool(normalized);
++  w.Str("stride");     w.Int32(stride);
++  w.Str("offset");     w.Int32(offset);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLDrawArrays(
++    uint32_t id, uint32_t mode, int32_t first, int32_t count) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "DrawArrays");
++  w.BeginMap(3);
++  w.Str("mode");  w.Uint(mode);
++  w.Str("first"); w.Int32(first);
++  w.Str("count"); w.Int32(count);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLDrawElements(
++    uint32_t id, uint32_t mode, int32_t count, uint32_t type, int32_t offset) {
++  Writer w;
++  WriteWebGLOpHeader(w, id, "DrawElements");
++  w.BeginMap(4);
++  w.Str("mode");   w.Uint(mode);
++  w.Str("count");  w.Int32(count);
++  w.Str("ty");     w.Uint(type);
++  w.Str("offset"); w.Int32(offset);
++  return std::move(w).Take();
++}
++
++std::vector<uint8_t> MsgBuilder::WebGLReadPixels(
++    uint32_t id, int32_t x, int32_t y, uint32_t w_, uint32_t h_,
++    uint32_t format, uint32_t type) {
++  Writer w;
++  w.StartEnvelope("WebGLReadPixels");
++  w.BeginMap(7);
++  w.Str("id");     w.Uint(id);
++  w.Str("x");      w.Int32(x);
++  w.Str("y");      w.Int32(y);
++  w.Str("w");      w.Uint(w_);
++  w.Str("h");      w.Uint(h_);
++  w.Str("format"); w.Uint(format);
++  w.Str("ty");     w.Uint(type);
++  return std::move(w).Take();
++}
++
++}  // namespace blink::canvas_bridge
+diff --git a/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h
+new file mode 100644
+index 0000000000000..79e74cd3e5cef
+--- /dev/null
++++ b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h
+@@ -0,0 +1,258 @@
++// Copyright (c) 2026 Arman Hossain <arman@bytetunnels.com>. ChromiumFish authors. All rights reserved.
++//
++// msgpack codec for the canvas-bridge wire protocol. Mirrors
++// `canvas-bridge/proto/src/lib.rs` so the server can decode what
++// we send.
++
++#ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_CANVAS_BRIDGE_CANVAS_BRIDGE_CODEC_H_
++#define THIRD_PARTY_BLINK_RENDERER_PLATFORM_CANVAS_BRIDGE_CANVAS_BRIDGE_CODEC_H_
++
++#include <cstdint>
++#include <optional>
++#include <string>
++#include <vector>
++
++#include "base/containers/span.h"
++#include "third_party/blink/renderer/platform/allow_discouraged_type.h"
++#include "third_party/blink/renderer/platform/platform_export.h"
++#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
++
++namespace blink::canvas_bridge {
++
++constexpr uint32_t kProtocolVersion = 1;
++
++// Builder for outgoing ClientMsg frames. Each method allocates a new
++// msgpack-encoded buffer; callers ship the result over the WebSocket
++// binary channel.
++class PLATFORM_EXPORT MsgBuilder {
++ public:
++  static std::vector<uint8_t> Hello(const std::string& client_version,
++                                    uint64_t persona_seed);
++
++  static std::vector<uint8_t> CreateCanvas2D(uint32_t id,
++                                             uint32_t width,
++                                             uint32_t height,
++                                             bool opaque);
++
++  // Op-stream messages
++  static std::vector<uint8_t> SetFillStyleColor(uint32_t id, const String& css);
++  static std::vector<uint8_t> SetStrokeStyleColor(uint32_t id,
++                                                  const String& css);
++  static std::vector<uint8_t> SetFont(uint32_t id, const String& font);
++  static std::vector<uint8_t> SetTextAlign(uint32_t id, const String& align);
++  static std::vector<uint8_t> SetTextBaseline(uint32_t id,
++                                              const String& baseline);
++  static std::vector<uint8_t> FillRect(uint32_t id,
++                                       float x,
++                                       float y,
++                                       float w,
++                                       float h);
++  static std::vector<uint8_t> StrokeRect(uint32_t id,
++                                         float x,
++                                         float y,
++                                         float w,
++                                         float h);
++  static std::vector<uint8_t> FillText(uint32_t id,
++                                       const String& text,
++                                       float x,
++                                       float y,
++                                       std::optional<float> max_width);
++  static std::vector<uint8_t> StrokeText(uint32_t id,
++                                         const String& text,
++                                         float x,
++                                         float y,
++                                         std::optional<float> max_width);
++
++  // No-arg ops
++  static std::vector<uint8_t> Save(uint32_t id);
++  static std::vector<uint8_t> Restore(uint32_t id);
++  static std::vector<uint8_t> BeginPath(uint32_t id);
++  static std::vector<uint8_t> ClosePath(uint32_t id);
++  static std::vector<uint8_t> Fill(uint32_t id);
++  static std::vector<uint8_t> Stroke(uint32_t id);
++
++  // Geometry
++  static std::vector<uint8_t> ClearRect(uint32_t id, float x, float y,
++                                         float w, float h);
++  static std::vector<uint8_t> MoveTo(uint32_t id, float x, float y);
++  static std::vector<uint8_t> LineTo(uint32_t id, float x, float y);
++  static std::vector<uint8_t> Rect(uint32_t id, float x, float y,
++                                    float w, float h);
++  static std::vector<uint8_t> Arc(uint32_t id, float x, float y, float r,
++                                   float start, float end,
++                                   bool counter_clockwise);
++  static std::vector<uint8_t> QuadraticCurveTo(uint32_t id,
++                                                float cpx, float cpy,
++                                                float x, float y);
++  static std::vector<uint8_t> BezierCurveTo(uint32_t id,
++                                             float cp1x, float cp1y,
++                                             float cp2x, float cp2y,
++                                             float x, float y);
++
++  // Transform
++  static std::vector<uint8_t> SetTransform(uint32_t id,
++                                            float a, float b, float c,
++                                            float d, float e, float f);
++  static std::vector<uint8_t> Translate(uint32_t id, float x, float y);
++  static std::vector<uint8_t> Rotate(uint32_t id, float angle);
++  static std::vector<uint8_t> Scale(uint32_t id, float x, float y);
++
++  // Misc state
++  static std::vector<uint8_t> SetGlobalAlpha(uint32_t id, float alpha);
++  static std::vector<uint8_t> SetGlobalCompositeOperation(uint32_t id,
++                                                          const String& op);
++  static std::vector<uint8_t> SetLineWidth(uint32_t id, float width);
++  static std::vector<uint8_t> SetDirection(uint32_t id, const String& dir);
++
++  // Readback
++  static std::vector<uint8_t> GetCanvas2DImageData(uint32_t id,
++                                                   int32_t x,
++                                                   int32_t y,
++                                                   uint32_t w,
++                                                   uint32_t h);
++  static std::vector<uint8_t> DestroyCanvas(uint32_t id);
++
++  // Font metrics. Standalone request (no canvas id) — server picks the
++  // first family from `families` that resolves and returns metrics for
++  // every (family, size) pair. We pass a 1-element families/sizes vector
++  // so the reply is a single TextMetric.
++  static std::vector<uint8_t> MeasureText(const String& text,
++                                          const String& family,
++                                          float size_px);
++
++  /* =========================================================================
++   * WebGL bridge ops. Mirrors WebGLOp in canvas-bridge/proto/src/lib.rs.
++   * Subset chosen to cover what fpjs Pro / CF Turnstile probe: state
++   * setup, shader compile + program link, attribute + uniform binding,
++   * draw, readPixels. Each op refers to a CanvasId created via CreateWebGL
++   * (vs CreateCanvas2D for 2D contexts). The client draws both kinds from a
++   * single global AllocateCanvasId() pool, so the ids are unique across the
++   * two; CreateWebGL just tells the server which surface kind to instantiate.
++   * ========================================================================= */
++  static std::vector<uint8_t> CreateWebGL(uint32_t id,
++                                          uint32_t width,
++                                          uint32_t height,
++                                          bool alpha,
++                                          bool depth,
++                                          bool stencil,
++                                          bool antialias,
++                                          bool premultiplied_alpha,
++                                          bool preserve_drawing_buffer,
++                                          bool fail_if_major_performance_caveat,
++                                          uint8_t version);
++
++  // State / clear / viewport
++  static std::vector<uint8_t> WebGLClearColor(uint32_t id,
++                                              float r, float g, float b, float a);
++  static std::vector<uint8_t> WebGLClear(uint32_t id, uint32_t mask);
++  static std::vector<uint8_t> WebGLEnable(uint32_t id, uint32_t cap);
++  static std::vector<uint8_t> WebGLDisable(uint32_t id, uint32_t cap);
++  static std::vector<uint8_t> WebGLViewport(uint32_t id,
++                                            int32_t x, int32_t y,
++                                            int32_t w, int32_t h);
++
++  // Programs + shaders
++  static std::vector<uint8_t> WebGLCreateProgram(uint32_t id, uint32_t handle);
++  static std::vector<uint8_t> WebGLCreateShader(uint32_t id,
++                                                uint32_t handle, uint32_t type);
++  static std::vector<uint8_t> WebGLShaderSource(uint32_t id,
++                                                uint32_t shader,
++                                                const std::string& source);
++  static std::vector<uint8_t> WebGLCompileShader(uint32_t id, uint32_t shader);
++  static std::vector<uint8_t> WebGLAttachShader(uint32_t id,
++                                                uint32_t program, uint32_t shader);
++  static std::vector<uint8_t> WebGLLinkProgram(uint32_t id, uint32_t program);
++  static std::vector<uint8_t> WebGLUseProgram(uint32_t id, uint32_t program);
++
++  // Buffers
++  static std::vector<uint8_t> WebGLCreateBuffer(uint32_t id, uint32_t handle);
++  static std::vector<uint8_t> WebGLBindBuffer(uint32_t id,
++                                              uint32_t target, uint32_t buffer);
++  static std::vector<uint8_t> WebGLBufferData(uint32_t id,
++                                              uint32_t target,
++                                              base::span<const uint8_t> data,
++                                              uint32_t usage);
++
++  // Attribs
++  static std::vector<uint8_t> WebGLGetAttribLocation(uint32_t id,
++                                                     uint32_t program,
++                                                     const std::string& name,
++                                                     uint32_t slot);
++  static std::vector<uint8_t> WebGLEnableVertexAttribArray(uint32_t id,
++                                                           uint32_t index);
++  static std::vector<uint8_t> WebGLVertexAttribPointer(uint32_t id,
++                                                       uint32_t index,
++                                                       int32_t size,
++                                                       uint32_t type,
++                                                       bool normalized,
++                                                       int32_t stride,
++                                                       int32_t offset);
++
++  // Draw
++  static std::vector<uint8_t> WebGLDrawArrays(uint32_t id,
++                                              uint32_t mode,
++                                              int32_t first, int32_t count);
++  static std::vector<uint8_t> WebGLDrawElements(uint32_t id,
++                                                uint32_t mode,
++                                                int32_t count,
++                                                uint32_t type,
++                                                int32_t offset);
++
++  // Readback (returns ImageData reply; caller blocks via existing pattern).
++  static std::vector<uint8_t> WebGLReadPixels(uint32_t id,
++                                              int32_t x, int32_t y,
++                                              uint32_t w, uint32_t h,
++                                              uint32_t format, uint32_t type);
++};
++
++// Parsed result of a `TextMetrics` server reply.
++struct PLATFORM_EXPORT TextMetricReply {
++  float width;
++  float actual_bounding_box_ascent;
++  float actual_bounding_box_descent;
++  float font_bounding_box_ascent;
++  float font_bounding_box_descent;
++};
++
++// Parsed result of an `ImageData` server reply.
++struct PLATFORM_EXPORT ImageDataReply {
++  uint32_t canvas_id;
++  uint32_t width;
++  uint32_t height;
++  // RGBA8, premultiplied per canvas spec. std::vector instead of
++  // blink::Vector because the same struct round-trips through the
++  // platform/network layer which uses std-only containers.
++  std::vector<uint8_t> pixels
++      ALLOW_DISCOURAGED_TYPE("interop with canvas-bridge wire codec");
++};
++
++// Parsed result of a `Welcome` server reply.
++struct PLATFORM_EXPORT WelcomeReply {
++  uint32_t protocol_version;
++  std::string server_version;
++  std::string os;
++  std::string gpu_renderer;
++  std::string gpu_vendor;
++};
++
++class PLATFORM_EXPORT MsgParser {
++ public:
++  // Returns `std::nullopt` if `frame` is not a Welcome message or is
++  // malformed.
++  static std::optional<WelcomeReply> ParseWelcome(
++      base::span<const uint8_t> frame);
++
++  // Returns nullopt if `frame` is not an ImageData reply.
++  static std::optional<ImageDataReply> ParseImageData(
++      base::span<const uint8_t> frame);
++
++  // Returns nullopt if `frame` is not a TextMetrics reply or is
++  // malformed. The bridge issues a 1-family × 1-size request so the
++  // reply contains exactly one metric.
++  static std::optional<TextMetricReply> ParseTextMetrics(
++      base::span<const uint8_t> frame);
++};
++
++}  // namespace blink::canvas_bridge
++
++#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_CANVAS_BRIDGE_CANVAS_BRIDGE_CODEC_H_
