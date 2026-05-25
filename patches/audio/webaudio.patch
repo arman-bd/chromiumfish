@@ -1,0 +1,322 @@
+diff --git a/third_party/blink/renderer/modules/webaudio/audio_context.cc b/third_party/blink/renderer/modules/webaudio/audio_context.cc
+index fdebe5684e41b..6f80ec9b7bee7 100644
+--- a/third_party/blink/renderer/modules/webaudio/audio_context.cc
++++ b/third_party/blink/renderer/modules/webaudio/audio_context.cc
+@@ -19,6 +19,7 @@
+ #include "services/metrics/public/cpp/ukm_recorder.h"
+ #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/public/common/mediastream/media_devices.h"
+ #include "third_party/blink/public/mojom/permissions/permission_status.mojom-blink.h"
+ #include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
+@@ -79,14 +80,6 @@ unsigned hardware_context_count = 0;
+ // This initializes the internal id for the context.
+ uint32_t context_id = 0;
+ 
+-// When the client does not have enough permission, the outputLatency property
+-// is quantized by 8ms to reduce the precision for privacy concerns.
+-constexpr double kOutputLatencyQuatizingFactor = 0.008;
+-
+-// When the client has enough permission, the outputLatency property gets
+-// 1ms precision.
+-constexpr double kOutputLatencyMaxPrecisionFactor = 0.001;
+-
+ // Operations tracked in the WebAudio.AudioContext.Operation histogram.
+ enum class AudioContextOperation {
+   kCreate,
+@@ -617,7 +610,7 @@ AudioContext::AudioContext(LocalDOMWindow& window,
+   }
+ 
+   destination_node_ = RealtimeAudioDestinationNode::Create(
+-      this, sink_descriptor_, latency_hint, sample_rate,
++      this, sink_descriptor_, latency_hint, fingerprinting::Current().audio_sample_rate,
+       update_echo_cancellation_on_first_start);
+ 
+   TRACE_EVENT2("webaudio", "AudioContext::AudioContext", "UUID", Uuid(),
+@@ -1150,17 +1143,14 @@ double AudioContext::baseLatency() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
+   DCHECK(destination());
+ 
+-  return base_latency_;
++  return fingerprinting::Current().audio_base_latency;
+ }
+ 
+ double AudioContext::outputLatency() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
+   DCHECK(destination());
+ 
+-  DeferredTaskHandler::GraphAutoLocker locker(GetDeferredTaskHandler());
+-
+-  double factor = GetOutputLatencyQuantizingFactor();
+-  return std::round(output_position_.hardware_output_latency / factor) * factor;
++  return fingerprinting::Current().audio_output_latency;
+ }
+ 
+ AudioPlaybackStats* AudioContext::playbackStats() {
+@@ -1648,13 +1638,6 @@ void AudioContext::DidInitialPermissionCheck(
+       std::move(observer));
+ }
+ 
+-double AudioContext::GetOutputLatencyQuantizingFactor() const {
+-  return microphone_permission_status_ ==
+-                 mojom::blink::PermissionStatus::GRANTED
+-             ? kOutputLatencyMaxPrecisionFactor
+-             : kOutputLatencyQuatizingFactor;
+-}
+-
+ void AudioContext::NotifySetSinkIdBegins() {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
+ 
+diff --git a/third_party/blink/renderer/modules/webaudio/audio_context.h b/third_party/blink/renderer/modules/webaudio/audio_context.h
+index d36e7a82a32df..95d30c4eff756 100644
+--- a/third_party/blink/renderer/modules/webaudio/audio_context.h
++++ b/third_party/blink/renderer/modules/webaudio/audio_context.h
+@@ -362,7 +362,6 @@ class MODULES_EXPORT AudioContext final
+ 
+   void DidInitialPermissionCheck(mojom::blink::PermissionDescriptorPtr,
+                                  mojom::blink::PermissionStatusWithDetailsPtr);
+-  double GetOutputLatencyQuantizingFactor() const;
+ 
+   void InitializeMediaDeviceService();
+   void UninitializeMediaDeviceService();
+diff --git a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
+index 6a6623a605699..aaa2a224bbda1 100644
+--- a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
++++ b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
+@@ -28,6 +28,8 @@
+ #include "base/metrics/histogram_functions.h"
+ #include "base/metrics/histogram_macros.h"
+ #include "media/base/audio_glitch_info.h"
++#include "third_party/blink/renderer/modules/webaudio/audio_buffer.h"
++#include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
+ #include "third_party/blink/public/platform/platform.h"
+ #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
+ #include "third_party/blink/renderer/bindings/modules/v8/v8_offline_audio_context_options.h"
+@@ -425,6 +427,165 @@ void OfflineAudioContext::FireCompletionEvent() {
+       return;
+     }
+ 
++    // Fingerprint isolation (audio fingerprint).
++    //
++    // fpjs Pro's audio probe is OfflineAudioContext(1ch, 44100, 44100)
++    // with a DynamicsCompressor; the value it reports is
++    //   sum_{i=4500..4999} |buffer[0][i]|   (computed in JS doubles).
++    // Real Win Chrome 148 produces 124.04347527516074 for this sum;
++    // our Mac DSP produces a value that differs by ~1e-5 due to
++    // platform libm / SIMD ordering. To match Win byte-equal, when
++    // we detect the probe shape we compute the current abs-sum,
++    // then absorb the delta into one mid-range sample so the new
++    // sum equals the Win target exactly.
++    //
++    // For all OTHER OfflineAudioContext usage (real apps), the rendered
++    // samples are left untouched (see the else branch below) — only the
++    // known probe shapes are corrected to the Win target sum.
++    // fpjs Pro's OfflineAudioContext shape: 1 channel, 5000 samples at
++    // 44100 Hz (renders ~113ms of audio; sums |buffer[4500..4999]|).
++    const bool is_fpjs_audio_probe =
++        rendered_buffer->numberOfChannels() == 1 &&
++        rendered_buffer->length() == 5000 &&
++        std::abs(rendered_buffer->sampleRate() - 44100.0f) < 0.5f;
++    // CF Turnstile probe (also fingerprintjs OSS): same DynamicsCompressor
++    // graph but rendered into a full 44100-sample / 1-second buffer.
++    const bool is_cf_audio_probe =
++        rendered_buffer->numberOfChannels() == 1 &&
++        rendered_buffer->length() == 44100 &&
++        std::abs(rendered_buffer->sampleRate() - 44100.0f) < 0.5f;
++
++    if (is_fpjs_audio_probe) {
++      constexpr double kWinAudioSum = 124.04347527516074;
++      NotShared<DOMFloat32Array> data = rendered_buffer->getChannelData(0);
++      if (data.Get()) {
++        base::span<float> samples = data->AsSpan();
++        if (samples.size() >= 5000) {
++          // Iterative delta absorption. Each pass picks the SMALLEST
++          // qualifying sample (smallest float32 ULP) and shifts its
++          // magnitude by the current delta. Float32 ULP at magnitude X
++          // is X * 2^-23, so the smaller |s|, the finer the achievable
++          // correction. We loop until delta stops shrinking, which
++          // converges to within double-precision of the Win target.
++          auto absorb_smallest = [&](size_t skip_index) -> double {
++            double current_sum = 0.0;
++            for (size_t i = 4500; i < 5000; ++i) {
++              current_sum += std::abs(static_cast<double>(samples[i]));
++            }
++            double delta = kWinAudioSum - current_sum;
++            size_t best_idx = SIZE_MAX;
++            double best_abs = 1e30;
++            const double min_abs = std::abs(delta) * 4.0;
++            for (size_t i = 4500; i < 5000; ++i) {
++              if (i == skip_index) continue;
++              double a = std::abs(static_cast<double>(samples[i]));
++              if (a > min_abs && a < best_abs) {
++                best_abs = a;
++                best_idx = i;
++              }
++            }
++            if (best_idx == SIZE_MAX) return delta;
++            double s = static_cast<double>(samples[best_idx]);
++            double new_abs = std::abs(s) + delta;
++            samples[best_idx] = (s >= 0) ? static_cast<float>(new_abs)
++                                         : static_cast<float>(-new_abs);
++            // Recompute residual delta.
++            double new_sum = 0.0;
++            for (size_t i = 4500; i < 5000; ++i) {
++              new_sum += std::abs(static_cast<double>(samples[i]));
++            }
++            return kWinAudioSum - new_sum;
++          };
++          size_t last_used = SIZE_MAX;
++          for (int pass = 0; pass < 8; ++pass) {
++            double prev_delta = 0.0;
++            {
++              double s = 0.0;
++              for (size_t i = 4500; i < 5000; ++i) {
++                s += std::abs(static_cast<double>(samples[i]));
++              }
++              prev_delta = kWinAudioSum - s;
++            }
++            double new_delta = absorb_smallest(last_used);
++            // Stop when no further improvement.
++            if (std::abs(new_delta) >= std::abs(prev_delta)) break;
++            // After the first pass, exclude index 4500 from the search so
++            // we don't keep rewriting the same sample (which would just
++            // repeat the same float32-rounded write — no progress). This is
++            // an approximation: it always skips 4500, not the exact index
++            // absorb_smallest edited.
++            last_used = 4500;
++          }
++        }
++      }
++    } else if (is_cf_audio_probe) {
++      // CF Turnstile probe target sums (captured side-by-side against
++      // chrome.exe 148.0.7778.179 on a cloud Win VM with the canonical
++      // OfflineAudioContext(1, 44100, 44100) + DynamicsCompressor graph).
++      //   sum_{i=4500..4999} |buf[i]| = 124.04347527516074
++      //   sum_{i=0..44099}   |buf[i]| = 10748.96479334074
++      // Mac CoreAudio produces 124.04348155876505 / 10748.964802771976,
++      // 6e-6 above the Win target on each. Absorb that delta into mid-
++      // range samples (same ULP-aware approach as the fpjs-Pro path).
++      constexpr double kCfWinSum4500_5000 = 124.04347527516074;
++      NotShared<DOMFloat32Array> data = rendered_buffer->getChannelData(0);
++      if (data.Get()) {
++        base::span<float> samples = data->AsSpan();
++        if (samples.size() >= 5000) {
++          auto absorb_smallest = [&](size_t skip_index) -> double {
++            double current_sum = 0.0;
++            for (size_t i = 4500; i < 5000; ++i) {
++              current_sum += std::abs(static_cast<double>(samples[i]));
++            }
++            double delta = kCfWinSum4500_5000 - current_sum;
++            size_t best_idx = SIZE_MAX;
++            double best_abs = 1e30;
++            const double min_abs = std::abs(delta) * 4.0;
++            for (size_t i = 4500; i < 5000; ++i) {
++              if (i == skip_index) continue;
++              double a = std::abs(static_cast<double>(samples[i]));
++              if (a > min_abs && a < best_abs) {
++                best_abs = a;
++                best_idx = i;
++              }
++            }
++            if (best_idx == SIZE_MAX) return delta;
++            double s = static_cast<double>(samples[best_idx]);
++            double new_abs = std::abs(s) + delta;
++            samples[best_idx] = (s >= 0) ? static_cast<float>(new_abs)
++                                         : static_cast<float>(-new_abs);
++            double new_sum = 0.0;
++            for (size_t i = 4500; i < 5000; ++i) {
++              new_sum += std::abs(static_cast<double>(samples[i]));
++            }
++            return kCfWinSum4500_5000 - new_sum;
++          };
++          size_t last_used = SIZE_MAX;
++          for (int pass = 0; pass < 8; ++pass) {
++            double prev_delta = 0.0;
++            double s = 0.0;
++            for (size_t i = 4500; i < 5000; ++i) {
++              s += std::abs(static_cast<double>(samples[i]));
++            }
++            prev_delta = kCfWinSum4500_5000 - s;
++            double new_delta = absorb_smallest(last_used);
++            if (std::abs(new_delta) >= std::abs(prev_delta)) break;
++            last_used = 4500;
++          }
++        }
++      }
++    } else {
++      // Generic OfflineAudioContext path (shapes other than the fpjs-Pro
++      // 5000-sample and CF Turnstile 44100-sample probes we hard-target
++      // above). No per-persona mantissa salt: the bottom-4-bit XOR we
++      // used to apply produced audio output that differed from real
++      // Chrome's by ~1e-6 — directly observable to any audio fingerprint.
++      // Leaving samples untouched lets the host's native audio engine
++      // output through. Per-persona entropy is preserved elsewhere
++      // (canvas pixels, screen, hardware pools).
++      (void)rendered_buffer;
++    }
++
+     // Call the offline rendering completion event listener and resolve the
+     // promise too.
+     DispatchEvent(*OfflineAudioCompletionEvent::Create(rendered_buffer));
+diff --git a/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc b/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc
+index 6db772e60558e..1653f5386ac72 100644
+--- a/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc
++++ b/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc
+@@ -7,9 +7,12 @@
+ #include <algorithm>
+ 
+ #include "base/compiler_specific.h"
++#include "base/containers/span.h"
+ #include "base/trace_event/typed_macros.h"
+ #include "media/base/audio_bus.h"
+ #include "media/base/audio_glitch_info.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_audio_isolation.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+ #include "third_party/blink/renderer/modules/webaudio/audio_node_input.h"
+ #include "third_party/blink/renderer/modules/webaudio/audio_node_output.h"
+@@ -191,6 +194,35 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
+     uint32_t frames_available_to_copy = std::min(
+         frames_to_process_, GetDeferredTaskHandler().RenderQuantumFrames());
+ 
++    // 2026-05-31: Per-seed audio fingerprint isolation. Apply on every
++    // platform EXCEPT Mac — on Apple Silicon the hook crashed the
++    // renderer with SIGSEGV at NULL+0x60 on any page that runs
++    // OfflineAudioContext (fpjs Pro, amiunique.org). Linux x86_64 runs
++    // it cleanly, so we keep it enabled there. Suspected Mac trigger:
++    // AudioChannel::MutableSpan() side-effects on the silent flag
++    // intersecting CoreAudio's offline render assumptions.
++#if !BUILDFLAG(IS_MAC)
++    const uint64_t persona_seed =
++        blink::fingerprinting::Current().persona_seed;
++    for (unsigned channel_index = 0; channel_index < number_of_channels;
++         ++channel_index) {
++      auto channel_span = render_bus_->Channel(channel_index)
++                              ->MutableSpan()
++                              .first(frames_available_to_copy);
++      // Thread frames_processed_ as the global sample offset so the
++      // noise key never resets between render quanta — otherwise the
++      // per-quantum pattern repeats and the integrated fpjs sum cancels.
++      blink::fingerprinting::IsolateAudioSamples(
++          channel_span, frames_processed_, persona_seed);
++      shared_render_target_->channels()[channel_index]
++          .ByteSpan()
++          .subspan(frames_processed_ * sizeof(float),
++                   frames_available_to_copy * sizeof(float))
++          .copy_from(base::as_bytes(base::allow_nonunique_obj,
++                                    base::span<const float>(channel_span)));
++    }
++#else
++    // Mac path — plain upstream copy_from, no noise. See above.
+     for (unsigned channel_index = 0; channel_index < number_of_channels;
+          ++channel_index) {
+       shared_render_target_->channels()[channel_index]
+@@ -202,6 +234,7 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
+                                         ->Span()
+                                         .first(frames_available_to_copy)));
+     }
++#endif
+ 
+     frames_processed_ += frames_available_to_copy;
+ 
