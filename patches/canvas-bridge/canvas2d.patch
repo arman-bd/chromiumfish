@@ -1,0 +1,727 @@
+diff --git a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+index 2a199c115931e..6736d357c5aff 100644
+--- a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
++++ b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+@@ -43,6 +43,7 @@
+ #include "base/numerics/checked_math.h"
+ #include "base/numerics/clamped_math.h"
+ #include "base/numerics/safe_conversions.h"
++#include "base/strings/stringprintf.h"
+ #include "base/trace_event/trace_event.h"
+ #include "base/trace_event/typed_macros.h"
+ #include "build/build_config.h"
+@@ -51,6 +52,8 @@
+ #include "services/metrics/public/cpp/ukm_recorder.h"
+ #include "services/metrics/public/cpp/ukm_source_id.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/renderer/platform/network/blink_schemeful_site.h"
++#include "third_party/blink/renderer/platform/storage/blink_storage_key.h"
+ #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
+ #include "third_party/blink/public/mojom/gpu/gpu.mojom-blink.h"
+ #include "third_party/blink/public/platform/platform.h"
+@@ -108,6 +111,8 @@
+ #include "third_party/blink/renderer/core/probe/core_probes.h"
+ #include "third_party/blink/renderer/core/resize_observer/resize_observer_utilities.h"
+ #include "third_party/blink/renderer/platform/bindings/exception_state.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h"
+ #include "third_party/blink/renderer/platform/fonts/plain_text_painter.h"
+ #include "third_party/blink/renderer/platform/graphics/canvas_resource.h"
+ #include "third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.h"
+@@ -131,6 +136,8 @@
+ #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+ #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+ #include "third_party/blink/renderer/platform/wtf/functional.h"
++#include "third_party/blink/renderer/platform/wtf/text/base64.h"
++#include "third_party/blink/renderer/platform/wtf/text/strcat.h"
+ #include "ui/base/resource/resource_scale_factor.h"
+ #include "ui/gfx/geometry/rect_conversions.h"
+ #include "ui/gfx/geometry/size_conversions.h"
+@@ -1310,7 +1317,31 @@ String HTMLCanvasElement::ToDataURLInternal(
+       ImageEncoderUtils::ToEncodingMimeType(
+           mime_type, ImageEncoderUtils::kEncodeReasonToDataURL);
+ 
+-  scoped_refptr<StaticBitmapImage> image_bitmap = Snapshot(source_buffer);
++  // canvas-bridge: when configured and this canvas has a bridge id,
++  // pull pixels from the remote render server and feed them through
++  // Blink's standard PNG encoder. Resulting bytes are produced by the
++  // bridge host's actual rendering layer (real Windows DirectWrite /
++  // D3D11 if the server runs on Win), bypassing the Mac local engine.
++  scoped_refptr<StaticBitmapImage> image_bitmap;
++  {
++    auto* bridge = blink::canvas_bridge::CanvasBridgeClient::Get();
++    if (bridge && bridge->IsEnabled() && bridge_canvas_id_) {
++      auto pixels = bridge->RequestImageData(bridge_canvas_id_,
++                                              0, 0, width(), height());
++      if (pixels.has_value() && pixels->pixels.size() ==
++          static_cast<size_t>(width()) * height() * 4) {
++        SkImageInfo info = SkImageInfo::MakeN32Premul(width(), height());
++        SkPixmap pixmap(info, pixels->pixels.data(), width() * 4);
++        sk_sp<SkImage> sk_image = SkImages::RasterFromPixmapCopy(pixmap);
++        if (sk_image) {
++          image_bitmap = UnacceleratedStaticBitmapImage::Create(sk_image);
++        }
++      }
++    }
++  }
++  if (!image_bitmap) {
++    image_bitmap = Snapshot(source_buffer);
++  }
+   if (image_bitmap) {
+     std::unique_ptr<ImageDataBuffer> data_buffer =
+         ImageDataBuffer::Create(image_bitmap);
+@@ -1370,6 +1401,10 @@ String HTMLCanvasElement::toDataURL(const String& mime_type,
+     return String();
+   }
+ 
++  // Lightweight-fork: we no longer short-circuit to "data:," on readback
++  // because that itself was a strong automation tell. Real pixels are
++  // encoded and returned (routed through the canvas bridge when enabled).
++
+   double quality = kUndefinedQualityValue;
+   if (!quality_argument.IsEmpty()) {
+     v8::Local<v8::Value> v8_value = quality_argument.V8Value();
+@@ -1391,6 +1426,9 @@ void HTMLCanvasElement::toBlob(V8BlobCallback* callback,
+   if (!GetExecutionContext())
+     return;
+ 
++  // Lightweight-fork: see toDataURL — readback now flows through normally
++  // with per-pixel isolation applied at the byte-level readback sites.
++
+   if (ContextHasOpenLayers(context_)) {
+     exception_state.ThrowDOMException(
+         DOMExceptionCode::kInvalidStateError,
+diff --git a/third_party/blink/renderer/core/html/canvas/html_canvas_element.h b/third_party/blink/renderer/core/html/canvas/html_canvas_element.h
+index 2b023e1a62915..39a1cda23e912 100644
+--- a/third_party/blink/renderer/core/html/canvas/html_canvas_element.h
++++ b/third_party/blink/renderer/core/html/canvas/html_canvas_element.h
+@@ -454,6 +454,12 @@ class CORE_EXPORT HTMLCanvasElement final
+ 
+   bool did_notify_listeners_for_current_frame_ = false;
+ 
++ public:
++  // canvas-bridge: opaque server-allocated handle, 0 means unmapped.
++  // Allocated lazily on first forwarded op from base_rendering_context_2d.cc.
++  uint32_t bridge_canvas_id_ = 0;
++ private:
++
+   scoped_refptr<StaticBitmapImage> transparent_image_;
+ 
+   // Paint flags set based on CSS properties, which must be propagated to the
+diff --git a/third_party/blink/renderer/core/html/canvas/text_metrics.h b/third_party/blink/renderer/core/html/canvas/text_metrics.h
+index 3d2c354897fad..890087fca42a0 100644
+--- a/third_party/blink/renderer/core/html/canvas/text_metrics.h
++++ b/third_party/blink/renderer/core/html/canvas/text_metrics.h
+@@ -75,6 +75,25 @@ class CORE_EXPORT TextMetrics final : public ScriptWrappable {
+   static float GetFontBaseline(const V8CanvasTextBaseline::Enum,
+                                const SimpleFontData&);
+ 
++  // canvas-bridge: overwrite the metrics that CF Turnstile's font probe
++  // reads (width + actualBoundingBox ascent/descent + fontBoundingBox
++  // ascent/descent). Called after the normal local-shaper construction
++  // with values from the remote render server's native font metrics (e.g.
++  // Win DirectWrite). Other fields (actualBoundingBox left/right,
++  // em_height_*, baselines, selection rects) keep the local values —
++  // pages that draw selections still get sensible offsets.
++  void OverrideBridgeMetrics(double width,
++                             double actual_bounding_box_ascent,
++                             double actual_bounding_box_descent,
++                             double font_bounding_box_ascent,
++                             double font_bounding_box_descent) {
++    width_ = width;
++    actual_bounding_box_ascent_ = actual_bounding_box_ascent;
++    actual_bounding_box_descent_ = actual_bounding_box_descent;
++    font_bounding_box_ascent_ = font_bounding_box_ascent;
++    font_bounding_box_descent_ = font_bounding_box_descent;
++  }
++
+   unsigned getIndexFromOffset(double x);
+ 
+   const HeapVector<Member<DOMRectReadOnly>> getSelectionRects(
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
+index 1422fe89b171d..1ab38296b988d 100644
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
+@@ -28,6 +28,10 @@
+ #include "cc/paint/record_paint_canvas.h"
+ #include "components/viz/common/resources/shared_image_format_utils.h"
+ #include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
++#include "third_party/blink/renderer/core/frame/local_dom_window.h"
++#include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h"
+ #include "third_party/blink/public/common/metrics/document_update_reason.h"
+ #include "third_party/blink/public/mojom/devtools/console_message.mojom-blink-forward.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_text_align.h"
+@@ -409,6 +413,9 @@ ImageData* BaseRenderingContext2D::getImageDataInternal(
+   validate_and_create_params.default_color_space =
+       GetDefaultImageDataColorSpace();
+ 
++  // Lightweight-fork: kCanvasReadbackEnabled is always true now; isolation
++  // happens below after the readback completes.
++
+   if (isContextLost()) {
+     return ImageData::ValidateAndCreate(
+         sw, sh, std::nullopt, image_data_settings, validate_and_create_params,
+@@ -488,8 +495,34 @@ ImageData* BaseRenderingContext2D::getImageDataInternal(
+   if (!image_data)
+     return nullptr;
+ 
++  // canvas-bridge: route this readback to the remote render server when
++  // one is configured. Falls back to local snapshot on any failure.
++  // When the bridge succeeds, the returned pixels ARE authoritative
++  // real-Win-Chrome bytes — we explicitly DO NOT apply the per-persona
++  // noise to them below (see the omitted `else if (bridge_readback_done)`
++  // branch), because that noise destroys the byte-exact match against
++  // real Chrome that Cloudflare Turnstile and similar checks expect.
++  // The per-persona isolation noise is for the LOCAL snapshot path only,
++  // which is used when the bridge is unavailable.
++  bool bridge_readback_done = false;
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    auto* bridge = blink::canvas_bridge::CanvasBridgeClient::Get();
++    auto reply = bridge->RequestImageData(id, sx, sy, sw, sh);
++    if (reply.has_value() &&
++        reply->pixels.size() ==
++            static_cast<size_t>(sw) * static_cast<size_t>(sh) * 4u) {
++      SkPixmap pm = image_data->GetSkPixmap();
++      // Server sends RGBA8 (unpremul) per canvas spec; pixmap is N32 premul.
++      // Copy raw bytes through unmodified — these are the authoritative
++      // Win Chrome pixels we want to expose to JS.
++      UNSAFE_TODO(std::memcpy(pm.writable_addr(), reply->pixels.data(),
++                               reply->pixels.size()));
++      bridge_readback_done = true;
++    }
++  }
++
+   // Read pixels into |image_data|.
+-  if (snapshot) {
++  if (!bridge_readback_done && snapshot) {
+     gfx::Rect snapshot_rect{snapshot->Size()};
+     if (!snapshot_rect.Intersects(image_data_rect)) {
+       // If the readback area is completely out of bounds just return a zero
+@@ -508,7 +541,18 @@ ImageData* BaseRenderingContext2D::getImageDataInternal(
+           snapshot->PaintImageForCurrentFrame().GetSkImageInfo().bounds();
+       DCHECK(!bounds.intersect(SkIRect::MakeXYWH(sx, sy, sw, sh)));
+     }
+-  }
++    // Local-path 2-bit per-(coord, persona) noise removed: the noise made
++    // toDataURL output 2.3× larger (poor PNG compression of noisy pixels)
++    // and flipped every constant pixel by ±2, which Cloudflare Turnstile
++    // detects by comparing against the known real-Chrome-148 + WARP
++    // canvas hash. The previous architecture relied on canvas-bridge
++    // returning authoritative Win pixels for cross-site identity;
++    // without isolation noise here, the local path also returns clean
++    // pixels (no per-persona variation), matching real Chrome behavior.
++  }
++  // Deliberately NO `else if (bridge_readback_done)` isolation step here.
++  // Bridge-returned pixels are passed through untouched (see comment at the
++  // bridge readback block above for rationale).
+ 
+   return image_data;
+ }
+@@ -658,6 +702,10 @@ V8CanvasTextAlign BaseRenderingContext2D::textAlign() const {
+ }
+ 
+ void BaseRenderingContext2D::setTextAlign(const V8CanvasTextAlign align) {
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::SetTextAlign(id, align.AsString()));
++  }
+   GetState().SetTextAlign(align.AsEnum());
+ }
+ 
+@@ -667,6 +715,11 @@ V8CanvasTextBaseline BaseRenderingContext2D::textBaseline() const {
+ 
+ void BaseRenderingContext2D::setTextBaseline(
+     const V8CanvasTextBaseline baseline) {
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::SetTextBaseline(id,
++                                                          baseline.AsString()));
++  }
+   GetState().SetTextBaseline(baseline.AsEnum());
+ }
+ 
+@@ -806,6 +859,11 @@ void BaseRenderingContext2D::setFont(const String& new_font) {
+     return;
+   }
+ 
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::SetFont(id, new_font));
++  }
++
+   CanvasRenderingContext2DState& state = GetState();
+   if (new_font == state.UnparsedFont() && CurrentFontResolvedAndUpToDate()) {
+     return;
+@@ -863,6 +921,12 @@ void BaseRenderingContext2D::setDirection(const V8CanvasDirection direction) {
+ }
+ 
+ void BaseRenderingContext2D::fillText(const String& text, double x, double y) {
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::FillText(
++            id, text, static_cast<float>(x), static_cast<float>(y),
++            std::nullopt));
++  }
+   CanvasRenderingContext2DState& state = GetState();
+   DrawTextInternal(text, x, y, CanvasRenderingContext2DState::kFillPaintType,
+                    state.GetTextAlign(), state.GetTextBaseline(), 0,
+@@ -873,6 +937,12 @@ void BaseRenderingContext2D::fillText(const String& text,
+                                       double x,
+                                       double y,
+                                       double max_width) {
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::FillText(
++            id, text, static_cast<float>(x), static_cast<float>(y),
++            static_cast<float>(max_width)));
++  }
+   CanvasRenderingContext2DState& state = GetState();
+   DrawTextInternal(text, x, y, CanvasRenderingContext2DState::kFillPaintType,
+                    state.GetTextAlign(), state.GetTextBaseline(), 0,
+@@ -919,6 +989,12 @@ void BaseRenderingContext2D::fillTextCluster(
+ void BaseRenderingContext2D::strokeText(const String& text,
+                                         double x,
+                                         double y) {
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::StrokeText(
++            id, text, static_cast<float>(x), static_cast<float>(y),
++            std::nullopt));
++  }
+   CanvasRenderingContext2DState& state = GetState();
+   DrawTextInternal(text, x, y, CanvasRenderingContext2DState::kStrokePaintType,
+                    state.GetTextAlign(), state.GetTextBaseline(), 0,
+@@ -929,6 +1005,12 @@ void BaseRenderingContext2D::strokeText(const String& text,
+                                         double x,
+                                         double y,
+                                         double max_width) {
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::StrokeText(
++            id, text, static_cast<float>(x), static_cast<float>(y),
++            static_cast<float>(max_width)));
++  }
+   CanvasRenderingContext2DState& state = GetState();
+   DrawTextInternal(text, x, y, CanvasRenderingContext2DState::kStrokePaintType,
+                    state.GetTextAlign(), state.GetTextBaseline(), 0,
+@@ -1147,9 +1229,35 @@ TextMetrics* BaseRenderingContext2D::measureText(const String& text) {
+   TextDirection direction =
+       ToTextDirection(state.GetDirection(), host, computed_style);
+ 
+-  return MakeGarbageCollected<TextMetrics>(
++  TextMetrics* metrics = MakeGarbageCollected<TextMetrics>(
+       font, direction, state.GetTextBaseline(), state.GetTextAlign(), text,
+       host->GetPlainTextPainter());
++
++  // canvas-bridge: if the bridge is up, ask the remote render server for
++  // its native font metrics and overwrite the five fields CF Turnstile's
++  // font fingerprint reads. Falls through to the local metrics on
++  // disabled / timeout / parse failure.
++  auto* bridge = blink::canvas_bridge::CanvasBridgeClient::Get();
++  if (bridge && bridge->IsEnabled() && font) {
++    const FontDescription& fd = font->GetFontDescription();
++    const FontFamily& family = fd.Family();
++    const AtomicString& family_name = family.FamilyName();
++    float size_px = fd.ComputedSize() > 0 ? fd.ComputedSize()
++                                            : fd.SpecifiedSize();
++    if (!family_name.empty() && size_px > 0) {
++      auto reply = bridge->RequestTextMetrics(
++          text, String(family_name), size_px);
++      if (reply.has_value()) {
++        metrics->OverrideBridgeMetrics(
++            reply->width, reply->actual_bounding_box_ascent,
++            reply->actual_bounding_box_descent,
++            reply->font_bounding_box_ascent,
++            reply->font_bounding_box_descent);
++      }
++    }
++  }
++
++  return metrics;
+ }
+ 
+ String BaseRenderingContext2D::lang() const {
+@@ -1535,4 +1643,41 @@ DOMMatrix* BaseRenderingContext2D::DrawElementInternal(
+                                          result_transform.Is2dTransform());
+ }
+ 
++uint32_t BaseRenderingContext2D::EnsureBridgeCanvas() {
++  auto* bridge = blink::canvas_bridge::CanvasBridgeClient::Get();
++  if (!bridge) {
++    LOG(WARNING) << "[bridge-debug] EnsureBridgeCanvas: bridge null";
++    return 0;
++  }
++  if (!bridge->IsEnabled()) {
++    LOG(WARNING) << "[bridge-debug] EnsureBridgeCanvas: bridge not enabled";
++    return 0;
++  }
++  CanvasRenderingContextHost* host = GetCanvasRenderingContextHost();
++  if (!host) {
++    LOG(WARNING) << "[bridge-debug] EnsureBridgeCanvas: host null";
++    return 0;
++  }
++  if (host->IsOffscreenCanvas()) {
++    LOG(WARNING) << "[bridge-debug] EnsureBridgeCanvas: host is OffscreenCanvas";
++    return 0;
++  }
++  auto* el = static_cast<HTMLCanvasElement*>(host);
++  if (el->bridge_canvas_id_) {
++    return el->bridge_canvas_id_;
++  }
++  uint32_t id = bridge->AllocateCanvasId();
++  if (!id) {
++    LOG(WARNING) << "[bridge-debug] EnsureBridgeCanvas: AllocateCanvasId returned 0";
++    return 0;
++  }
++  el->bridge_canvas_id_ = id;
++  LOG(INFO) << "[bridge-debug] CreateCanvas2D id=" << id
++            << " w=" << el->width() << " h=" << el->height();
++  bridge->Send(blink::canvas_bridge::MsgBuilder::CreateCanvas2D(
++      id, el->width(), el->height(),
++      /*opaque=*/!CreationAttributes().alpha));
++  return id;
++}
++
+ }  // namespace blink
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.h b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.h
+index 69b57f71048ce..0f1eabde2367c 100644
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.h
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.h
+@@ -177,6 +177,12 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasRenderingContext,
+   void fillText(const String& text, double x, double y, double max_width);
+   void strokeText(const String& text, double x, double y);
+   void strokeText(const String& text, double x, double y, double max_width);
++
++  // canvas-bridge: lazily allocate a server-side canvas id on first
++  // forwardable op. Returns 0 when the bridge is disabled or the host
++  // is not an HTMLCanvasElement.
++  uint32_t EnsureBridgeCanvas();
++  uint32_t MaybeBridgeCanvas2DId() override { return EnsureBridgeCanvas(); }
+   TextMetrics* measureText(const String& text);
+   // Renders a TextCluster returned by TextMetrics::getTextClusters(). If
+   // possible, the align, baseline, and font from the TextCluster will be used.
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc
+index 6b85db957ef90..402140c747456 100644
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.cc
+@@ -4,6 +4,9 @@
+ 
+ #include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_2d_recorder_context.h"
+ 
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h"
++
+ #include <algorithm>
+ #include <array>
+ #include <cmath>
+@@ -393,6 +396,10 @@ Canvas2DRecorderContext::~Canvas2DRecorderContext() {
+ }
+ 
+ void Canvas2DRecorderContext::save() {
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::Save(id));
++  }
+   if (isContextLost()) [[unlikely]] {
+     return;
+   }
+@@ -418,6 +425,10 @@ void Canvas2DRecorderContext::save() {
+ }
+ 
+ void Canvas2DRecorderContext::restore(ExceptionState& exception_state) {
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::Restore(id));
++  }
+   if (isContextLost()) [[unlikely]] {
+     return;
+   }
+@@ -918,6 +929,13 @@ void Canvas2DRecorderContext::setStrokeStyle(v8::Isolate* isolate,
+                                              v8::Local<v8::Value> value,
+                                              ExceptionState& exception_state) {
+   CanvasRenderingContext2DState& state = GetState();
++  if (value->IsString()) {
++    if (uint32_t id = MaybeBridgeCanvas2DId()) {
++      String css = ToCoreString(isolate, value.As<v8::String>());
++      blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++          blink::canvas_bridge::MsgBuilder::SetStrokeStyleColor(id, css));
++    }
++  }
+   // Use of a string for the stroke is very common (and parsing the color
+   // from the string is expensive) so we keep a map of string to color.
+   if (value->IsString()) {
+@@ -1040,6 +1058,14 @@ void Canvas2DRecorderContext::setFillStyle(v8::Isolate* isolate,
+                                            ExceptionState& exception_state) {
+   ValidateStateStack();
+ 
++  if (value->IsString()) {
++    if (uint32_t id = MaybeBridgeCanvas2DId()) {
++      String css = ToCoreString(isolate, value.As<v8::String>());
++      blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++          blink::canvas_bridge::MsgBuilder::SetFillStyleColor(id, css));
++    }
++  }
++
+   CanvasRenderingContext2DState& state = GetState();
+   // This block is similar to that in setStrokeStyle(), see comments there for
+   // details on this.
+@@ -1105,6 +1131,11 @@ void Canvas2DRecorderContext::setLineWidth(double width) {
+   if (!std::isfinite(width) || width <= 0) {
+     return;
+   }
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::SetLineWidth(
++            id, static_cast<float>(width)));
++  }
+   CanvasRenderingContext2DState& state = GetState();
+   if (state.LineWidth() == width) {
+     return;
+@@ -1267,6 +1298,11 @@ void Canvas2DRecorderContext::setGlobalAlpha(double alpha) {
+   if (!(alpha >= 0 && alpha <= 1)) {
+     return;
+   }
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::SetGlobalAlpha(
++            id, static_cast<float>(alpha)));
++  }
+   CanvasRenderingContext2DState& state = GetState();
+   if (state.GlobalAlpha() == alpha) {
+     return;
+@@ -1353,6 +1389,11 @@ void Canvas2DRecorderContext::setFilter(
+ }
+ 
+ void Canvas2DRecorderContext::scale(double sx, double sy) {
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::Scale(
++            id, static_cast<float>(sx), static_cast<float>(sy)));
++  }
+   // TODO(crbug.com/40153853): Investigate the performance impact of simply
+   // calling the 3d version of this function
+   cc::PaintCanvas* c = GetOrCreatePaintCanvas();
+@@ -1383,6 +1424,11 @@ void Canvas2DRecorderContext::scale(double sx, double sy) {
+ }
+ 
+ void Canvas2DRecorderContext::rotate(double angle_in_radians) {
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::Rotate(
++            id, static_cast<float>(angle_in_radians)));
++  }
+   cc::PaintCanvas* c = GetOrCreatePaintCanvas();
+   if (!c) {
+     return;
+@@ -1409,6 +1455,11 @@ void Canvas2DRecorderContext::rotate(double angle_in_radians) {
+ }
+ 
+ void Canvas2DRecorderContext::translate(double tx, double ty) {
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::Translate(
++            id, static_cast<float>(tx), static_cast<float>(ty)));
++  }
+   // TODO(crbug.com/40153853): Investigate the performance impact of simply
+   // calling the 3d version of this function
+   cc::PaintCanvas* c = GetOrCreatePaintCanvas();
+@@ -1536,6 +1587,13 @@ void Canvas2DRecorderContext::setTransform(double m11,
+       !std::isfinite(m12) || !std::isfinite(m22) || !std::isfinite(dy)) {
+     return;
+   }
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::SetTransform(
++            id, static_cast<float>(m11), static_cast<float>(m12),
++            static_cast<float>(m21), static_cast<float>(m22),
++            static_cast<float>(dx), static_cast<float>(dy)));
++  }
+ 
+   resetTransform();
+   transform(m11, m12, m21, m22, dx, dy);
+@@ -1570,6 +1628,10 @@ AffineTransform Canvas2DRecorderContext::GetTransform() const {
+ }
+ 
+ void Canvas2DRecorderContext::beginPath() {
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::BeginPath(id));
++  }
+   Clear();
+ }
+ 
+@@ -1676,6 +1738,10 @@ void Canvas2DRecorderContext::fill(const V8CanvasFillRule& winding) {
+ }
+ 
+ void Canvas2DRecorderContext::FillImpl(SkPathFillType winding_rule) {
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::Fill(id));
++  }
+   DrawPathInternal(*this, CanvasRenderingContext2DState::kFillPaintType,
+                    winding_rule, UsePaintCache::kDisabled);
+ }
+@@ -1696,6 +1762,10 @@ void Canvas2DRecorderContext::FillPathImpl(Path2D* dom_path,
+ }
+ 
+ void Canvas2DRecorderContext::stroke() {
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::Stroke(id));
++  }
+   DrawPathInternal(*this, CanvasRenderingContext2DState::kStrokePaintType,
+                    SkPathFillType::kWinding, UsePaintCache::kDisabled);
+ }
+@@ -1713,6 +1783,13 @@ void Canvas2DRecorderContext::fillRect(double x,
+     return;
+   }
+ 
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::FillRect(
++            id, static_cast<float>(x), static_cast<float>(y),
++            static_cast<float>(width), static_cast<float>(height)));
++  }
++
+   if (!GetOrCreatePaintCanvas()) {
+     return;
+   }
+@@ -1776,6 +1853,13 @@ void Canvas2DRecorderContext::strokeRect(double x,
+     return;
+   }
+ 
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::StrokeRect(
++            id, static_cast<float>(x), static_cast<float>(y),
++            static_cast<float>(width), static_cast<float>(height)));
++  }
++
+   if (!GetOrCreatePaintCanvas()) {
+     return;
+   }
+@@ -1933,6 +2017,12 @@ void Canvas2DRecorderContext::clearRect(double x,
+   if (!ValidateRectForCanvas(x, y, width, height)) {
+     return;
+   }
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::ClearRect(
++            id, static_cast<float>(x), static_cast<float>(y),
++            static_cast<float>(width), static_cast<float>(height)));
++  }
+ 
+   cc::PaintCanvas* c = GetOrCreatePaintCanvas();
+   if (!c) {
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_path.cc b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_path.cc
+index 8c8b5f5cb096a..2f859cdce97cd 100644
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_path.cc
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_path.cc
+@@ -35,6 +35,9 @@
+ 
+ #include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_path.h"
+ 
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h"
++
+ #include <array>
+ #include <cmath>
+ #include <ostream>  // IWYU pragma: keep (needed by String::Number(int), https://github.com/clangd/clangd/issues/2053)
+@@ -75,6 +78,10 @@ String StrFloatCat(StringView leading, float value, StringView trailing) {
+ }  // namespace
+ 
+ void CanvasPath::closePath() {
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::ClosePath(id));
++  }
+   if (IsEmpty()) [[unlikely]] {
+     return;
+   }
+@@ -107,6 +114,10 @@ void CanvasPath::closePath() {
+ void CanvasPath::moveTo(double double_x, double double_y) {
+   float x = base::saturated_cast<float>(double_x);
+   float y = base::saturated_cast<float>(double_y);
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::MoveTo(id, x, y));
++  }
+   if (!std::isfinite(x) || !std::isfinite(y)) [[unlikely]] {
+     return;
+   }
+@@ -125,6 +136,10 @@ void CanvasPath::moveTo(double double_x, double double_y) {
+ void CanvasPath::lineTo(double double_x, double double_y) {
+   float x = base::saturated_cast<float>(double_x);
+   float y = base::saturated_cast<float>(double_y);
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::LineTo(id, x, y));
++  }
+   if (!std::isfinite(x) || !std::isfinite(y)) [[unlikely]] {
+     return;
+   }
+@@ -159,6 +174,11 @@ void CanvasPath::quadraticCurveTo(double double_cpx,
+   float x = base::saturated_cast<float>(double_x);
+   float y = base::saturated_cast<float>(double_y);
+ 
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::QuadraticCurveTo(id, cpx, cpy, x, y));
++  }
++
+   if (!std::isfinite(cpx) || !std::isfinite(cpy) || !std::isfinite(x) ||
+       !std::isfinite(y)) [[unlikely]] {
+     return;
+@@ -191,6 +211,11 @@ void CanvasPath::bezierCurveTo(double double_cp1x,
+   float cp2y = base::saturated_cast<float>(double_cp2y);
+   float x = base::saturated_cast<float>(double_x);
+   float y = base::saturated_cast<float>(double_y);
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::BezierCurveTo(
++            id, cp1x, cp1y, cp2x, cp2y, x, y));
++  }
+   if (!std::isfinite(cp1x) || !std::isfinite(cp1y) || !std::isfinite(cp2x) ||
+       !std::isfinite(cp2y) || !std::isfinite(x) || !std::isfinite(y))
+       [[unlikely]] {
+@@ -436,6 +461,11 @@ void CanvasPath::arc(double double_x,
+   float radius = base::saturated_cast<float>(double_radius);
+   float start_angle = base::saturated_cast<float>(double_start_angle);
+   float end_angle = base::saturated_cast<float>(double_end_angle);
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::Arc(
++            id, x, y, radius, start_angle, end_angle, anticlockwise));
++  }
+   if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(radius) ||
+       !std::isfinite(start_angle) || !std::isfinite(end_angle)) [[unlikely]] {
+     return;
+@@ -544,6 +574,10 @@ void CanvasPath::rect(double double_x,
+   float y = base::saturated_cast<float>(double_y);
+   float width = base::saturated_cast<float>(double_width);
+   float height = base::saturated_cast<float>(double_height);
++  if (uint32_t id = MaybeBridgeCanvas2DId()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::Rect(id, x, y, width, height));
++  }
+   if (!IsTransformInvertible()) [[unlikely]] {
+     return;
+   }
+diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_path.h b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_path.h
+index 117bddcc7b266..f5446078bd706 100644
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/canvas_path.h
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/canvas_path.h
+@@ -75,6 +75,11 @@ class MODULES_EXPORT CanvasPath : public GarbageCollectedMixin {
+ 
+   virtual ~CanvasPath() = default;
+ 
++  // canvas-bridge: returns the per-canvas bridge id when this path's
++  // owning context is being mirrored to a remote render server, 0
++  // otherwise. Path2D returns 0; BaseRenderingContext2D overrides.
++  virtual uint32_t MaybeBridgeCanvas2DId() { return 0; }
++
+   void closePath();
+   void moveTo(double double_x, double double_y);
+   void lineTo(double double_x, double double_y);
