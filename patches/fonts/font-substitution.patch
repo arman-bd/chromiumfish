@@ -1,0 +1,514 @@
+diff --git a/third_party/blink/public/common/fingerprinting/font_allowlist.h b/third_party/blink/public/common/fingerprinting/font_allowlist.h
+new file mode 100644
+index 0000000000000..0d349d6dc08aa
+--- /dev/null
++++ b/third_party/blink/public/common/fingerprinting/font_allowlist.h
+@@ -0,0 +1,290 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_FINGERPRINTING_FONT_ALLOWLIST_H_
++#define THIRD_PARTY_BLINK_PUBLIC_COMMON_FINGERPRINTING_FONT_ALLOWLIST_H_
++
++#include <array>
++#include <string_view>
++
++namespace blink::fingerprinting {
++
++// Canonical font set for the fork's **Windows 10/11 persona**.
++//
++// Goal: defeat CSS font-probing (the "what fonts are installed" fingerprint
++// vector) by making every persona instance present the same font surface
++// regardless of the host OS. Pages probe by setting `font-family: "X"` on
++// a measurement element and observing whether text metrics change vs a
++// fallback. Our gate (FontCache::GetOrCreateFontPlatformData calling
++// IsAllowedFontFamilyStrict()) returns `nullptr` for any family NOT in
++// this list, forcing CSS to cascade to the next family.
++//
++// Membership rule: fonts that ship with **every supported Windows 10/11
++// SKU** (Home, Pro, Enterprise, Education) as part of the base OS — *not*
++// Office bundles, *not* Adobe bundles, *not* developer-installed extras.
++// Sources cross-referenced:
++//   * Microsoft Learn: "Fonts shipped with Windows 10/11" reference list
++//   * Windows 10/11 default font registry (HKLM\SOFTWARE\Microsoft\
++//     Windows NT\CurrentVersion\Fonts) on stock OEM images
++//   * Empirical anonymity-set blending: this is the union that maximises
++//     the count of Windows users we look identical to.
++//
++// We INTENTIONALLY drop macOS-specific families (-apple-system, Helvetica,
++// Menlo, Monaco, Lucida Grande, BlinkMacSystemFont) from this list:
++// our persona claims Windows, so exposing those would be a near-unique
++// "Windows-with-Mac-fonts" tell.
++//
++// Wiring (FINGERPRINT_ISOLATION_PLAN.md task #9):
++//   - `FontCache::GetOrCreateFontPlatformData` (font_cache.cc): returns
++//     nullptr for any family where IsAllowedFontFamilyStrict() is false.
++//   - Generic sentinels (sans-serif, monospace, …) are resolved upstream
++//     by the CSS font fallback engine into concrete family names before
++//     reaching this gate.
++//   - Web @font-face / FontCustomPlatformData bypasses this gate
++//     (pages bundling their own fonts is fine — no fingerprint leak).
++//   - Empty family and macOS internal dot-prefixed system names pass
++//     through (defaults / internal Blink fallbacks).
++
++inline constexpr std::array<std::string_view, 59> kAllowedFontFamilies = {
++    // Sans-serif — system UI fonts that ship with every Windows 10/11
++    "system-ui",
++    "Arial",
++    "Arial Black",
++    "Bahnschrift",
++    "Calibri",
++    "Calibri Light",
++    "Candara",
++    "Comic Sans MS",
++    "Corbel",
++    "Ebrima",
++    "Franklin Gothic Medium",
++    "Gadugi",
++    "Impact",
++    "Leelawadee UI",
++    "Lucida Sans Unicode",
++    "Malgun Gothic",
++    "Microsoft Himalaya",
++    "Microsoft JhengHei",
++    "Microsoft New Tai Lue",
++    "Microsoft PhagsPa",
++    "Microsoft Sans Serif",
++    "Microsoft Tai Le",
++    "Microsoft YaHei",
++    "Microsoft Yi Baiti",
++    "Mongolian Baiti",
++    "Myanmar Text",
++    "Nirmala UI",
++    "Segoe MDL2 Assets",
++    "Segoe Print",
++    "Segoe Script",
++    "Segoe UI",
++    "Segoe UI Emoji",
++    "Segoe UI Historic",
++    "Segoe UI Symbol",
++    "Sylfaen",
++    "Tahoma",
++    "Trebuchet MS",
++    "Verdana",
++    "Yu Gothic",
++    "Yu Gothic UI",
++    // Serif
++    "Cambria",
++    "Cambria Math",
++    "Constantia",
++    "Gabriola",
++    "Georgia",
++    "Palatino Linotype",
++    "Times New Roman",
++    // Monospace
++    "Consolas",
++    "Courier New",
++    "Lucida Console",
++    "MS Gothic",
++    // Symbol / dingbat
++    "Webdings",
++    "Marlett",
++    // 2026-05-30: extra Win 11 names matched by fpjs Pro's 52-font
++    // probe that our clone setup specifically targets (the rest of
++    // the 52-list overlaps the existing entries above).
++    "Franklin Gothic",
++    "MS UI Gothic",
++    "PMingLiU",
++    "Segoe UI Light",
++    "Lucida Bright",
++    "Lucida Sans",
++};
++
++// Case-insensitive ASCII match (CSS family names are case-insensitive).
++constexpr bool EqualsAsciiCaseInsensitive(std::string_view a,
++                                          std::string_view b) {
++  if (a.size() != b.size())
++    return false;
++  for (size_t i = 0; i < a.size(); ++i) {
++    char ca = a[i];
++    char cb = b[i];
++    if (ca >= 'A' && ca <= 'Z')
++      ca = static_cast<char>(ca + ('a' - 'A'));
++    if (cb >= 'A' && cb <= 'Z')
++      cb = static_cast<char>(cb + ('a' - 'A'));
++    if (ca != cb)
++      return false;
++  }
++  return true;
++}
++
++// macOS-host fonts that fingerprinters specifically probe to detect
++// macOS — and that Blink's internal font cascade NEVER falls back to
++// (Blink uses generic-family resolution + the system-ui sentinel +
++// "Helvetica"/"Times"/"Lucida Grande" on Mac; the families below are
++// real disk-installed fonts that page-driven probing detects as
++// "installed" only on macOS hosts). Blocking these at GetFontPlatformData
++// makes them appear absent without breaking Blink's cascade.
++//
++// Sources: amiunique.org's font probe table (~700 fonts), filtered to
++// the subset that's macOS-default-installed but Windows-absent. Apple-
++// branded font names + CJK script-specific Mac fonts (Hiragino, PingFang,
++// Heiti, Songti, Kohinoor) dominate the list.
++// Plain C array so the count auto-sizes; size mismatch with
++// std::array<N> would otherwise be a compile-time bug. Iterated below
++// via range-for which works for both forms.
++inline constexpr std::string_view kMacOnlyFontFamilies[] = {
++    // Apple-branded
++    "Apple Braille", "Apple Chancery", "Apple Color Emoji",
++    "Apple LiGothic Medium", "Apple LiSung Light", "Apple SD Gothic Neo",
++    "Apple SD GothicNeo ExtraBold", "Apple Symbols", "AppleGothic",
++    "AppleMyungjo", "AquaKana", ".Aqua Kana",
++    // Apple-stylised classical
++    "American Typewriter", "Andale Mono", "Avenir", "Avenir Black",
++    "Avenir Book", "Avenir Next", "Avenir Next Condensed",
++    "Avenir Next Demi Bold", "Avenir Next Heavy", "Avenir Roman",
++    "Baghdad", "Baskerville", "Beirut", "Big Caslon", "Bodoni 72",
++    "Bodoni Ornaments", "Bradley Hand", "Brush Script MT",
++    "Chalkboard", "Chalkboard SE", "Chalkduster", "Charter", "Cochin",
++    "Copperplate", "Corsiva Hebrew", "Damascus", "DecoType Naskh",
++    "Didot", "DIN Alternate", "DIN Condensed", "Diwan Kufi",
++    "Diwan Thuluth", "Euphemia UCAS", "Farah", "Farisi", "Futura",
++    "Geeza Pro", "Geneva", "GenevaCY", "Gill Sans", "Heiti SC",
++    "Heiti TC", "Helvetica CY", "HelveticaCY", "Herculanum",
++    "Hoefler Text", "Hoefler Text Ornaments", "InaiMathi", "Kailasa",
++    "Kefa", "Krungthep", "KufiStandardGK", "Luminari", "Marion",
++    "Marker Felt", "Mishafi", "Mishafi Gold", "Monaco", "Mshtakan",
++    "Muna", "Nadeem", "New Peninim MT", "Noteworthy", "Optima",
++    "Osaka", "Osaka-Mono", "OsakaMono", "Palatino", "Papyrus",
++    "Phosphate", "PingFang HK", "PingFang SC", "PingFang TC",
++    "Plantagenet Cherokee", "Raanana", "Sana", "Sathu",
++    "SignPainter-HouseScript", "Silom", "Skia", "Snell Roundhand",
++    "Songti SC", "Songti TC", "STKaiti", "STSong", "STFangsong",
++    "STHeiti", "STXihei", "Sukhumvit Set", "System Font", "Thonburi",
++    "Trattatello", "Waseem", "Zapf Dingbats", "Zapfino",
++    // STIX science fonts (macOS-installed)
++    "STIXGeneral", "STIXIntegralsD", "STIXIntegralsSm",
++    "STIXIntegralsUp", "STIXIntegralsUpD", "STIXIntegralsUpSm",
++    "STIXNonUnicode", "STIXSizeFiveSym", "STIXSizeFourSym",
++    "STIXSizeOneSym", "STIXSizeThreeSym", "STIXSizeTwoSym",
++    "STIXVariants",
++    // Mac CJK / script-specific (almost all macOS Sangam / MN names)
++    "Bangla MN", "Bangla Sangam MN", "Devanagari MT",
++    "Devanagari Sangam MN", "Gujarati MT", "Gujarati Sangam MN",
++    "Gurmukhi MN", "Gurmukhi MT", "Gurmukhi Sangam MN", "ITF Devanagari",
++    "ITF Devanagari Marathi", "Kannada MN", "Kannada Sangam MN",
++    "Khmer MN", "Khmer Sangam MN", "Kohinoor Bangla",
++    "Kohinoor Devanagari", "Kohinoor Telugu", "Kokonor", "Lao MN",
++    "Lao Sangam MN", "Malayalam MN", "Malayalam Sangam MN",
++    "Mongolian Baiti", "Myanmar MN", "Myanmar Sangam MN", "Noto Nastaliq Urdu",
++    "Noto Sans Armenian", "Noto Sans Canadian Aboriginal",
++    "Noto Sans Kannada", "Noto Sans Myanmar", "Noto Sans Oriya",
++    "Noto Sans Yi", "Oriya MN", "Oriya Sangam MN", "Shree Devanagari 714",
++    "Sinhala MN", "Sinhala Sangam MN", "Tamil MN", "Tamil Sangam MN",
++    "Telugu MN", "Telugu Sangam MN", "Al Bayan", "Al Nile",
++    "Al Tarikh", "Ayuthaya", "Arial Hebrew", "GB18030 Bitmap",
++    "Hiragino Sans", "Hiragino Sans GB",
++    "Hiragino Kaku Gothic Pro", "Hiragino Kaku Gothic ProN",
++    "Hiragino Kaku Gothic Std", "Hiragino Kaku Gothic StdN",
++    "Hiragino Maru Gothic Pro", "Hiragino Maru Gothic ProN",
++    "Hiragino Mincho Pro", "Hiragino Mincho ProN",
++    // PT Sans/Mono/Serif — macOS-bundled (also available elsewhere, but
++    // their *default-installed* state is a Mac tell).
++    "PT Mono", "PT Sans", "PT Serif",
++    // NOTE: Helvetica / Helvetica Neue / Lucida Grande / Menlo / Times
++    // are deliberately NOT in this denylist. Blink's internal font
++    // cascade on macOS requests them in code paths we haven't fully
++    // mapped, and blocking them causes a renderer SIGSEGV on
++    // real-world pages (amiunique.org/fingerprint reproducibly). Even
++    // though the CoreText layer has Carlito/Caladea/etc. activated to
++    // satisfy CSS lookups for "Calibri"/"Cambria", Blink's internal
++    // path for the Mac defaults remains. Leaving them allowed means
++    // those 5 fonts still leak as a Mac signal — partial improvement
++    // only. The full fix requires identifying the specific Blink
++    // call-site that resolves to Helvetica/Times and routing it via
++    // an internal-only allowlist gate.
++};
++
++constexpr bool IsMacOnlyFontFamily(std::string_view family) {
++  for (std::string_view banned : kMacOnlyFontFamilies) {
++    if (EqualsAsciiCaseInsensitive(family, banned))
++      return true;
++  }
++  // Catch every name in the "Hiragino*", "Apple*", "PingFang*" family
++  // groups via prefix match — the static array above lists the most
++  // common variants but new style-variants land in upstream macOS each
++  // release. Prefix-matching keeps coverage without listing each one.
++  constexpr std::string_view kMacPrefixes[] = {
++      "Hiragino ", "Apple ", "PingFang ", "Heiti ", "Songti ",
++      "Kohinoor ", "STIXSize", "STIXIntegrals", "Geeza ", "Avenir ",
++      "Bodoni 72", "Hiragino Kaku",
++  };
++  for (std::string_view pre : kMacPrefixes) {
++    if (family.size() >= pre.size()) {
++      bool match = true;
++      for (size_t i = 0; i < pre.size(); ++i) {
++        char a = family[i];
++        char b = pre[i];
++        if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + ('a' - 'A'));
++        if (b >= 'A' && b <= 'Z') b = static_cast<char>(b + ('a' - 'A'));
++        if (a != b) { match = false; break; }
++      }
++      if (match) return true;
++    }
++  }
++  return false;
++}
++
++// Aggressive: includes the 5 names that IsMacOnlyFontFamily deliberately
++// omits (Helvetica, Helvetica Neue, Lucida Grande, Menlo, Times). Safe to
++// use ONLY at FontFallbackList::GetFontData (the CSS font-stack iterator).
++// NEVER use at the IsAllowedFontFamilyStrict / GetFontPlatformData gate —
++// Blink's last-resort cascade requests those names directly and starves
++// without them, causing a renderer SIGSEGV. FontFallbackList is the right layer
++// because GetLastResortFallbackFont bypasses it via a direct
++// FontCache::GetFontData() call.
++constexpr bool IsMacOnlyFontFamilyAggressive(std::string_view family) {
++  if (IsMacOnlyFontFamily(family))
++    return true;
++  // The 5 deliberately-omitted names — block at the JS-probe layer only.
++  static constexpr std::string_view kExtra[] = {
++      "Helvetica Neue", "HelveticaNeue", "Helvetica",
++      "Menlo", "Lucida Grande", "LucidaGrande",
++  };
++  for (std::string_view name : kExtra) {
++    if (EqualsAsciiCaseInsensitive(family, name))
++      return true;
++  }
++  return false;
++}
++
++constexpr bool IsAllowedFontFamilyStrict(std::string_view family) {
++  if (family.empty())
++    return true;
++  if (family.front() == '.')
++    return true;
++  for (std::string_view allowed : kAllowedFontFamilies) {
++    if (EqualsAsciiCaseInsensitive(family, allowed))
++      return true;
++  }
++  return false;
++}
++
++}  // namespace blink::fingerprinting
++
++#endif  // THIRD_PARTY_BLINK_PUBLIC_COMMON_FINGERPRINTING_FONT_ALLOWLIST_H_
+diff --git a/third_party/blink/renderer/platform/fonts/alternate_font_family.h b/third_party/blink/renderer/platform/fonts/alternate_font_family.h
+index ab909958f63e2..33910187b0cbb 100644
+--- a/third_party/blink/renderer/platform/fonts/alternate_font_family.h
++++ b/third_party/blink/renderer/platform/fonts/alternate_font_family.h
+@@ -101,6 +101,91 @@ inline const AtomicString& AlternateFamilyName(
+     return font_family_names::kArial;
+   }
+ 
++#if BUILDFLAG(IS_MAC)
++  // Lightweight-fork: route Win-typical font-family names to the libre
++  // equivalents installed via tools/activate_lean_fonts.py. Without this,
++  // fpjs's font enumeration probe sees these Win-default fonts as missing
++  // (contradicting our Windows persona). Aliasing to Arial / Courier New /
++  // Times New Roman (which Blink resolves to Arimo / Cousine / Tinos via
++  // CoreText on this host) makes them register as installed. Widths won't
++  // be perfectly Win-accurate, but presence beats absence. Only reached on
++  // alternate-lookup path — Windows natively has these so this branch is
++  // never hit there.
++  // Expanded list — these are the exact font names a real Win11 Chrome
++  // returns from fpjs's font probe (verified via real-hardware capture).
++  // Aliasing them all to one of the three libre families we install via
++  // tools/activate_lean_fonts.py makes them appear "installed" with
++  // metric values that differ from the monospace fallback baseline.
++  // Sans-serif and decorative Win fonts → Arial (resolves to Arimo)
++  if (EqualIgnoringAsciiCase(family_name, "Segoe UI") ||
++      EqualIgnoringAsciiCase(family_name, "Segoe UI Light") ||
++      EqualIgnoringAsciiCase(family_name, "Segoe UI Semibold") ||
++      EqualIgnoringAsciiCase(family_name, "Segoe UI Black") ||
++      EqualIgnoringAsciiCase(family_name, "Segoe UI Symbol") ||
++      EqualIgnoringAsciiCase(family_name, "Segoe UI Emoji") ||
++      EqualIgnoringAsciiCase(family_name, "Tahoma") ||
++      EqualIgnoringAsciiCase(family_name, "Verdana") ||
++      EqualIgnoringAsciiCase(family_name, "Trebuchet MS") ||
++      EqualIgnoringAsciiCase(family_name, "Microsoft Sans Serif") ||
++      EqualIgnoringAsciiCase(family_name, "Arial Black") ||
++      EqualIgnoringAsciiCase(family_name, "Calibri") ||
++      EqualIgnoringAsciiCase(family_name, "Calibri Light") ||
++      EqualIgnoringAsciiCase(family_name, "Candara") ||
++      EqualIgnoringAsciiCase(family_name, "Corbel") ||
++      EqualIgnoringAsciiCase(family_name, "Franklin Gothic") ||
++      EqualIgnoringAsciiCase(family_name, "Franklin Gothic Medium") ||
++      EqualIgnoringAsciiCase(family_name, "Lucida Sans") ||
++      EqualIgnoringAsciiCase(family_name, "Lucida Sans Unicode") ||
++      EqualIgnoringAsciiCase(family_name, "Impact") ||
++      EqualIgnoringAsciiCase(family_name, "Haettenschweiler") ||
++      EqualIgnoringAsciiCase(family_name, "Agency FB") ||
++      EqualIgnoringAsciiCase(family_name, "Century Gothic") ||
++      EqualIgnoringAsciiCase(family_name, "Comic Sans MS") ||
++      EqualIgnoringAsciiCase(family_name, "Leelawadee") ||
++      EqualIgnoringAsciiCase(family_name, "Leelawadee UI") ||
++      EqualIgnoringAsciiCase(family_name, "MS UI Gothic") ||
++      EqualIgnoringAsciiCase(family_name, "MS Gothic") ||
++      EqualIgnoringAsciiCase(family_name, "MS PGothic") ||
++      EqualIgnoringAsciiCase(family_name, "Microsoft Uighur") ||
++      EqualIgnoringAsciiCase(family_name, "Microsoft YaHei") ||
++      EqualIgnoringAsciiCase(family_name, "Microsoft JhengHei") ||
++      EqualIgnoringAsciiCase(family_name, "Yu Gothic") ||
++      EqualIgnoringAsciiCase(family_name, "Malgun Gothic") ||
++      EqualIgnoringAsciiCase(family_name, "Marlett") ||
++      EqualIgnoringAsciiCase(family_name, "MS Reference Specialty") ||
++      EqualIgnoringAsciiCase(family_name, "MS Outlook")) {
++    return font_family_names::kArial;
++  }
++  // Monospace Win fonts → Courier New (resolves to Cousine)
++  if (EqualIgnoringAsciiCase(family_name, "Consolas") ||
++      EqualIgnoringAsciiCase(family_name, "Lucida Console") ||
++      EqualIgnoringAsciiCase(family_name, "MS Mincho") ||
++      EqualIgnoringAsciiCase(family_name, "MS PMincho")) {
++    return font_family_names::kCourierNew;
++  }
++  // Serif Win fonts → Times New Roman (resolves to Tinos)
++  if (EqualIgnoringAsciiCase(family_name, "Cambria") ||
++      EqualIgnoringAsciiCase(family_name, "Cambria Math") ||
++      EqualIgnoringAsciiCase(family_name, "Constantia") ||
++      EqualIgnoringAsciiCase(family_name, "Georgia") ||
++      EqualIgnoringAsciiCase(family_name, "Palatino Linotype") ||
++      EqualIgnoringAsciiCase(family_name, "Century") ||
++      EqualIgnoringAsciiCase(family_name, "Lucida Bright") ||
++      EqualIgnoringAsciiCase(family_name, "Bookman Old Style") ||
++      EqualIgnoringAsciiCase(family_name, "Garamond") ||
++      EqualIgnoringAsciiCase(family_name, "Book Antiqua")) {
++    return font_family_names::kTimesNewRoman;
++  }
++  // Cursive/script Win fonts → Times New Roman as approximation
++  if (EqualIgnoringAsciiCase(family_name, "Monotype Corsiva") ||
++      EqualIgnoringAsciiCase(family_name, "Pristina") ||
++      EqualIgnoringAsciiCase(family_name, "Lucida Calligraphy") ||
++      EqualIgnoringAsciiCase(family_name, "Lucida Handwriting") ||
++      EqualIgnoringAsciiCase(family_name, "Edwardian Script ITC")) {
++    return font_family_names::kTimesNewRoman;
++  }
++#endif
++
+   return g_empty_atom;
+ }
+ 
+diff --git a/third_party/blink/renderer/platform/fonts/font_cache.cc b/third_party/blink/renderer/platform/fonts/font_cache.cc
+index 75cc0b764f8c4..00ad27fcc43e0 100644
+--- a/third_party/blink/renderer/platform/fonts/font_cache.cc
++++ b/third_party/blink/renderer/platform/fonts/font_cache.cc
+@@ -43,6 +43,8 @@
+ #include "build/build_config.h"
+ #include "skia/ext/font_utils.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
++#include "third_party/blink/public/common/fingerprinting/font_allowlist.h"
+ #include "third_party/blink/public/platform/platform.h"
+ #include "third_party/blink/renderer/platform/font_family_names.h"
+ #include "third_party/blink/renderer/platform/fonts/alternate_font_family.h"
+@@ -141,6 +143,57 @@ const FontPlatformData* FontCache::GetFontPlatformData(
+   }
+ #endif
+ 
++  // Fingerprint isolation (FINGERPRINT_ISOLATION_PLAN.md task #9): only
++  // resolve allowlisted system family names so pages can't probe which
++  // fonts the host has installed via CSS family-fallback timing. Empty
++  // family is a "give me the default" request and is preserved. Generic
++  // sentinels (sans-serif, monospace, …) are resolved upstream by the CSS
++  // font fallback engine into concrete family names before reaching this
++  // function, so they aren't affected. Web @font-face / FontCustomPlatformData
++  // bypasses this path entirely.
++  //
++  // 2026-05-30: STRICT allowlist — only the canonical Win 10/11 base font
++  // set is visible to page-driven probes. A CreepJS run surfaced our Linux
++  // build's DejaVu / Liberation / Noto-* (incl. rare scripts like Yezidi,
++  // Gondi, Canadian Aboriginal) as the "38% like headless" tell: real Win 11
++  // users have NONE of these. The strict allowlist hides them at the
++  // FontPlatformData layer so probes via CSS measurement / FontFace local()
++  // get nullptr and conclude "font not installed". Internal Blink fallback
++  // (-webkit-standard etc.) goes through FontFallbackList::GetFontData →
++  // FontCache::GetFontData directly, bypassing this gate, so pages without
++  // an explicit font-family still render.
++  //
++  // 2026-05-31: the entire gate is Mac-excluded. The strict allowlist is
++  // calibrated for the Linux VPS deployment, where the Win-clone TTFs are
++  // installed at /usr/local/share/fonts/chromfish-win-clones/ so the persona-
++  // approved family names (Calibri, Franklin Gothic, etc.) resolve to disk
++  // files. On Mac dev builds those clones aren't installed, so the allowlist
++  // would reject every requested family AND every system fallback (Helvetica,
++  // SF Pro, Menlo) — Chrome's font matcher then returns nullptr to layout,
++  // NULL-derefs during glyph rendering, and crashes the renderer (SIGSEGV/
++  // SIGABRT, observed on amiunique.org, CreepJS, browserleaks). Skip the gate
++  // entirely on Mac so pages render normally.
++#if !BUILDFLAG(IS_MAC)
++  if (creation_params.CreationType() == kCreateFontByFamily &&
++      !creation_params.Family().empty()) {
++    const std::string family_utf8 = creation_params.Family().Utf8();
++    if (!fingerprinting::IsAllowedFontFamilyStrict(family_utf8)) {
++      return nullptr;
++    }
++    // Note: an earlier revision substituted Mac-default font names
++    // (Helvetica/Menlo/Lucida Grande/Times) to Win-equivalents (Arial/
++    // Consolas/Times New Roman) at this layer when the persona claimed
++    // Windows. That broke canvas measureText behavior — real Win Chrome
++    // with `font-family: Helvetica` falls back to `-webkit-standard`
++    // (Times New Roman), NOT Arial, so substituting to Arial here
++    // produced widths that real Win Chrome would never produce. Better
++    // to leave these family names alone here and rely on
++    // FontFallbackList::GetFontData's aggressive skip
++    // (IsMacOnlyFontFamilyAggressive) which causes the CSS cascade to
++    // continue past the family — matching Win Chrome's natural fallback.
++  }
++#endif
++
+   return font_platform_data_cache_.GetOrCreateFontPlatformData(
+       this, font_description, creation_params, alternate_font_name);
+ }
+diff --git a/third_party/blink/renderer/platform/fonts/font_fallback_list.cc b/third_party/blink/renderer/platform/fonts/font_fallback_list.cc
+index c38cf414f9e09..865c42c6b3a09 100644
+--- a/third_party/blink/renderer/platform/fonts/font_fallback_list.cc
++++ b/third_party/blink/renderer/platform/fonts/font_fallback_list.cc
+@@ -29,6 +29,7 @@
+ #include "third_party/blink/renderer/platform/fonts/font_fallback_list.h"
+ 
+ #include "base/timer/elapsed_timer.h"
++#include "third_party/blink/public/common/fingerprinting/font_allowlist.h"
+ #include "third_party/blink/renderer/platform/font_family_names.h"
+ #include "third_party/blink/renderer/platform/fonts/alternate_font_family.h"
+ #include "third_party/blink/renderer/platform/fonts/font_cache.h"
+@@ -154,6 +155,21 @@ const FontData* FontFallbackList::GetFontData(
+ 
+   for (; curr_family; curr_family = curr_family->Next()) {
+     family_index_++;
++    // Lightweight-fork: silently skip macOS-specific font family names
++    // when iterating the CSS font-family stack. This makes JS font probes
++    // (canvas measureText + document.fonts.check) report Helvetica Neue,
++    // Menlo, Monaco, Apple Color Emoji etc. as not-installed, contradicting
++    // the macOS host signal that fpjs Pro's ML uses to flag the browser
++    // as anti-detect. Last-resort fallback (GetLastResortFallbackFont)
++    // bypasses this loop by calling FontCache::GetFontData() directly, so
++    // Blink's internal cascade still finds "Times" and "Lucida Grande"
++    // when nothing else matches — no SIGSEGV.
++    if (!curr_family->FamilyName().empty()) {
++      const std::string family_utf8 = curr_family->FamilyName().Utf8();
++      if (fingerprinting::IsMacOnlyFontFamilyAggressive(family_utf8)) {
++        continue;
++      }
++    }
+     if (!font_selector_) {
+       // Don't query system fonts for empty font family name.
+       if (!curr_family->FamilyName().empty()) {
+diff --git a/third_party/blink/renderer/platform/fonts/mac/font_cache_mac.mm b/third_party/blink/renderer/platform/fonts/mac/font_cache_mac.mm
+index ec06f7decbacf..c962cd6dfa3f9 100644
+--- a/third_party/blink/renderer/platform/fonts/mac/font_cache_mac.mm
++++ b/third_party/blink/renderer/platform/fonts/mac/font_cache_mac.mm
+@@ -132,7 +132,11 @@ bool IsLastResortFont(CTFontRef font) {
+     // `chrome/app/resources/locale_settings_mac.grd` as the font to substitute
+     // from in `CTFontCreateForString`.
+     ScopedCFTypeRef<CTFontRef> font_to_substitute(
+-        CTFontCreateWithName(CFSTR("Times"), size, nullptr));
++        // Lightweight-fork: use "Times New Roman" (Win-typical) instead of
++        // the macOS-typical "Times" so fpjs's emoji.font probe doesn't leak
++        // that we're on macOS. CoreText will resolve to the system Times
++        // family either way; only the reported family name differs.
++        CTFontCreateWithName(CFSTR("Times New Roman"), size, nullptr));
+     substitute_font.reset(
+         CTFontCreateForString(font_to_substitute.get(), string.get(), range));
+   } else {
