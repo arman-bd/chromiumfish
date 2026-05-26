@@ -1,0 +1,255 @@
+diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
+index 14232136193ff..491c85a56a9cc 100644
+--- a/chrome/app/chrome_main_delegate.cc
++++ b/chrome/app/chrome_main_delegate.cc
+@@ -1058,6 +1058,164 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
+   ash::BootTimesRecorder::Get()->SaveChromeMainStats();
+ #endif
+ 
++  // === ChromiumFish: bake in fork-critical switches before anything else
++  // reads the command line. These need to be present in the browser
++  // process AND every renderer (Chromium propagates the cmd line via
++  // ContentBrowserClient::AppendExtraCommandLineSwitches). Doing it here
++  // is the cheapest path that doesn't require touching every consumer.
++  //
++  //   * --password-store=basic       — skip OS keychain integration
++  //                                     (avoids the macOS keychain prompt
++  //                                     and the Linux libsecret probe).
++  //   * --use-mock-keychain          — OSCrypt returns a deterministic
++  //                                     mock instead of hitting the host
++  //                                     keychain at all. Belt + braces.
++  //
++  // Operators who genuinely want keychain integration can pass the
++  // switches with non-fork values BEFORE startup — we only fill in the
++  // default, never overwrite.
++  {
++    base::CommandLine* mutable_cmd_line =
++        base::CommandLine::ForCurrentProcess();
++    if (!mutable_cmd_line->HasSwitch("password-store")) {
++      mutable_cmd_line->AppendSwitchASCII("password-store", "basic");
++    }
++    if (!mutable_cmd_line->HasSwitch("use-mock-keychain")) {
++      mutable_cmd_line->AppendSwitch("use-mock-keychain");
++    }
++    // WebRTC ICE gathering: keep UDP completely off the public network.
++    //
++    // EMPIRICAL 2026-05-30 from CreepJS run: with
++    // `default_public_interface_only` the STUN srflx candidate
++    // still emitted the cloud VPS's actual IP (203.0.113.7)
++    // because the HTTP/HTTPS proxy at the browser layer doesn't
++    // tunnel STUN's UDP traffic — so the STUN server saw our raw
++    // VPS interface and the page extracted the real IP via
++    // RTCPeerConnection.
++    //
++    // `disable_non_proxied_udp` forces all WebRTC over TCP through
++    // the proxy. STUN reflexive candidates go through proxy or get
++    // suppressed. Cost: video-call quality / WebRTC features
++    // degrade on connections without a proxy; for our anti-bot
++    // / proxied-egress deployment niche this is the right default.
++    // Operators with bare-internet desktop installs can override
++    // with --force-webrtc-ip-handling-policy=default.
++    if (!mutable_cmd_line->HasSwitch("force-webrtc-ip-handling-policy")) {
++      mutable_cmd_line->AppendSwitchASCII(
++          "force-webrtc-ip-handling-policy",
++          "disable_non_proxied_udp");
++    }
++    // WebGL backend: force every WebGL context through ANGLE/SwiftShader
++    // (software rasterizer). Every fork instance — Mac M-series, Win
++    // NVIDIA, Linux Mesa — produces identical deterministic pixels for
++    // any given draw sequence, so canvas / WebGL fingerprint hashes
++    // become a per-fork constant instead of per-host-GPU. The renderer
++    // string is independently spoofed via the persona system to a
++    // canonical "NVIDIA RTX 3060 D3D11" identity.
++    //
++    // `--enable-unsafe-swiftshader` is required since M119 to allow
++    // SwiftShader as a default WebGL backend (upstream gated it after
++    // SwiftShader was deprioritized for non-test paths).
++    //
++    // 2026-05-31: Mac exclusion. On macOS the system compositor relies on
++    // Metal-backed CALayer / IOSurface presentation; forcing every WebGL
++    // context through ANGLE-on-SwiftShader breaks that path and the
++    // browser window — even a chrome://newtab — renders pixels that
++    // never composite onto the display. The window exists in AppKit
++    // (System Events reports correct title/position/size) but the user
++    // sees only desktop. Skip the SwiftShader bake on Mac so AppKit's
++    // native Metal compositor handles presentation; canvas pixels then
++    // come from the canvas bridge (when configured) or the local Mac
++    // engine. The Linux VPS deployment path (the actual shipping target)
++    // keeps SwiftShader for headless Ozone rendering.
++#if !BUILDFLAG(IS_MAC)
++    if (!mutable_cmd_line->HasSwitch("use-angle")) {
++      mutable_cmd_line->AppendSwitchASCII("use-angle", "swiftshader");
++    }
++    if (!mutable_cmd_line->HasSwitch("enable-unsafe-swiftshader")) {
++      mutable_cmd_line->AppendSwitch("enable-unsafe-swiftshader");
++    }
++#endif
++    // WebGPU: real Chrome 148 on a desktop exposes navigator.gpu and
++    // its constructors. Without these flags Chromium gates on adapter
++    // availability and SwiftShader doesn't provide one, so
++    // navigator.gpu ends up undefined — fpjs Pro / Cloudflare
++    // Turnstile flag this absence as anti-detect.
++    if (!mutable_cmd_line->HasSwitch("enable-unsafe-webgpu")) {
++      mutable_cmd_line->AppendSwitch("enable-unsafe-webgpu");
++    }
++    if (!mutable_cmd_line->HasSwitch("enable-features")) {
++      mutable_cmd_line->AppendSwitchASCII("enable-features", "WebGPU");
++    } else {
++      // Append to existing --enable-features list.
++      const std::string existing =
++          mutable_cmd_line->GetSwitchValueASCII("enable-features");
++      if (existing.find("WebGPU") == std::string::npos) {
++        mutable_cmd_line->RemoveSwitch("enable-features");
++        mutable_cmd_line->AppendSwitchASCII(
++            "enable-features", existing + ",WebGPU");
++      }
++    }
++#if BUILDFLAG(IS_LINUX)
++    // 2026-05-30: Persona-mode timezone default.
++    //
++    // ICU resolves the default timezone from the TZ env var first, then
++    // /etc/timezone, then /etc/localtime. On a fresh cloud VPS the host
++    // is set to whatever the cloud-provider region defaults to (German
++    // VPS → Europe/Berlin, Singapore VPS → Asia/Singapore, etc.), which
++    // leaks into JS via Intl.DateTimeFormat().resolvedOptions().timeZone.
++    //
++    // fpjs Pro cross-references that JS-reported timezone with the IP
++    // geolocation. A Win persona running through a US proxy but
++    // reporting timezone=Europe/Berlin gets flagged
++    // vpn_origin_timezone="Europe/Berlin" + vpn=true with high
++    // confidence. Cloudflare Turnstile uses the same pivot.
++    //
++    // Default to America/New_York when the operator hasn't pinned TZ
++    // — matches the Win-US persona this fork ships, and avoids the
++    // mismatch with US residential proxies. Operators using a non-US
++    // proxy can still override by exporting TZ in their environment
++    // before launch; we only fill in the unset case.
++    if (getenv("TZ") == nullptr) {
++      setenv("TZ", "America/New_York", /*overwrite=*/0);
++    }
++
++    // Self-bootstrap headless on a server: when there's no DISPLAY and
++    // no WAYLAND_DISPLAY, fall back to Ozone's `headless` platform
++    // (software framebuffer, zero X / Wayland / DRM dependencies).
++    //
++    // Crucially this is NOT `--headless` / `--headless=new`: those
++    // activate chrome/browser/headless/ + content/headless_shell, which
++    // change UA to "HeadlessChrome", force
++    // Notification.permission='denied' regardless of pref, take a
++    // different RTCPeerConnection ICE-gathering code path, stub
++    // chrome.runtime differently, and ship navigator.plugins=[].
++    // Every fingerprint comparator on the open web has a classifier
++    // tuned for those tells.
++    //
++    // Ozone "headless" is a render-backend-only swap: pixels go to a
++    // memory surface instead of a window, but Blink runs its full
++    // headful code path, navigator.* values are unchanged, the UA
++    // stays plain "Chrome/...", and pages can't tell. End result:
++    // one binary, runs on any Linux box (laptop, VPS, container)
++    // without `xvfb-run`, `apt install xvfb`, or DISPLAY rituals,
++    // and fingerprinters see a regular desktop Chrome.
++    //
++    // Operators with a real DISPLAY (or wanting --ozone-platform=x11
++    // explicitly) get their value respected — we only fill in.
++    if (!mutable_cmd_line->HasSwitch("ozone-platform") &&
++        !mutable_cmd_line->HasSwitch("ozone-platform-hint")) {
++      const char* display_env = getenv("DISPLAY");
++      const char* wayland_env = getenv("WAYLAND_DISPLAY");
++      const bool have_display =
++          (display_env && *display_env) || (wayland_env && *wayland_env);
++      if (!have_display) {
++        mutable_cmd_line->AppendSwitchASCII("ozone-platform", "headless");
++      }
++    }
++#endif  // BUILDFLAG(IS_LINUX)
++  }
++
+   const base::CommandLine& command_line =
+       *base::CommandLine::ForCurrentProcess();
+ 
+diff --git a/third_party/blink/renderer/modules/mediastream/media_devices.cc b/third_party/blink/renderer/modules/mediastream/media_devices.cc
+index 74c67ef18400a..003c567fe6f18 100644
+--- a/third_party/blink/renderer/modules/mediastream/media_devices.cc
++++ b/third_party/blink/renderer/modules/mediastream/media_devices.cc
+@@ -18,6 +18,7 @@
+ #include "mojo/public/cpp/bindings/remote.h"
+ #include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-blink.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/public/common/mediastream/media_devices.h"
+ #include "third_party/blink/public/mojom/media/capture_handle_config.mojom-blink.h"
+ #include "third_party/blink/public/mojom/mediastream/media_devices.mojom-blink.h"
+@@ -525,6 +526,39 @@ ScriptPromise<IDLSequence<MediaDeviceInfo>> MediaDevices::enumerateDevices(
+       kEnumerateDevicesTimeout);
+   const auto promise = result_tracker->Promise();
+ 
++  if (!fingerprinting::Current().media_device_enumeration_enabled) {
++    // ChromiumFish: return a synthetic Win-Chrome-shaped device list
++    // instead of an empty array. Empty enumerateDevices() output is a
++    // bot tell — real users always have at least one audio sink even
++    // on bare laptops. The 4-entry pattern (default + communications
++    // for both input and output) is the canonical Win Chrome 148
++    // pre-permission shape; Linux / macOS Chrome return only 2.
++    // Labels are empty (per spec, until permission is granted).
++    //
++    // group_id is derived from the persona seed so it's stable across
++    // calls within a session and distinct across persona rotations,
++    // but never reflects host hardware.
++    MediaDeviceInfoVector media_devices;
++    const auto& fp = fingerprinting::Current();
++    char gid_buf[33];
++    snprintf(gid_buf, sizeof(gid_buf), "%016llx%016llx",
++             static_cast<unsigned long long>(fp.persona_seed ^
++                 0x9e3779b97f4a7c15ULL),
++             static_cast<unsigned long long>(fp.persona_seed *
++                 0xbf58476d1ce4e5b9ULL));
++    String group_id(gid_buf);
++    auto add = [&](const char* device_id, mojom::MediaDeviceType type) {
++      media_devices.push_back(MakeGarbageCollected<MediaDeviceInfo>(
++          String(device_id), /*label=*/String(""), group_id, type));
++    };
++    add("default", mojom::MediaDeviceType::kMediaAudioInput);
++    add("communications", mojom::MediaDeviceType::kMediaAudioInput);
++    add("default", mojom::MediaDeviceType::kMediaAudioOutput);
++    add("communications", mojom::MediaDeviceType::kMediaAudioOutput);
++    result_tracker->Resolve(media_devices);
++    return promise;
++  }
++
+   SendLogMessage(base::StringPrintf(
+       "enumerateDevices({result_tracker=%p}, "
+       "{request_audio_input_capabilities=%s})",
+diff --git a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
+index 1d85fe3c79b61..6cd79827cd003 100644
+--- a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
++++ b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
+@@ -2368,6 +2368,29 @@ void RTCPeerConnection::DidGenerateICECandidate(
+   DCHECK(!closed_);
+   DCHECK(GetExecutionContext()->IsContextThread());
+   DCHECK(platform_candidate);
++  // 2026-05-31: Persona-mode IP leak shield. With
++  // --force-webrtc-ip-handling-policy=disable_non_proxied_udp set, the
++  // upstream code sets port_config.enable_nonproxied_udp=false — yet
++  // empirically Chromium 150 still emits srflx and prflx UDP candidates
++  // whose IP is the raw host public address (verified 2026-05-31 on the
++  // Linux VPS — srflx address=203.0.113.7 with raddr=0.0.0.0). This is
++  // the classic CreepJS / fpjs / IPLeak.net WebRTC leak: page reads
++  // candidate.address, gets the real interface IP, cross-checks against
++  // the page's TCP IP (proxy IP), and flags the proxy with high
++  // confidence. CF Turnstile uses the same pivot for VPN detection.
++  //
++  // Mirror the policy at the candidate-dispatch layer: drop srflx and
++  // prflx UDP candidates entirely. mDNS host candidates (.local) still
++  // emit normally (they're already privacy-protected). Relay candidates
++  // pass through (TURN traffic is operator-configured, not a leak). The
++  // result: a page with this fork sees a normal-looking ICE gathering
++  // pattern for "user behind strict firewall / no STUN reachable" —
++  // which is also what disable_non_proxied_udp is supposed to deliver.
++  const String& type = platform_candidate->Type();
++  const String& protocol = platform_candidate->Protocol();
++  if (protocol == "udp" && (type == "srflx" || type == "prflx")) {
++    return;
++  }
+   RTCIceCandidate* ice_candidate = RTCIceCandidate::Create(platform_candidate);
+   MaybeDispatchEvent(RTCPeerConnectionIceEvent::Create(ice_candidate));
+ }
