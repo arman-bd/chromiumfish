@@ -1,0 +1,55 @@
+diff --git a/net/base/features.cc b/net/base/features.cc
+index 98b21d5fad16d..0905678103038 100644
+--- a/net/base/features.cc
++++ b/net/base/features.cc
+@@ -613,7 +613,15 @@ BASE_FEATURE(kRestrictAbusePortsOnLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
+ 
+ BASE_FEATURE(kTLSTrustAnchorIDs, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+-BASE_FEATURE(kTlsMldsaSignatures, base::FEATURE_ENABLED_BY_DEFAULT);
++// ChromiumFish: default DISABLED. Chrome 149+ added 3 ML-DSA (post-quantum)
++// signature algorithms (0x904-0x906) to the TLS verify_sigalgs extension.
++// Real Chrome 148 only advertises the 8 classical sigalgs. Cloudflare /
++// fpjs Pro flag "UA says 148 but TLS sigalgs are 149+" as inconsistent and
++// escalate to interactive Turnstile. Keeping this off routes us through
++// the kVerifyPrefs branch in ssl_client_socket_impl.cc:777, matching
++// Chrome 148 byte-exactly. (Operators wanting upstream behavior can pass
++// --enable-features=TlsMldsaSignatures.)
++BASE_FEATURE(kTlsMldsaSignatures, base::FEATURE_DISABLED_BY_DEFAULT);
+ 
+ #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
+ BASE_FEATURE(kVerifyMTCs, base::FEATURE_DISABLED_BY_DEFAULT);
+diff --git a/net/socket/ssl_client_socket_impl.cc b/net/socket/ssl_client_socket_impl.cc
+index 307f596f3e017..718b2cfa5fd58 100644
+--- a/net/socket/ssl_client_socket_impl.cc
++++ b/net/socket/ssl_client_socket_impl.cc
+@@ -869,20 +869,15 @@ int SSLClientSocketImpl::Init() {
+ 
+   SSL_set_permute_extensions(ssl_.get(), 1);
+ 
+-  // Configure BoringSSL to send Trust Anchor IDs, if provided.
+-  if (ssl_config_.trust_anchor_ids.has_value()) {
+-    if (!SSL_set1_requested_trust_anchors(
+-            ssl_.get(), ssl_config_.trust_anchor_ids->data(),
+-            ssl_config_.trust_anchor_ids->size())) {
+-      return ERR_UNEXPECTED;
+-    }
+-    net_log_.AddEvent(NetLogEventType::SSL_CLIENT_TRUST_ANCHOR_IDS_LIST, [&] {
+-      return base::DictValue().Set(
+-          "trust_anchor_ids",
+-          x509_util::TrustAnchorIDsToString(x509_util::ParseTlsTrustAnchorIDs(
+-              *ssl_config_.trust_anchor_ids)));
+-    });
+-  }
++  // Lightweight-fork: NEVER send the Trust Anchor IDs (TLS extension
++  // 0xCA34 / TLSEXT_TYPE_trust_anchors). This is a Chromium-150
++  // experimental draft addition (TrustAnchor advertising) that Chrome
++  // 148 did not ship. Its presence in our ClientHello is a 1-bit
++  // fingerprint that immediately identifies us as a non-Chrome-148
++  // Chromium build — fpjs Pro's server-side JA3/JA4 classifier picks
++  // this up. Skipping it makes our ClientHello extension SET match
++  // Chrome 148's exactly (order is randomized by SSL_set_permute_extensions
++  // already, so order is non-distinguishing).
+ 
+   // The compliance policy must be the last thing configured in order to have
+   // defined behavior.
