@@ -1,0 +1,606 @@
+diff --git a/chrome/browser/app_controller_mac.mm b/chrome/browser/app_controller_mac.mm
+index ae5df201946d0..7a58dbc28acb3 100644
+--- a/chrome/browser/app_controller_mac.mm
++++ b/chrome/browser/app_controller_mac.mm
+@@ -911,6 +911,9 @@ - (void)mainMenuCreated {
+ 
+   // Initialize the Profile menu.
+   [self initProfileMenu];
++
++  // Lightweight-fork: drop top-level History/Bookmarks/Help menus.
++  [self lightweightForkPruneMenuBar];
+ }
+ 
+ - (void)unregisterEventHandlers {
+@@ -1901,6 +1904,17 @@ - (void)initProfileMenu {
+   NSMenu* mainMenu = [NSApp mainMenu];
+   NSMenuItem* profileMenu = [mainMenu itemWithTag:IDC_PROFILE_MAIN_MENU];
+ 
++  // Lightweight-fork (FINGERPRINT_ISOLATION_PLAN.md task #7 / Phase 6b):
++  // unconditionally remove the Profile menu. No multi-profile UI in this
++  // fork; IsLightweightForkBlockedCommand already blocks every profile
++  // command at the controller level, but the Cocoa menu bar is a separate
++  // construction path.
++  if (profileMenu) {
++    [mainMenu removeItem:profileMenu];
++  }
++  return;
++  // Original path preserved below for upstream-merge reference.
++  /*
+   if (!profiles::IsMultipleProfilesEnabled()) {
+     [mainMenu removeItem:profileMenu];
+     return;
+@@ -1911,6 +1925,39 @@ - (void)initProfileMenu {
+ 
+   _profileMenuController =
+       [[ProfileMenuController alloc] initWithMainMenuItem:profileMenu];
++  */
++}
++
++// Lightweight-fork: hide History, Bookmarks, and Help top-level menus.
++// Items inside these would already be greyed out by
++// IsLightweightForkBlockedCommand, but the menus themselves remain visible
++// in the Cocoa menu bar until hidden here. We HIDE rather than remove
++// because BookmarkMenuBridge / HistoryMenuBridge construct themselves
++// against the NSMenu instance on every profile load and CHECK that the
++// menu exists (see bookmark_menu_bridge.mm CHECK(menu_root_)). Hiding
++// preserves the menu instance while removing it from the visible menu bar.
++// Called from -mainMenuCreated, after the standard menu bar is constructed.
++- (void)lightweightForkPruneMenuBar {
++  NSMenu* mainMenu = [NSApp mainMenu];
++  for (NSInteger tag : (NSInteger[]){
++           IDC_HISTORY_MENU,
++           IDC_BOOKMARKS_MENU,
++           IDC_HELP_MENU,
++       }) {
++    NSMenuItem* item = [mainMenu itemWithTag:tag];
++    if (item) {
++      [item setHidden:YES];
++    }
++  }
++  // macOS injects a top-bar Help menu via NSApplication.helpMenu — not
++  // tagged with IDC_HELP_MENU (that's the in-window submenu). Clear it
++  // and hide any remaining "Help" item by title.
++  NSApp.helpMenu = nil;
++  for (NSMenuItem* item in mainMenu.itemArray) {
++    if ([item.title isEqualToString:@"Help"]) {
++      [item setHidden:YES];
++    }
++  }
+ }
+ 
+ - (void)initShareMenu {
+diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
+index ed69c678e9a8d..d206338d33205 100644
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -221,6 +221,109 @@ void AppInfoDialogClosedCallback(SessionID session_id,
+   }
+ }
+ 
++bool IsLightweightForkBlockedCommand(int id) {
++  switch (id) {
++    // Host/file integration.
++    case IDC_OPEN_FILE:
++    case IDC_SAVE_PAGE:
++    case IDC_PRINT:
++#if BUILDFLAG(ENABLE_PRINTING)
++    case IDC_BASIC_PRINT:
++#endif
++    // Bookmarks, history, downloads, reading list, and recent tabs UI.
++    case IDC_BOOKMARK_THIS_TAB:
++    case IDC_BOOKMARK_ALL_TABS:
++    case IDC_BOOKMARKS_MENU:
++    case IDC_SHOW_BOOKMARK_BAR:
++    case IDC_SHOW_BOOKMARK_MANAGER:
++    case IDC_SHOW_BOOKMARK_SIDE_PANEL:
++    case IDC_SHOW_HISTORY:
++    case IDC_SHOW_HISTORY_SIDE_PANEL:
++    case IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL:
++    case IDC_SHOW_DOWNLOADS:
++    case IDC_RECENT_TABS_MENU:
++    case IDC_RECENT_TABS_LOGIN_FOR_DEVICE_TABS:
++    case IDC_RECENT_TABS_SEE_DEVICE_TABS:
++    case IDC_READING_LIST_MENU:
++    case IDC_READING_LIST_MENU_ADD_TAB:
++    case IDC_READING_LIST_MENU_SHOW_UI:
++    // Settings, help, feedback, profile, sync, and account surfaces.
++    case IDC_OPTIONS:
++    case IDC_PERFORMANCE:
++    case IDC_IMPORT_SETTINGS:
++    case IDC_CLEAR_BROWSING_DATA:
++    case IDC_ABOUT:
++    case IDC_HELP_MENU:
++    case IDC_HELP_PAGE_VIA_KEYBOARD:
++    case IDC_HELP_PAGE_VIA_MENU:
++    case IDC_FEEDBACK:
++    case IDC_SHOW_AVATAR_MENU:
++    case IDC_PROFILE_MENU_IN_APP_MENU:
++    case IDC_CLOSE_PROFILE:
++    case IDC_MANAGE_GOOGLE_ACCOUNT:
++    case IDC_OPEN_GUEST_PROFILE:
++    case IDC_ADD_NEW_PROFILE:
++    case IDC_MANAGE_CHROME_PROFILES:
++    case IDC_SHOW_SYNC_SETTINGS:
++    case IDC_SHOW_SYNC_PASSPHRASE_DIALOG:
++    case IDC_TURN_ON_SYNC:
++    case IDC_SHOW_SIGNIN:
++    case IDC_SHOW_SIGNIN_WHEN_PAUSED:
++    // Extensions and Chrome Web Store UI.
++    case IDC_MANAGE_EXTENSIONS:
++    case IDC_SAFETY_HUB_MANAGE_EXTENSIONS:
++    case IDC_EXTENSIONS_SUBMENU_MANAGE_EXTENSIONS:
++    case IDC_EXTENSIONS_SUBMENU_VISIT_CHROME_WEB_STORE:
++    // Password manager, payments, autofill, safety hub, sharing, side panels.
++    case IDC_PASSWORDS_AND_AUTOFILL_MENU:
++    case IDC_SHOW_PASSWORD_MANAGER:
++    case IDC_MANAGE_PASSWORDS_FOR_PAGE:
++    case IDC_SAFETY_HUB_SHOW_PASSWORD_CHECKUP:
++    case IDC_SHOW_PAYMENT_METHODS:
++    case IDC_SHOW_ADDRESSES:
++    case IDC_SHOW_CONTACT_INFO:
++    case IDC_SHOW_IDENTITY_DOCS:
++    case IDC_SHOW_TRAVEL:
++    case IDC_CONTENT_CONTEXT_SHARING_SUBMENU:
++    case IDC_SHARING_HUB:
++    case IDC_SHARING_HUB_SCREENSHOT:
++    case IDC_SEND_TAB_TO_SELF:
++    case IDC_QRCODE_GENERATOR:
++    case IDC_SHOW_COMMENTS_SIDE_PANEL:
++    case IDC_SHOW_READING_MODE_SIDE_PANEL:
++    case IDC_SHOW_READING_MODE_KEYBOARD:
++    case IDC_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL:
++    case IDC_SHOW_CUSTOMIZE_CHROME_TOOLBAR:
++    case IDC_CUSTOMIZE_CHROME:
++    case IDC_SHOW_CHROME_LABS:
++    case IDC_SHOW_MANAGEMENT_PAGE:
++    // Translation surfaces (UI + context menu offers).
++    case IDC_SHOW_TRANSLATE:
++    case IDC_CONTENT_CONTEXT_TRANSLATE:
++    case IDC_CONTENT_CONTEXT_PARTIAL_TRANSLATE:
++    // Casting / media routing.
++    case IDC_ROUTE_MEDIA:
++    // Live caption (downloads SODA model; telemetry-adjacent).
++    case IDC_LIVE_CAPTION:
++    // Web-app install and PWA management surfaces.
++    case IDC_INSTALL_PWA:
++    case IDC_CREATE_SHORTCUT:
++    case IDC_OPEN_IN_PWA_WINDOW:
++    case IDC_WEB_APP_SETTINGS:
++    case IDC_WEB_APP_MENU_APP_INFO:
++    case IDC_WEB_APP_UPGRADE_DIALOG:
++    // Update / what's-new / tips surfaces.
++    case IDC_UPGRADE_DIALOG:
++    case IDC_CHROME_WHATS_NEW:
++    case IDC_CHROME_TIPS:
++    // Password manager additional entry point.
++    case IDC_VIEW_PASSWORDS:
++      return true;
++    default:
++      return false;
++  }
++}
++
+ bool CanOpenFile(Browser* browser) {
+   if (browser->is_type_devtools() || browser->is_type_app() ||
+       browser->is_type_app_popup()) {
+@@ -582,15 +685,24 @@ void BrowserCommandController::ShowCustomizeChromeSidePanel(
+ // BrowserCommandController, CommandUpdater implementation:
+ 
+ bool BrowserCommandController::SupportsCommand(int id) const {
++  if (IsLightweightForkBlockedCommand(id)) {
++    return false;
++  }
+   return command_updater_.SupportsCommand(id);
+ }
+ 
+ bool BrowserCommandController::IsCommandEnabled(int id) const {
++  if (IsLightweightForkBlockedCommand(id)) {
++    return false;
++  }
+   return command_updater_.IsCommandEnabled(id);
+ }
+ 
+ bool BrowserCommandController::ExecuteCommand(int id,
+                                               base::TimeTicks time_stamp) {
++  if (IsLightweightForkBlockedCommand(id)) {
++    return false;
++  }
+   return ExecuteCommandWithDisposition(id, WindowOpenDisposition::CURRENT_TAB,
+                                        time_stamp);
+ }
+@@ -599,6 +711,9 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
+     int id,
+     WindowOpenDisposition disposition,
+     base::TimeTicks time_stamp) {
++  if (IsLightweightForkBlockedCommand(id)) {
++    return false;
++  }
+   // Doesn't go through the command_updater_ to avoid dealing with having a
+   // naming collision for ExecuteCommandWithDisposition (both
+   // CommandUpdaterDelegate and CommandUpdater declare this function so we
+diff --git a/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc b/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc
+index 26feac287c1f6..e3d8dbfa60403 100644
+--- a/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc
++++ b/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc
+@@ -340,6 +340,9 @@ void ReadAnythingEntryPointController::UpdatePageActionVisibility(
+     tabs::TabInterface* tab,
+     base::OnceCallback<void(user_education::FeaturePromoResult promo_result)>
+         show_promo_callback) {
++  // Lightweight-fork: utility browser — Reading Mode omnibox chip never shown.
++  return;
++#if 0
+   if (!base::FeatureList::IsEnabled(features::kPageActionsMigration) ||
+       !features::IsReadAnythingOmniboxChipEnabled() || !tab) {
+     return;
+@@ -384,6 +387,7 @@ void ReadAnythingEntryPointController::UpdatePageActionVisibility(
+         feature_engagement::kIPHReadingModePageActionLabelFeature);
+   }
+   page_action_controller->Hide(kActionSidePanelShowReadAnything);
++#endif  // 0 — end lightweight-fork dead-code wrap
+ }
+ 
+ // static
+diff --git a/chrome/browser/ui/startup/bad_flags_prompt.cc b/chrome/browser/ui/startup/bad_flags_prompt.cc
+index 0deb93f45504c..d31cd891e24c0 100644
+--- a/chrome/browser/ui/startup/bad_flags_prompt.cc
++++ b/chrome/browser/ui/startup/bad_flags_prompt.cc
+@@ -121,10 +121,15 @@ const char* const kBadFlags[] = {
+     switches::kEnableSpeechDispatcher,
+ #endif
+ 
+-    // These flags control Blink feature state, which is not supported and is
+-    // intended only for use by Chromium developers.
+-    switches::kDisableBlinkFeatures,
+-    switches::kEnableBlinkFeatures,
++    // Lightweight-fork: --disable-blink-features and --enable-blink-features
++    // are intentionally part of this fork's startup flag set
++    // (FINGERPRINT_ISOLATION_PLAN.md Phase 3 + launch_lean.sh
++    // BLINK_DISABLE_FEATURES). Suppress the "unsupported command-line flag"
++    // infobar for these specifically — every OTHER entry in kBadFlags
++    // (e.g. --no-sandbox, --disable-web-security, --ignore-certificate-errors)
++    // still warns as intended.
++    // switches::kDisableBlinkFeatures,
++    // switches::kEnableBlinkFeatures,
+ 
+     // This flag allows people to allowlist certain origins as secure, even
+     // if they are not.
+diff --git a/chrome/browser/ui/startup/infobar_utils.cc b/chrome/browser/ui/startup/infobar_utils.cc
+index 4907b9a951040..4373e819e9d02 100644
+--- a/chrome/browser/ui/startup/infobar_utils.cc
++++ b/chrome/browser/ui/startup/infobar_utils.cc
+@@ -18,7 +18,6 @@
+ #include "chrome/browser/ui/startup/automation_infobar_delegate.h"
+ #include "chrome/browser/ui/startup/bad_flags_prompt.h"
+ #include "chrome/browser/ui/startup/bidding_and_auction_consented_debugging_infobar_delegate.h"
+-#include "chrome/browser/ui/startup/google_api_keys_infobar_delegate.h"
+ #include "chrome/browser/ui/startup/obsolete_system_infobar_delegate.h"
+ #include "chrome/browser/ui/startup/oscryptasync_availability_infobar_delegate.h"
+ #include "chrome/browser/ui/startup/startup_browser_creator.h"
+@@ -29,7 +28,6 @@
+ #include "components/infobars/content/content_infobar_manager.h"
+ #include "components/prefs/pref_service.h"
+ #include "content/public/common/content_switches.h"
+-#include "google_apis/google_api_keys.h"
+ 
+ #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
+ #include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt.h"
+@@ -185,9 +183,11 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
+   infobars::ContentInfoBarManager* infobar_manager =
+       infobars::ContentInfoBarManager::FromWebContents(web_contents);
+ 
+-  if (!google_apis::HasAPIKeyConfigured()) {
+-    GoogleApiKeysInfoBarDelegate::Create(infobar_manager);
+-  }
++  // Lightweight-fork: suppress "Google API keys are missing" infobar.
++  // Utility browser doesn't use any Google API services.
++  // if (!google_apis::HasAPIKeyConfigured()) {
++  //   GoogleApiKeysInfoBarDelegate::Create(infobar_manager);
++  // }
+ 
+   if (ObsoleteSystem::IsObsoleteNowOrSoon()) {
+     PrefService* local_state = g_browser_process->local_state();
+diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/toolbar/app_menu_model.cc
+index 196c09329841a..01fe742f0037c 100644
+--- a/chrome/browser/ui/toolbar/app_menu_model.cc
++++ b/chrome/browser/ui/toolbar/app_menu_model.cc
+@@ -240,7 +240,7 @@ void AddSubMenuWithStringIdAndVectorIcon(ui::SimpleMenuModel* model,
+ 
+ // Conditionally return the update app menu item title based on upgrade detector
+ // state.
+-std::u16string GetUpgradeDialogTitleText() {
++[[maybe_unused]] std::u16string GetUpgradeDialogTitleText() {
+   if (UpgradeDetector::GetInstance()->is_outdated_install() ||
+       UpgradeDetector::GetInstance()->is_outdated_install_no_au()) {
+     return l10n_util::GetStringUTF16(IDS_UPGRADE_BUBBLE_MENU_ITEM);
+@@ -894,7 +894,7 @@ SaveAndShareSubMenuModel::SaveAndShareSubMenuModel(
+   }
+ }
+ 
+-bool ArePromotionsEnabled() {
++[[maybe_unused]] bool ArePromotionsEnabled() {
+   PrefService* local_state = g_browser_process->local_state();
+   return local_state && local_state->GetBoolean(prefs::kPromotionsEnabled);
+ }
+@@ -1930,22 +1930,16 @@ void AppMenuModel::LogMenuAction(AppMenuAction action_id) {
+ // - Learn about the browser and global customisation e.g. settings, help.
+ // - Browser relaunch, quit.
+ void AppMenuModel::Build() {
+-  // Build (and, by extension, Init) should only be called once.
++  // Lightweight-fork: empty app menu. Utility browser — all functionality is
++  // via keyboard shortcuts (Cmd+T new tab, Cmd+N new window, Cmd+Q quit,
++  // Cmd+F find, Cmd+P print) and the custom IPC. The menu button itself is
++  // hidden elsewhere; this Build() runs no-op as defense-in-depth.
+   DCHECK_EQ(0u, GetItemCount());
++  uma_action_recorded_ = false;
++  return;  // Skip the original (huge) Build body below.
+ 
+-  if (app_menu_icon_controller_ &&
+-      app_menu_icon_controller_->GetTypeAndSeverity().type ==
+-          AppMenuIconController::IconType::kUpgradeNotification) {
+-    AddSeparator(ui::SPACING_SEPARATOR);
+-    const auto update_icon = ui::ImageModel::FromVectorIcon(
+-        kBrowserToolsUpdateChromeRefreshOldIcon,
+-        ui::kColorMenuIconOnEmphasizedBackground, kDefaultIconSize);
+-    if (browser_defaults::kShowUpgradeMenuItem) {
+-      AddItemWithIcon(IDC_UPGRADE_DIALOG, GetUpgradeDialogTitleText(),
+-                      update_icon);
+-      AddSeparator(ui::SPACING_SEPARATOR);
+-    }
+-  }
++  // ====== Original full body retained below but unreachable. ======
++#if 0  // Lightweight-fork: original body kept for diff reference only.
+ 
+   if (AddSafetyHubMenuItem() || AddGlobalErrorMenuItems() ||
+       AddDefaultBrowserMenuItems()) {
+@@ -2191,6 +2185,7 @@ void AppMenuModel::Build() {
+ #endif  // !BUILDFLAG(IS_CHROMEOS)
+ 
+   uma_action_recorded_ = false;
++#endif  // 0 — end of lightweight-fork unreachable original Build() body
+ }
+ 
+ void AppMenuModel::CreateCutCopyPasteMenu() {
+diff --git a/chrome/browser/ui/views/bookmarks/bookmark_page_action_controller.cc b/chrome/browser/ui/views/bookmarks/bookmark_page_action_controller.cc
+index 1388bf93a47c4..c2e4ba2a2f11c 100644
+--- a/chrome/browser/ui/views/bookmarks/bookmark_page_action_controller.cc
++++ b/chrome/browser/ui/views/bookmarks/bookmark_page_action_controller.cc
+@@ -28,15 +28,6 @@
+ #include "ui/base/l10n/l10n_util.h"
+ #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
+ 
+-namespace {
+-
+-bool IsNTPUrl(const GURL& url) {
+-  return url == chrome::ChromeUINewTabURLAsGURL() ||
+-         url == chrome::ChromeUINewTabPageURLAsGURL();
+-}
+-
+-}  // namespace
+-
+ DEFINE_USER_DATA(BookmarkPageActionController);
+ 
+ BookmarkPageActionController::BookmarkPageActionController(
+@@ -127,9 +118,8 @@ void BookmarkPageActionController::UpdatePageActionVisibility() {
+ }
+ 
+ bool BookmarkPageActionController::ShouldShowPageAction() const {
+-  const auto& url = tab().GetContents()->GetLastCommittedURL();
+-  return browser_defaults::bookmarks_enabled &&
+-         edit_bookmarks_enabled_.GetValue() && url.is_valid() && !IsNTPUrl(url);
++  // Lightweight-fork: utility browser — bookmark star never shown.
++  return false;
+ }
+ 
+ void BookmarkPageActionController::SetStarred(bool starred) {
+diff --git a/chrome/browser/ui/views/frame/browser_view.cc b/chrome/browser/ui/views/frame/browser_view.cc
+index 787771d2e8fcb..b8c6954de99b4 100644
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -5125,6 +5125,9 @@ ContentsLayoutManager* BrowserView::GetContentsLayoutManager() const {
+ }
+ 
+ bool BrowserView::MaybeShowBookmarkBar(WebContents* contents) {
++  // Lightweight-fork: utility browser — never show the bookmarks bar.
++  return false;
++#if 0  // Original body retained for diff reference.
+   const bool show_bookmark_bar =
+       contents && browser_->SupportsWindowFeature(
+                       Browser::WindowFeature::kFeatureBookmarkBar);
+@@ -5168,6 +5171,7 @@ bool BrowserView::MaybeShowBookmarkBar(WebContents* contents) {
+   }
+ 
+   return needs_layout;
++#endif  // 0 — end lightweight-fork dead-code wrap
+ }
+ 
+ bool BrowserView::MaybeShowInfoBar(WebContents* contents) {
+diff --git a/chrome/browser/ui/views/location_bar/location_bar_view.cc b/chrome/browser/ui/views/location_bar/location_bar_view.cc
+index ef701ccfec136..6d9f62c6f3ce0 100644
+--- a/chrome/browser/ui/views/location_bar/location_bar_view.cc
++++ b/chrome/browser/ui/views/location_bar/location_bar_view.cc
+@@ -331,6 +331,10 @@ void LocationBarView::Init() {
+       std::make_unique<LocationIconView>(omnibox_chip_font_list, this, this);
+   location_icon_view->set_drag_controller(this);
+   location_icon_view_ = AddChildView(std::move(location_icon_view));
++  // Lightweight-fork: utility browser — hide the page-info / tune icon
++  // (popover with Connection/Cookies/Site settings). Keep the view to satisfy
++  // internal pointer references; just make it invisible.
++  location_icon_view_->SetVisible(false);
+ 
+   if (page_info::IsMerchantTrustFeatureEnabled() &&
+       page_info::kMerchantTrustEnableOmniboxChip.Get()) {
+@@ -568,9 +572,10 @@ void LocationBarView::Init() {
+                                 PageActionIconType::kAiMode);
+   }
+ 
+-  if (browser_ && !is_popup_mode_) {
+-    params.types_enabled.push_back(PageActionIconType::kBookmarkStar);
+-  }
++  // Lightweight-fork: utility browser — no bookmark star (no bookmarks UI).
++  // if (browser_ && !is_popup_mode_) {
++  //   params.types_enabled.push_back(PageActionIconType::kBookmarkStar);
++  // }
+ 
+   params.icon_color = color_provider->GetColor(kColorOmniboxActionIcon);
+   params.between_icon_spacing = kBetweenIconSpacing;
+@@ -962,18 +967,9 @@ void LocationBarView::Layout(PassKey) {
+       }
+       selected_keyword_view_->SetCustomImage(image);
+     }
+-  } else if (location_icon_view_->GetShowText() &&
+-             !ShouldChipOverrideLocationIcon()) {
+-    location_icon_view_->SetVisible(true);
+-    leading_decorations.AddDecoration(
+-        vertical_padding, location_height, false, kLeadingDecorationMaxFraction,
+-        /*intra_item_padding=*/0, icon_left, location_icon_view_);
+-  } else if (!ShouldChipOverrideLocationIcon()) {
+-    location_icon_view_->SetVisible(true);
+-    leading_decorations.AddDecoration(vertical_padding, location_height, false,
+-                                      0, /*intra_item_padding=*/0, icon_left,
+-                                      location_icon_view_);
+   } else {
++    // Lightweight-fork: utility browser — never show the page-info /
++    // location icon (the lock / tune / chip on the left of the omnibox).
+     location_icon_view_->SetVisible(false);
+   }
+ 
+diff --git a/chrome/browser/ui/views/toolbar/toolbar_view.cc b/chrome/browser/ui/views/toolbar/toolbar_view.cc
+index a45396e6e3db3..95dc7b5c98613 100644
+--- a/chrome/browser/ui/views/toolbar/toolbar_view.cc
++++ b/chrome/browser/ui/views/toolbar/toolbar_view.cc
+@@ -579,22 +579,8 @@ void ToolbarView::Init() {
+   if (!features::IsWebUIAvatarButtonEnabled()) {
+     avatar_ =
+         AddChildView(std::make_unique<AvatarToolbarButton>(browser_view_));
+-    bool show_avatar_toolbar_button = true;
+-#if BUILDFLAG(IS_CHROMEOS)
+-    // ChromeOS only badges Incognito, Guest, and captive portal signin icons in
+-    // the browser window.
+-    show_avatar_toolbar_button =
+-        browser_->profile()->IsIncognitoProfile() ||
+-        browser_->profile()->IsGuestSession() ||
+-        (browser_->profile()->IsOffTheRecord() &&
+-         browser_->profile()->GetOTRProfileID().IsCaptivePortal());
+-#else
+-    // DevTools profiles are OffTheRecord, so hide it there.
+-    show_avatar_toolbar_button = browser_->profile()->IsIncognitoProfile() ||
+-                                 browser_->profile()->IsGuestSession() ||
+-                                 browser_->profile()->IsRegularProfile();
+-#endif
+-    avatar_->SetVisible(show_avatar_toolbar_button);
++    // Lightweight-fork: utility browser — no profile/identity UI ever.
++    avatar_->SetVisible(false);
+   }
+ 
+   overflow_button_ = AddChildView(std::make_unique<OverflowButton>());
+@@ -608,6 +594,10 @@ void ToolbarView::Init() {
+       l10n_util::GetStringUTF16(IDS_APPMENU_TOOLTIP));
+   app_menu_button->SetID(VIEW_ID_APP_MENU);
+   app_menu_button_ = AddChildView(std::move(app_menu_button));
++  // Lightweight-fork: hide the 3-dot menu button entirely. Keep the pointer
++  // alive (lots of code references it for focus / accessibility), just make
++  // it invisible.
++  app_menu_button_->SetVisible(false);
+ 
+   if (base::FeatureList::IsEnabled(contextual_tasks::kContextualTasks) &&
+       contextual_tasks::GetExpandButtonOption() ==
+diff --git a/chrome/browser/ui/webui/chrome_web_ui_configs.cc b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+index 76fa678e056b4..9d9a50254b896 100644
+--- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
++++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+@@ -294,11 +294,13 @@ void RegisterChromeWebUIConfigs() {
+           security_interstitials::KnownInterceptionDisclosureUIConfig>());
+   map.AddWebUIConfig(std::make_unique<SavedTabGroupsUnsupportedUIConfig>());
+   map.AddWebUIConfig(std::make_unique<SegmentationInternalsUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<SignInInternalsUIConfig>());
++  // Lightweight-fork: signin/sync internals dropped — no signin/sync in
++  // this fork, so the internals pages have nothing to show.
++  // map.AddWebUIConfig(std::make_unique<SignInInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<
+                      subresource_filter::SubresourceFilterInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<SiteEngagementUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<SyncInternalsUIConfig>());
++  // map.AddWebUIConfig(std::make_unique<SyncInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<TranslateInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<UsbInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<user_actions_ui::UserActionsUIConfig>());
+@@ -337,18 +339,26 @@ void RegisterChromeWebUIConfigs() {
+   map.AddWebUIConfig(std::make_unique<actor::ui::ActorOverlayUIConfig>());
+   map.AddWebUIConfig(std::make_unique<AppServiceInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<AutofillMlInternalsUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<BookmarksSidePanelUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<BookmarksUIConfig>());
++  // Lightweight-fork (FINGERPRINT_ISOLATION_PLAN.md task #7, WebUI-route
++  // closure): bookmarks/downloads/feedback/history are user-facing surfaces
++  // already blocked at command-level via IsLightweightForkBlockedCommand;
++  // dropping their WebUIConfig here also closes direct chrome:// URL
++  // navigation (otherwise typing the URL still resolves the page).
++  // map.AddWebUIConfig(std::make_unique<BookmarksSidePanelUIConfig>());
++  // map.AddWebUIConfig(std::make_unique<BookmarksUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ColorPipelineInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<CommentsSidePanelUIConfig>());
+   map.AddWebUIConfig(std::make_unique<CustomizeChromeUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
++  // map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<DrivePickerHostUIConfig>());
+   map.AddWebUIConfig(std::make_unique<glic::GlicExperimentalOptInUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<FeedbackUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<HistorySidePanelUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<HistoryClustersSidePanelUIConfig>());
++  // FeedbackUIConfig: chrome.send("showDialog") with --disable-features=
++  // Translate,MediaRouter,...  hits NOTREACHED in WebUIImpl, crashing the
++  // browser. Drop the config to fully close the route.
++  // map.AddWebUIConfig(std::make_unique<FeedbackUIConfig>());
++  // map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
++  // map.AddWebUIConfig(std::make_unique<HistorySidePanelUIConfig>());
++  // map.AddWebUIConfig(std::make_unique<HistoryClustersSidePanelUIConfig>());
+   map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<InspectUIConfig>());
+ #if BUILDFLAG(ENABLE_SESSION_SERVICE)
+@@ -368,13 +378,17 @@ void RegisterChromeWebUIConfigs() {
+   map.AddWebUIConfig(std::make_unique<OmniboxPopupUIConfig>());
+   map.AddWebUIConfig(
+       std::make_unique<on_device_internals::OnDeviceInternalsUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<PasswordManagerUIConfig>());
++  // Lightweight-fork: drop the password-manager WebUI host so direct URL
++  // navigation can't reach it. Command-level already blocked.
++  // map.AddWebUIConfig(std::make_unique<PasswordManagerUIConfig>());
+   map.AddWebUIConfig(
+       std::make_unique<private_ai::PrivateAiInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ProfileInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ReadingListUIConfig>());
+   map.AddWebUIConfig(std::make_unique<SearchEngineChoiceUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<settings::SettingsUIConfig>());
++  // Lightweight-fork: chrome://settings disabled. Utility browser — no user-
++  // facing settings; configuration is via launch flags and the custom IPC.
++  // map.AddWebUIConfig(std::make_unique<settings::SettingsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ShoppingInsightsSidePanelUIConfig>());
+   map.AddWebUIConfig(std::make_unique<SuggestInternalsUIConfig>());
+   map.AddWebUIConfig(std::make_unique<SupportToolUIConfig>());
+@@ -441,7 +455,9 @@ void RegisterChromeWebUIConfigs() {
+ #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_DESKTOP_ANDROID)
+   map.AddWebUIConfig(std::make_unique<DiscardsUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<ManagementUIConfig>());
++  // Lightweight-fork: chrome://management is for enterprise policy state,
++  // not relevant for this fork.
++  // map.AddWebUIConfig(std::make_unique<ManagementUIConfig>());
+ #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_DESKTOP_ANDROID)
+ 
+diff --git a/chrome/common/webui_url_constants.cc b/chrome/common/webui_url_constants.cc
+index dd37ab85cec11..4ff23f0e8ab8c 100644
+--- a/chrome/common/webui_url_constants.cc
++++ b/chrome/common/webui_url_constants.cc
+@@ -336,7 +336,8 @@ const GURL& ChromeUINewTabPageURLAsGURL() {
+ }
+ 
+ const GURL& ChromeUINewTabURLAsGURL() {
+-  static base::NoDestructor<GURL> instance(kChromeUINewTabURL);
++  // Lightweight-fork: blank NTP instead of the Google-branded chrome://newtab.
++  static base::NoDestructor<GURL> instance("about:blank");
+   return *instance;
+ }
+ 
