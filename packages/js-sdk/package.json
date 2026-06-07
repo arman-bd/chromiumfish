@@ -1,0 +1,54 @@
+{
+  "name": "chromiumfish",
+  "version": "0.1.0",
+  "description": "Stealth Chromium build with a drop-in Playwright harness — fetches and launches the ChromiumFish browser.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "chromiumfish": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "playwright",
+    "chromium",
+    "stealth",
+    "fingerprint",
+    "automation",
+    "anti-detect"
+  ],
+  "author": "Arman Hossain",
+  "license": "MIT",
+  "homepage": "https://chromiumfish.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arman-bd/chromiumfish.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arman-bd/chromiumfish/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "playwright-core": ">=1.40"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}
