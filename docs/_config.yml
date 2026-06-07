@@ -1,0 +1,39 @@
+title: ChromiumFish
+description: A fingerprint-hardened Chromium fork with a drop-in Playwright harness for Python and Node.
+
+# Served from the custom domain root (docs/CNAME = chromiumfish.com)
+url: https://chromiumfish.com
+baseurl: ""
+
+theme: just-the-docs
+
+# Apply the Just the Docs layout to every page (index.md overrides with `home`).
+# Without this, pages that omit `layout:` render as unstyled HTML fragments.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+color_scheme: dark
+search_enabled: true
+
+aux_links:
+  GitHub: https://github.com/arman-bd/chromiumfish
+  Releases: https://github.com/arman-bd/chromiumfish/releases
+aux_links_new_tab: true
+
+back_to_top: true
+back_to_top_text: "Back to top"
+footer_content: 'An independent fork of Chromium. Not affiliated with or endorsed by Google.'
+
+callouts:
+  note:
+    title: Note
+    color: blue
+  tip:
+    title: Tip
+    color: green
+  warning:
+    title: Warning
+    color: red
