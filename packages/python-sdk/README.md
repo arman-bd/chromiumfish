@@ -48,8 +48,26 @@ The returned object is a standard Playwright `Browser`, so `new_context`,
 | `window_size` | `(1920, 1080)` | Window dimensions. |
 | `version` | pinned | Override the browser build version. |
 | `download` | `True` | Auto-download the build if missing. |
+| `timezone` | `None` | `"auto"` resolves the egress IP's IANA timezone via the downloadable `ip2tz` DB and sets the browser's `TZ`; an IANA string (e.g. `"Europe/Berlin"`) is used verbatim. |
 | `args` | `None` | Extra Chromium flags. |
 | `**launch_kwargs` | — | Forwarded to `chromium.launch()`. |
+
+### IP-to-Timezone
+
+`timezone="auto"` aligns the browser clock with the egress IP (handy behind a
+proxy). It uses a compact `ip2tz` database downloaded once and cached; you can
+also query it directly:
+
+```python
+from chromiumfish import lookup_timezone, resolve_timezone
+
+lookup_timezone("8.8.8.8")                 # -> "America/Los_Angeles"
+resolve_timezone(proxy="http://user:pass@host:port")   # egress IP -> timezone
+```
+
+The DB auto-updates: it tracks the `latest` monthly build (cached, re-checked
+weekly), so you get fresh data without upgrading the SDK. Pin a fixed version
+with `CHROMIUMFISH_GEOIP_VERSION=2026.06` for reproducibility.
 
 ## CLI
 
@@ -62,6 +80,14 @@ chromiumfish --version
 
 Builds are cached under `~/.cache/chromiumfish/<version>/` (override with
 `CHROMIUMFISH_CACHE_DIR`). Pin a build with `CHROMIUMFISH_VERSION`.
+
+## Attribution
+
+IP Geolocation by <a href='https://db-ip.com'>DB-IP</a> — the `ip2tz` timezone
+database is derived from [DB-IP City Lite][dbip], used under [CC BY 4.0][ccby].
+
+[dbip]: https://db-ip.com/db/download/ip-to-city-lite
+[ccby]: https://creativecommons.org/licenses/by/4.0/
 
 ## License
 

@@ -1,0 +1,7 @@
+# Source DB and build artifacts are NOT committed — they are large and the
+# compact .bin is published as a GitHub release asset, fetched by the SDKs.
+dbip-city-lite-*.mmdb
+dbip-city-lite-*.mmdb.gz
+ip2tz-*.bin
+ip2tz-*.bin.sha256
+latest.json

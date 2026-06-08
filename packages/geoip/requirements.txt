@@ -1,0 +1,4 @@
+# Build-only dependencies for build_ip2tz.py. NOT shipped to SDK clients — the
+# runtime readers in the SDKs are pure-stdlib.
+maxminddb>=2.0
+timezonefinder>=6.0
