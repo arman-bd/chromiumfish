@@ -23,6 +23,13 @@ Need help getting through a tough site? Reach out — **Arman Hossain** on [Link
 
 This repo is the part that gets it onto your machine and into your script. It publishes the prebuilt browser as GitHub Release assets and ships matching `pip` and `npm` packages that grab the right build for your platform and launch it through Playwright — so if you already know Playwright, you already know how to drive it.
 
+**Install**
+
+```bash
+pip install chromiumfish   # Python
+npm install chromiumfish   # Node
+```
+
 **🐍 Python**
 
 ```python
