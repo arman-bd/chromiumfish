@@ -8,12 +8,13 @@
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from playwright.async_api import Browser, async_playwright
 
 from .fetch import binary_path
-from .launcher import launch_options
+from .launcher import launch_options, resolve_timezone
 
 
 class AsyncChromiumfish:
@@ -26,6 +27,7 @@ class AsyncChromiumfish:
         window_size: tuple[int, int] | None = (1920, 1080),
         version: str | None = None,
         download: bool = True,
+        timezone: str | None = None,
         args: list[str] | None = None,
         **launch_kwargs: Any,
     ) -> None:
@@ -39,14 +41,23 @@ class AsyncChromiumfish:
         )
         self._version = version
         self._download = download
+        # "auto" -> resolve from egress IP via the ip2tz DB; an IANA string is
+        # used verbatim; None disables timezone handling.
+        self._timezone = timezone
         self._pw = None
         self._browser: Browser | None = None
 
     async def start(self) -> Browser:
         exe = binary_path(self._version, download=self._download)
+        # resolve_timezone may block on a network probe + DB download; keep it
+        # off the event loop.
+        tz = await asyncio.to_thread(
+            resolve_timezone, self._timezone,
+            proxy=self._opts["proxy"], download=self._download,
+        )
         self._pw = await async_playwright().start()
         self._browser = await self._pw.chromium.launch(
-            **launch_options(executable_path=exe, **self._opts)
+            **launch_options(executable_path=exe, tz=tz, **self._opts)
         )
         return self._browser
 

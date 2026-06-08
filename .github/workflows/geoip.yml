@@ -1,0 +1,132 @@
+name: Update IP-to-Timezone DB
+
+# Rebuilds the ip2tz database from the month's DB-IP City Lite, publishes it as
+# a `geoip-<ver>` release asset, and updates the stable `geoip-latest` pointer.
+# The SDKs default to the "latest" channel and read that pointer at runtime, so
+# new monthly DBs are picked up automatically — no SDK republish required.
+#
+# IP Geolocation by DB-IP (https://db-ip.com), CC BY 4.0.
+
+on:
+  schedule:
+    # 06:00 UTC on the 3rd of each month — DB-IP publishes the new monthly
+    # City Lite at the start of the month; the 3rd leaves margin.
+    - cron: "0 6 3 * *"
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "DB-IP month tag YYYY-MM (default: current UTC month)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and release ip2tz DB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Resolve month + version (with availability fallback)
+        id: ver
+        run: |
+          set -euo pipefail
+          MONTH="${{ github.event.inputs.month }}"
+          [ -n "$MONTH" ] || MONTH="$(date -u +%Y-%m)"
+
+          url() { echo "https://download.db-ip.com/free/dbip-city-lite-$1.mmdb.gz"; }
+          if ! curl -sfI "$(url "$MONTH")" >/dev/null; then
+            PREV="$(date -u -d "${MONTH}-01 -1 month" +%Y-%m)"
+            echo "::warning::DB-IP $MONTH not available yet; falling back to $PREV"
+            if ! curl -sfI "$(url "$PREV")" >/dev/null; then
+              echo "::error::Neither $MONTH nor $PREV is available from DB-IP"
+              exit 1
+            fi
+            MONTH="$PREV"
+          fi
+
+          VER="${MONTH//-/.}"
+          echo "month=$MONTH"   >> "$GITHUB_OUTPUT"
+          echo "ver=$VER"       >> "$GITHUB_OUTPUT"
+          echo "tag=geoip-$VER" >> "$GITHUB_OUTPUT"
+          echo "Resolved month=$MONTH ver=$VER"
+
+      - name: Check whether the release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.ver.outputs.tag }}" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.ver.outputs.tag }} already exists — nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install build dependencies
+        if: steps.check.outputs.exists == 'false'
+        working-directory: packages/geoip
+        run: python -m pip install --upgrade pip -r requirements.txt
+
+      - name: Build ip2tz DB
+        if: steps.check.outputs.exists == 'false'
+        working-directory: packages/geoip
+        run: python build_ip2tz.py --download --month "${{ steps.ver.outputs.month }}"
+
+      - name: Publish release
+        if: steps.check.outputs.exists == 'false'
+        working-directory: packages/geoip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.ver.outputs.ver }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          MONTH: ${{ steps.ver.outputs.month }}
+        run: |
+          set -euo pipefail
+          NOTES="$(cat <<EOF
+          Compact IP-to-Timezone database built from DB-IP City Lite \`$MONTH\`.
+
+          Consumed by the ChromiumFish SDKs (\`timezone="auto"\`). Verified against
+          the \`.sha256\` sidecar on download.
+
+          IP Geolocation by <a href='https://db-ip.com'>DB-IP</a> (CC BY 4.0).
+          EOF
+          )"
+          gh release create "$TAG" \
+            "ip2tz-${VER}.bin" \
+            "ip2tz-${VER}.bin.sha256" \
+            -R "$GITHUB_REPOSITORY" \
+            --title "ip2tz ${VER}" \
+            --latest=false \
+            --notes "$NOTES"
+
+      - name: Update the geoip-latest pointer
+        if: steps.check.outputs.exists == 'false'
+        working-directory: packages/geoip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.ver.outputs.ver }}
+          MONTH: ${{ steps.ver.outputs.month }}
+        run: |
+          set -euo pipefail
+          SHA="$(cut -d' ' -f1 "ip2tz-${VER}.bin.sha256")"
+          printf '{"version":"%s","asset":"ip2tz-%s.bin","sha256":"%s","month":"%s"}\n' \
+            "$VER" "$VER" "$SHA" "$MONTH" > latest.json
+          cat latest.json
+
+          # Stable tag the SDKs read at runtime to discover the current version.
+          if gh release view geoip-latest -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload geoip-latest latest.json --clobber -R "$GITHUB_REPOSITORY"
+          else
+            gh release create geoip-latest latest.json \
+              -R "$GITHUB_REPOSITORY" \
+              --title "ip2tz latest pointer" \
+              --latest=false \
+              --notes "Pointer to the current ip2tz DB version. Read by the ChromiumFish SDKs' \"latest\" channel. IP Geolocation by <a href='https://db-ip.com'>DB-IP</a> (CC BY 4.0)."
+          fi

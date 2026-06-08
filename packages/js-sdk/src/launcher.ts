@@ -1,5 +1,6 @@
 import { chromium, type Browser, type LaunchOptions } from "playwright-core";
 import { binaryPath } from "./fetch.js";
+import { resolveTimezone } from "./ip2tz.js";
 
 /**
  * Flags that keep the GPU-less / SwiftShader path working and the persona
@@ -26,6 +27,23 @@ export interface ChromiumFishOptions extends Omit<LaunchOptions, "executablePath
   version?: string;
   /** Auto-download the build if missing. Defaults to true. */
   download?: boolean;
+  /**
+   * Timezone handling. `"auto"` probes the egress IP and resolves it against
+   * the downloadable ip2tz DB; an IANA string (e.g. `"Europe/Berlin"`) is used
+   * verbatim; omit to leave the timezone untouched.
+   */
+  timezone?: string;
+}
+
+/** Flatten a Playwright proxy option into a probe URL, or undefined. */
+function proxyToUrl(proxy: LaunchOptions["proxy"]): string | undefined {
+  if (!proxy?.server) return undefined;
+  const { server, username, password } = proxy;
+  if (username && server.includes("://")) {
+    const [scheme, host] = server.split("://", 2);
+    return `${scheme}://${username}:${password ?? ""}@${host}`;
+  }
+  return server;
 }
 
 export function buildArgs(opts: ChromiumFishOptions): string[] {
@@ -44,12 +62,30 @@ export function buildArgs(opts: ChromiumFishOptions): string[] {
  *   const browser = await ChromiumFish({ personaSeed: 27182, headless: true });
  */
 export async function ChromiumFish(opts: ChromiumFishOptions = {}): Promise<Browser> {
-  const { personaSeed, headless = true, windowSize, version, download = true, args, ...launch } = opts;
+  const { personaSeed, headless = true, windowSize, version, download = true, timezone, args, ...launch } = opts;
   const executablePath = await binaryPath(version, download);
+
+  // Resolve the timezone before launch: "auto" -> egress IP via the ip2tz DB,
+  // an IANA string -> used as-is. Inject as the TZ env var so Chromium's ICU
+  // adopts it at process init (the production timezone source of truth).
+  let tz: string | null = null;
+  if (timezone) {
+    tz = timezone === "auto" ? await resolveTimezone({ proxy: proxyToUrl(launch.proxy), download }) : timezone;
+  }
+  let env = launch.env;
+  if (tz) {
+    env = {
+      ...(process.env as Record<string, string>),
+      ...((launch.env as Record<string, string> | undefined) ?? {}),
+      TZ: tz,
+    };
+  }
+
   return chromium.launch({
     executablePath,
     headless,
     args: buildArgs({ personaSeed, windowSize, args }),
     ...launch,
+    ...(env ? { env } : {}),
   });
 }
