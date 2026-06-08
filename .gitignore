@@ -1,7 +1,8 @@
 # Chromium source tree and build output. The fork is the patches/ +
-# assets/ delta on top, not a full copy of the source.
-src/
-out/
+# assets/ delta on top, not a full copy of the source. Anchored to the repo
+# root so the SDK sources under packages/*/src/ are still tracked.
+/src/
+/out/
 
 # Build / fetch logs
 *.log
