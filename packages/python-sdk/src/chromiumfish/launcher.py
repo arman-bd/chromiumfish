@@ -20,7 +20,7 @@ BASE_ARGS: list[str] = [
 
 def build_args(
     *,
-    persona_seed: int | None = None,
+    persona_seed: str | None = None,
     window_size: tuple[int, int] | None = (1920, 1080),
     extra_args: list[str] | None = None,
 ) -> list[str]:
@@ -72,7 +72,7 @@ def launch_options(
     *,
     executable_path: Path,
     headless: bool,
-    persona_seed: int | None,
+    persona_seed: str | None,
     proxy: dict[str, Any] | None,
     window_size: tuple[int, int] | None,
     args: list[str] | None,

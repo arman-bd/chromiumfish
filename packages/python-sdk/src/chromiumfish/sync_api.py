@@ -2,7 +2,7 @@
 
     from chromiumfish.sync_api import Chromiumfish
 
-    with Chromiumfish(persona_seed=27182, headless=True) as browser:
+    with Chromiumfish(persona_seed="alpha-7", headless=True) as browser:
         page = browser.new_page()
         page.goto("https://example.com")
 """
@@ -20,7 +20,7 @@ class Chromiumfish:
     def __init__(
         self,
         *,
-        persona_seed: int | None = None,
+        persona_seed: str | None = None,
         headless: bool = True,
         proxy: dict[str, Any] | None = None,
         window_size: tuple[int, int] | None = (1920, 1080),
