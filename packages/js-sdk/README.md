@@ -12,7 +12,7 @@ npx chromiumfish fetch        # download + cache the browser build
 ```javascript
 import { ChromiumFish } from "chromiumfish";
 
-const browser = await ChromiumFish({ personaSeed: 27182, headless: true });
+const browser = await ChromiumFish({ personaSeed: "alpha-7", headless: true });
 const page = await browser.newPage();
 await page.goto("https://abrahamjuliot.github.io/creepjs/");
 await page.screenshot({ path: "fp.png" });
@@ -26,7 +26,7 @@ await browser.close();
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `personaSeed` | — | Integer seed for a stable, internally-consistent fingerprint persona. |
+| `personaSeed` | — | String id for a stable, internally-consistent fingerprint persona (any string; a number works too). |
 | `headless` | `true` | Run headless (SwiftShader). |
 | `proxy` | — | Playwright proxy object, e.g. `{ server, username, password }`. |
 | `windowSize` | `[1920, 1080]` | Window dimensions (`null` to omit). |

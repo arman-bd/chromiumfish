@@ -18,19 +18,17 @@ you already do with Playwright works here too.
 
 ## Stable identity per account
 
-Pin one `persona_seed` per account and reuse it. The same seed reproduces the same
-persona every run, so the site sees a returning user instead of a brand-new device each
-visit. Keep your own mapping from `account_id` to seed.
+Use the account's own id as its `persona_seed`. Any stable string works, so the same
+account always rebuilds the same persona and the site sees a returning user instead of a
+brand-new device each visit.
 
 ### Python
 
 ```python
 from chromiumfish.sync_api import Chromiumfish
 
-SEEDS = {"alice": 1001, "bob": 2002}
-
 def scrape_account(account_id: str):
-    with Chromiumfish(persona_seed=SEEDS[account_id]) as browser:
+    with Chromiumfish(persona_seed=account_id) as browser:
         page = browser.new_page()
         page.goto("https://example.com/account")
         return page.title()
@@ -41,10 +39,8 @@ def scrape_account(account_id: str):
 ```javascript
 import { ChromiumFish } from "chromiumfish";
 
-const SEEDS = { alice: 1001, bob: 2002 };
-
 async function scrapeAccount(accountId) {
-  const browser = await ChromiumFish({ personaSeed: SEEDS[accountId] });
+  const browser = await ChromiumFish({ personaSeed: accountId });
   try {
     const page = await browser.newPage();
     await page.goto("https://example.com/account");
@@ -57,16 +53,16 @@ async function scrapeAccount(accountId) {
 
 ## Clean one-off scrape
 
-For a single unlinkable session, generate a fresh random seed each run. Different seeds
+For a single unlinkable session, generate a fresh random id each run. Different ids
 produce uncorrelated personas, so two runs can't be tied together through the fingerprint.
 
 ### Python
 
 ```python
-import random
+import secrets
 from chromiumfish.sync_api import Chromiumfish
 
-with Chromiumfish(persona_seed=random.getrandbits(32)) as browser:
+with Chromiumfish(persona_seed=secrets.token_hex(8)) as browser:
     page = browser.new_page()
     page.goto("https://example.com")
     print(page.title())
@@ -76,9 +72,9 @@ with Chromiumfish(persona_seed=random.getrandbits(32)) as browser:
 
 ```javascript
 import { ChromiumFish } from "chromiumfish";
+import { randomUUID } from "node:crypto";
 
-const seed = Math.floor(Math.random() * 2 ** 32);
-const browser = await ChromiumFish({ personaSeed: seed });
+const browser = await ChromiumFish({ personaSeed: randomUUID() });
 const page = await browser.newPage();
 await page.goto("https://example.com");
 console.log(await page.title());
@@ -98,7 +94,7 @@ is an easy tell, so keep them aligned.
 from chromiumfish.sync_api import Chromiumfish
 
 with Chromiumfish(
-    persona_seed=1001,
+    persona_seed="alpha-7",
     proxy={
         "server": "http://residential.example.com:8000",
         "username": "user",
@@ -116,7 +112,7 @@ with Chromiumfish(
 import { ChromiumFish } from "chromiumfish";
 
 const browser = await ChromiumFish({
-  personaSeed: 1001,
+  personaSeed: "alpha-7",
   proxy: {
     server: "http://residential.example.com:8000",
     username: "user",
@@ -150,7 +146,7 @@ urls = [
     "https://example.com/c",
 ]
 
-with Chromiumfish(persona_seed=1001) as browser:
+with Chromiumfish(persona_seed="alpha-7") as browser:
     for url in urls:
         context = browser.new_context()
         page = context.new_page()
@@ -170,7 +166,7 @@ const urls = [
   "https://example.com/c",
 ];
 
-const browser = await ChromiumFish({ personaSeed: 1001 });
+const browser = await ChromiumFish({ personaSeed: "alpha-7" });
 for (const url of urls) {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -193,7 +189,7 @@ from chromiumfish.sync_api import Chromiumfish
 
 BLOCK = {"image", "media", "font"}
 
-with Chromiumfish(persona_seed=1001) as browser:
+with Chromiumfish(persona_seed="alpha-7") as browser:
     context = browser.new_context()
     context.route(
         "**/*",
@@ -212,7 +208,7 @@ import { ChromiumFish } from "chromiumfish";
 
 const BLOCK = new Set(["image", "media", "font"]);
 
-const browser = await ChromiumFish({ personaSeed: 1001 });
+const browser = await ChromiumFish({ personaSeed: "alpha-7" });
 const context = await browser.newContext();
 await context.route("**/*", (route) =>
   BLOCK.has(route.request().resourceType())
@@ -265,7 +261,7 @@ browser and the same timezone data on any machine.
 ```python
 from chromiumfish.sync_api import Chromiumfish
 
-with Chromiumfish(persona_seed=1001, version="150.0.7844") as browser:
+with Chromiumfish(persona_seed="alpha-7", version="150.0.7844") as browser:
     page = browser.new_page()
     page.goto("https://example.com")
 ```
@@ -275,7 +271,7 @@ with Chromiumfish(persona_seed=1001, version="150.0.7844") as browser:
 ```javascript
 import { ChromiumFish } from "chromiumfish";
 
-const browser = await ChromiumFish({ personaSeed: 1001, version: "150.0.7844" });
+const browser = await ChromiumFish({ personaSeed: "alpha-7", version: "150.0.7844" });
 const page = await browser.newPage();
 await page.goto("https://example.com");
 await browser.close();

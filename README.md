@@ -32,7 +32,7 @@ pip install chromiumfish
 ```python
 from chromiumfish.sync_api import Chromiumfish
 
-with Chromiumfish(persona_seed=27182, headless=True) as browser:
+with Chromiumfish(persona_seed="alpha-7", headless=True) as browser:
     page = browser.new_page()
     page.goto("https://abrahamjuliot.github.io/creepjs/")
     page.screenshot(path="fingerprint.png")
@@ -47,7 +47,7 @@ npm install chromiumfish
 ```javascript
 import { ChromiumFish } from "chromiumfish";
 
-const browser = await ChromiumFish({ personaSeed: 27182, headless: true });
+const browser = await ChromiumFish({ personaSeed: "alpha-7", headless: true });
 const page = await browser.newPage();
 await page.goto("https://abrahamjuliot.github.io/creepjs/");
 await browser.close();
@@ -60,7 +60,7 @@ I scrape the web at scale, and some sites fight back hard. I worked through most
 ## ✨ What you get
 
 - 🧬 **Spoofing in the engine, not in a script.** UA, Client Hints, fonts, audio, screen, and WebRTC are spoofed inside Chromium itself. `navigator.webdriver` stays `false` even under CDP, and there are no `cdc_` automation artifacts lying around.
-- 🎭 **One seed, one persona.** A single `persona_seed` gives you a stable, internally-consistent identity. Change the seed for a fresh, unlinkable one; keep it for continuity across sessions.
+- 🎭 **One seed, one persona.** A single `persona_seed` (any stable string id) gives you a stable, internally-consistent identity. Change it for a fresh, unlinkable one; reuse it for continuity across sessions.
 - 🎨 **Canvas & WebGL through an optional bridge.** These are the hardest signals to fake from a headless Linux box, where SwiftShader gives you away. Point ChromiumFish at a small render bridge running on Windows and canvas/WebGL reads come back from a real machine instead. It's a separate, optional service, not bundled in the binary.
 - 🤝 **It's just Playwright.** Because it *is* Chromium, everything you already do in Playwright works unchanged. The SDK is a thin wrapper over `chromium.launch(executablePath=…)`.
 - 📦 **Install in one line.** `pip install chromiumfish` or `npm i chromiumfish`; the binary downloads and caches itself the first time you run it.

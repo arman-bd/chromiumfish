@@ -23,7 +23,7 @@ npm install chromiumfish playwright-core
 ```javascript
 import { ChromiumFish } from "chromiumfish";
 
-const browser = await ChromiumFish({ personaSeed: 27182, headless: true });
+const browser = await ChromiumFish({ personaSeed: "alpha-7", headless: true });
 const page = await browser.newPage();
 await page.goto("https://example.com");
 await browser.close();
@@ -37,7 +37,7 @@ lifecycle, so call `browser.close()` when done.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `personaSeed` | `number` | — | Integer seed for a stable, internally consistent fingerprint persona. Omit for the build's default persona. |
+| `personaSeed` | `string` | — | String id for a stable, internally consistent fingerprint persona. Any stable string works (a numeric string is used as-is, any other string is hashed to a persona). Omit for the build's default persona. |
 | `headless` | `boolean` | `true` | Run headless (SwiftShader). |
 | `proxy` | `object` | — | Playwright proxy object: `{ server, username, password }`. |
 | `windowSize` | `[number, number] \| null` | `[1920, 1080]` | Window dimensions. Pass `null` to omit the flag. |

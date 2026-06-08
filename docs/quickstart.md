@@ -18,7 +18,7 @@ nav_order: 3
 ```python
 from chromiumfish.sync_api import Chromiumfish
 
-with Chromiumfish(persona_seed=27182, headless=True) as browser:
+with Chromiumfish(persona_seed="alpha-7", headless=True) as browser:
     page = browser.new_page()
     page.goto("https://abrahamjuliot.github.io/creepjs/")
     page.screenshot(path="fingerprint.png")
@@ -31,7 +31,7 @@ import asyncio
 from chromiumfish.async_api import AsyncChromiumfish
 
 async def main():
-    async with AsyncChromiumfish(persona_seed=27182) as browser:
+    async with AsyncChromiumfish(persona_seed="alpha-7") as browser:
         page = await browser.new_page()
         await page.goto("https://example.com")
         print(await page.title())
@@ -44,7 +44,7 @@ asyncio.run(main())
 ```javascript
 import { ChromiumFish } from "chromiumfish";
 
-const browser = await ChromiumFish({ personaSeed: 27182, headless: true });
+const browser = await ChromiumFish({ personaSeed: "alpha-7", headless: true });
 const page = await browser.newPage();
 await page.goto("https://abrahamjuliot.github.io/creepjs/");
 await page.screenshot({ path: "fingerprint.png" });
@@ -60,7 +60,7 @@ routing, tracing, and selectors exactly as you would with vanilla Playwright.
 
 ```python
 with Chromiumfish(
-    persona_seed=27182,
+    persona_seed="alpha-7",
     proxy={
         "server": "http://proxy.example.com:8000",
         "username": "user",
@@ -74,7 +74,7 @@ with Chromiumfish(
 
 ```javascript
 const browser = await ChromiumFish({
-  personaSeed: 27182,
+  personaSeed: "alpha-7",
   proxy: { server: "http://proxy.example.com:8000", username: "user", password: "pass" },
 });
 ```
@@ -94,7 +94,7 @@ tell. Set `timezone="auto"` and the SDK resolves the egress IP to an IANA timezo
 
 ```python
 with Chromiumfish(
-    persona_seed=27182,
+    persona_seed="alpha-7",
     proxy={"server": "http://proxy.example.com:8000"},
     timezone="auto",
 ) as browser:
@@ -106,7 +106,7 @@ with Chromiumfish(
 
 ```javascript
 const browser = await ChromiumFish({
-  personaSeed: 27182,
+  personaSeed: "alpha-7",
   proxy: { server: "http://proxy.example.com:8000" },
   timezone: "auto",
 });
@@ -126,7 +126,7 @@ of text and an attribute, then save a screenshot.
 ```python
 from chromiumfish.sync_api import Chromiumfish
 
-with Chromiumfish(persona_seed=27182) as browser:
+with Chromiumfish(persona_seed="alpha-7") as browser:
     page = browser.new_page()
     page.goto("https://news.ycombinator.com", wait_until="domcontentloaded")
 
@@ -142,7 +142,7 @@ with Chromiumfish(persona_seed=27182) as browser:
 ```javascript
 import { ChromiumFish } from "chromiumfish";
 
-const browser = await ChromiumFish({ personaSeed: 27182 });
+const browser = await ChromiumFish({ personaSeed: "alpha-7" });
 const page = await browser.newPage();
 await page.goto("https://news.ycombinator.com", { waitUntil: "domcontentloaded" });
 
@@ -162,7 +162,7 @@ Playwright routing and pages load noticeably faster on slow proxies.
 ### Python
 
 ```python
-with Chromiumfish(persona_seed=27182) as browser:
+with Chromiumfish(persona_seed="alpha-7") as browser:
     page = browser.new_page()
     page.route(
         "**/*",
@@ -176,7 +176,7 @@ with Chromiumfish(persona_seed=27182) as browser:
 ### Node
 
 ```javascript
-const browser = await ChromiumFish({ personaSeed: 27182 });
+const browser = await ChromiumFish({ personaSeed: "alpha-7" });
 const page = await browser.newPage();
 await page.route("**/*", (route) => {
   const type = route.request().resourceType();
@@ -194,7 +194,7 @@ await page.goto("https://example.com", { waitUntil: "domcontentloaded" });
 ## Contexts and pages
 
 ```python
-with Chromiumfish(persona_seed=27182) as browser:
+with Chromiumfish(persona_seed="alpha-7") as browser:
     context = browser.new_context(locale="en-US")
     page = context.new_page()
     page.goto("https://example.com")

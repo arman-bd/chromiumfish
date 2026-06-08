@@ -23,7 +23,7 @@ No `playwright install` step. The SDK fetches and launches the browser build its
 ```python
 from chromiumfish.sync_api import Chromiumfish
 
-with Chromiumfish(persona_seed=27182, headless=True) as browser:
+with Chromiumfish(persona_seed="alpha-7", headless=True) as browser:
     page = browser.new_page()
     page.goto("https://example.com")
 ```
@@ -37,7 +37,7 @@ closes the browser and stops Playwright.
 ```python
 from chromiumfish.async_api import AsyncChromiumfish
 
-async with AsyncChromiumfish(persona_seed=27182) as browser:
+async with AsyncChromiumfish(persona_seed="alpha-7") as browser:
     page = await browser.new_page()
 ```
 
@@ -47,7 +47,7 @@ Same API, returns an async `Browser`.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `persona_seed` | `int` | none | Integer seed for a stable, internally consistent fingerprint persona. Omit for the build's default persona. |
+| `persona_seed` | `str` | none | String id for a stable, internally consistent fingerprint persona. Any stable string works (a numeric string is used as-is, any other string is hashed to a persona). Omit for the build's default persona. |
 | `headless` | `bool` | `True` | Run headless (SwiftShader). |
 | `proxy` | `dict` | none | Playwright proxy dict: `{"server": ..., "username": ..., "password": ...}`. |
 | `window_size` | `tuple` | `(1920, 1080)` | Window dimensions. Pass `None` to omit the flag. |
@@ -61,7 +61,7 @@ When you set a proxy, `timezone="auto"` reads the timezone from the proxy's egre
 
 ```python
 with Chromiumfish(
-    persona_seed=27182,
+    persona_seed="alpha-7",
     proxy={"server": "http://proxy.example:8080"},
     timezone="auto",
 ) as browser:

@@ -17,8 +17,8 @@ export const BASE_ARGS: string[] = [
 ];
 
 export interface ChromiumFishOptions extends Omit<LaunchOptions, "executablePath"> {
-  /** Integer seed for a stable, internally-consistent fingerprint persona. */
-  personaSeed?: number;
+  /** String id for a stable, internally-consistent fingerprint persona. */
+  personaSeed?: string;
   /** Run headless (SwiftShader). Defaults to true. */
   headless?: boolean;
   /** Window dimensions; defaults to [1920, 1080]. Pass null to omit. */
@@ -59,7 +59,7 @@ export function buildArgs(opts: ChromiumFishOptions): string[] {
  * Launch ChromiumFish and return a standard Playwright `Browser`.
  *
  *   import { ChromiumFish } from "chromiumfish";
- *   const browser = await ChromiumFish({ personaSeed: 27182, headless: true });
+ *   const browser = await ChromiumFish({ personaSeed: "alpha-7", headless: true });
  */
 export async function ChromiumFish(opts: ChromiumFishOptions = {}): Promise<Browser> {
   const { personaSeed, headless = true, windowSize, version, download = true, timezone, args, ...launch } = opts;

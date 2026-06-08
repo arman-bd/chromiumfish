@@ -2,7 +2,7 @@
 
     from chromiumfish.async_api import AsyncChromiumfish
 
-    async with AsyncChromiumfish(persona_seed=27182, headless=True) as browser:
+    async with AsyncChromiumfish(persona_seed="alpha-7", headless=True) as browser:
         page = await browser.new_page()
         await page.goto("https://example.com")
 """
@@ -21,7 +21,7 @@ class AsyncChromiumfish:
     def __init__(
         self,
         *,
-        persona_seed: int | None = None,
+        persona_seed: str | None = None,
         headless: bool = True,
         proxy: dict[str, Any] | None = None,
         window_size: tuple[int, int] | None = (1920, 1080),

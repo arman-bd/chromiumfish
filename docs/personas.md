@@ -13,8 +13,10 @@ nav_order: 4
 
 A **persona** is the complete, self-consistent fingerprint ChromiumFish presents:
 user-agent, Client Hints, WebGL vendor/renderer string, fonts, audio, screen metrics,
-and more. Every persona is derived deterministically from a single integer, the
-**`persona_seed`**. Omit it and you get the build's default persona.
+and more. Every persona is derived deterministically from a single string, the
+**`persona_seed`**. Any stable string works as the id: a numeric string is used as-is, and
+any other string is hashed to a stable persona, so different strings give different
+personas. Omit it and you get the build's default persona.
 
 All of this is produced in the browser engine itself, not by JavaScript patches injected
 at runtime. The SDK passes the seed through to the build and nothing more.
@@ -23,7 +25,7 @@ at runtime. The SDK passes the seed through to the build and nothing more.
 
 One seed produces one coherent fingerprint, and the same seed always produces the same one.
 
-- **Same seed, same persona.** Re-running with `persona_seed=27182` reproduces the exact
+- **Same seed, same persona.** Re-running with `persona_seed="alpha-7"` reproduces the exact
   same persona every time. That is what you want for cross-session continuity: the site
   sees a returning visitor, not a new device on every request.
 - **Different seed, uncorrelated persona.** Change the seed and the surfaces change
@@ -36,11 +38,11 @@ One seed produces one coherent fingerprint, and the same seed always produces th
 from chromiumfish.sync_api import Chromiumfish
 
 # Account A: always this identity
-with Chromiumfish(persona_seed=1001) as browser:
+with Chromiumfish(persona_seed="alice") as browser:
     ...
 
 # Account B: a different, uncorrelated identity
-with Chromiumfish(persona_seed=2002) as browser:
+with Chromiumfish(persona_seed="bob") as browser:
     ...
 ```
 
@@ -49,44 +51,36 @@ with Chromiumfish(persona_seed=2002) as browser:
 ```javascript
 import { ChromiumFish } from "chromiumfish";
 
-const a = await ChromiumFish({ personaSeed: 1001 });
+const a = await ChromiumFish({ personaSeed: "alice" });
 // ... use a ...
 await a.close();
 
-const b = await ChromiumFish({ personaSeed: 2002 });
+const b = await ChromiumFish({ personaSeed: "bob" });
 // ... use b ...
 await b.close();
 ```
 
-## Choosing seeds
+## Choosing ids
 
-- **Pin a seed per account or per profile.** Store the mapping yourself so each identity
-  is reproducible across runs.
-- **Rotate seeds for anonymity.** For one-off scrapes where you don't want any
-  cross-session linkage, use a fresh random seed each run.
+- **Use a stable id per account or profile.** Any string works, so the account's own id is
+  often all you need. The same id always rebuilds the same persona.
+- **Rotate ids for anonymity.** For one-off scrapes you don't want linked together, use a
+  fresh random string each run.
 - **Keep network and persona aligned.** A persona's locale and timezone should match its
-  exit IP. Pair seeds with proxies deliberately, and let `timezone="auto"` resolve the
+  exit IP. Pair ids with proxies deliberately, and let `timezone="auto"` resolve the
   egress IP's zone if you don't want to set it by hand.
 
-A small `account_id` to `seed` table is usually all the bookkeeping you need:
+Because the id is just a string, the account id itself can be the persona id. There's no
+separate seed table to keep:
 
 ```python
-import json
-from pathlib import Path
 from chromiumfish.sync_api import Chromiumfish
 
-SEEDS = Path("seeds.json")
-seeds = json.loads(SEEDS.read_text()) if SEEDS.exists() else {}
-
-def seed_for(account_id: str) -> int:
-    if account_id not in seeds:
-        seeds[account_id] = len(seeds) + 1001
-        SEEDS.write_text(json.dumps(seeds))
-    return seeds[account_id]
-
-with Chromiumfish(persona_seed=seed_for("alice")) as browser:
-    page = browser.new_page()
-    page.goto("https://example.com")
+def scrape(account_id: str):
+    with Chromiumfish(persona_seed=account_id) as browser:
+        page = browser.new_page()
+        page.goto("https://example.com/account")
+        return page.title()
 ```
 
 {: .warning }

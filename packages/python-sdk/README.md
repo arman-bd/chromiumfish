@@ -14,7 +14,7 @@ chromiumfish fetch        # download + cache the browser build
 ```python
 from chromiumfish.sync_api import Chromiumfish
 
-with Chromiumfish(persona_seed=27182, headless=True) as browser:
+with Chromiumfish(persona_seed="alpha-7", headless=True) as browser:
     page = browser.new_page()
     page.goto("https://abrahamjuliot.github.io/creepjs/")
     page.screenshot(path="fp.png")
@@ -27,7 +27,7 @@ import asyncio
 from chromiumfish.async_api import AsyncChromiumfish
 
 async def main():
-    async with AsyncChromiumfish(persona_seed=27182) as browser:
+    async with AsyncChromiumfish(persona_seed="alpha-7") as browser:
         page = await browser.new_page()
         await page.goto("https://example.com")
         print(await page.title())
@@ -42,7 +42,7 @@ The returned object is a standard Playwright `Browser`, so `new_context`,
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `persona_seed` | `None` | Integer seed for a stable, internally-consistent fingerprint persona. |
+| `persona_seed` | `None` | String id for a stable, internally-consistent fingerprint persona (any string; a number works too). |
 | `headless` | `True` | Run headless (SwiftShader). |
 | `proxy` | `None` | Playwright proxy dict, e.g. `{"server": "http://host:port", "username": ..., "password": ...}`. |
 | `window_size` | `(1920, 1080)` | Window dimensions. |

@@ -31,8 +31,9 @@ fingerprinting logic of their own; they fetch, verify, and cache the binary, the
 - **Native spoofing.** User-Agent, Client Hints, the WebGL vendor/renderer string (it reports
   a real D3D11/ANGLE GPU, with no Apple/Metal tells), fonts, audio, screen metrics, and WebRTC
   are all handled in the engine, coherent and tamper-free.
-- **Per-seed personas.** One `persona_seed` produces one stable, internally consistent
-  identity. Reuse it for continuity, or change it for a fresh, uncorrelated persona.
+- **Per-seed personas.** One `persona_seed`, any stable string id, produces one stable,
+  internally consistent identity. Reuse it for continuity, or change it for a fresh,
+  uncorrelated persona.
 - **Optional canvas-bridge.** Canvas and WebGL reads aren't spoofed in the engine. For
   those, you can point the browser at the canvas-bridge, a separate render service that runs
   on a real Windows GPU. With it, `toDataURL`, `getImageData`, `readPixels`, and `measureText`
