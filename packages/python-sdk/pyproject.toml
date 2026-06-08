@@ -36,6 +36,14 @@ chromiumfish = "chromiumfish.cli:main"
 [tool.hatch.version]
 path = "src/chromiumfish/version.py"
 
+# This package lives in a subdirectory of the monorepo. The repo-root .gitignore
+# anchors a `/src/` rule (to ignore the vendored Chromium tree at the root), and
+# hatchling's VCS-aware file selector would otherwise apply it here and silently
+# drop src/chromiumfish — producing a metadata-only wheel. Disable VCS-based
+# exclusion; the explicit packages/include below fully define what ships.
+[tool.hatch.build]
+ignore-vcs = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/chromiumfish"]
 

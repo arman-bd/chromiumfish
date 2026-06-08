@@ -7,7 +7,7 @@
  */
 
 /** SDK package version (kept in sync with package.json). */
-export const SDK_VERSION = "0.1.2";
+export const SDK_VERSION = "0.1.3";
 
 /** Default ChromiumFish browser build to fetch. Matches src/chrome/VERSION. */
 export const DEFAULT_BROWSER_VERSION = "150.0.7844";
