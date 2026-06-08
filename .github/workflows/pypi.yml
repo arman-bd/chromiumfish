@@ -32,6 +32,13 @@ jobs:
           python -m pip install --upgrade twine
           python -m twine check dist/*
 
+      - name: Smoke-test the built wheel (guards against an empty package)
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/python -c "import chromiumfish; from chromiumfish.cli import main; from chromiumfish import lookup_timezone, resolve_timezone"
+          /tmp/smoke/bin/chromiumfish --version
+
       - uses: actions/upload-artifact@v4
         with:
           name: python-package-distributions

@@ -31,6 +31,14 @@ jobs:
       - name: Inspect publishable package
         run: npm pack --dry-run
 
+      - name: Verify the packed tarball ships dist (guards against an empty package)
+        run: |
+          tarball="$(npm pack --silent)"
+          for f in package/dist/index.js package/dist/launcher.js package/dist/ip2tz.js; do
+            tar -tzf "$tarball" | grep -qx "$f" || { echo "::error::$f missing from npm package"; exit 1; }
+          done
+          echo "npm package contains dist/ ✓"
+
   publish:
     name: Publish to npm
     needs: build

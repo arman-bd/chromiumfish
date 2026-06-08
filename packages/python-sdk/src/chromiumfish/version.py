@@ -10,7 +10,7 @@ import os
 
 # SDK package version. Single source of truth: pyproject.toml reads this via
 # [tool.hatch.version] (dynamic = ["version"]).
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 # Default ChromiumFish browser build to fetch. Matches src/chrome/VERSION.
 DEFAULT_BROWSER_VERSION = "150.0.7844"
