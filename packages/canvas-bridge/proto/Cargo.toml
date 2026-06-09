@@ -1,0 +1,13 @@
+[package]
+name = "canvas-bridge-proto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Wire protocol shared between canvas-bridge client and server."
+
+[dependencies]
+serde.workspace = true
+rmp-serde.workspace = true
+thiserror.workspace = true
+serde_bytes = "0.11"

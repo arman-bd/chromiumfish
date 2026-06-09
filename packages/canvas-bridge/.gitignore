@@ -1,0 +1,25 @@
+target/
+**/*.rs.bk
+# Cargo.lock is committed: this package ships a server binary, so a pinned
+# lockfile gives reproducible builds (matches js-sdk committing package-lock.json).
+
+# Local secrets and certs
+*.pem
+*.key
+*.crt
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# macOS
+.DS_Store
+
+# Test artifacts
+/tmp/
+
+# Python
+__pycache__/
+*.pyc

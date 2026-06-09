@@ -1,0 +1,84 @@
+Forward Canvas2D ops to the bridge.
+
+Adds an `EnsureBridgeCanvas()` helper that allocates a canvas id and
+issues a `CreateCanvas2D` frame the first time a 2D op is dispatched
+on a given canvas element. Each public draw method then appends a
+matching op to the bridge in addition to the existing local draw.
+
+Phase 1: ops are sent best-effort (fire-and-forget). The renderer
+keeps drawing locally as before; only readback (toDataURL /
+getImageData) is replaced by bridge output. This means visual display
+in the page comes from local rendering, but the *bytes that JS sees*
+when it reads canvas pixels come from the server. That's the only
+output fpjs hashes.
+
+A future phase can switch to "bridge owns the display image too" via
+a CanvasResourceProvider variant that pulls frames from the server.
+
+--- a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
++++ b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
+@@ -28,6 +28,8 @@
+ #include "third_party/blink/public/common/features.h"
+ #include "third_party/blink/public/common/fingerprinting/baked_canvas.h"
+ #include "third_party/blink/public/mojom/devtools/console_message.mojom-blink.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_union_canvasgradient_canvaspattern_string.h"
+ ...
+@@ -914,6 +916,15 @@ void BaseRenderingContext2D::fillText(const String& text, double x, double y) {
+   MaybeFlagFpjsProbeCanvas(text);
+   CanvasRenderingContext2DState& state = GetState();
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    auto* b = blink::canvas_bridge::CanvasBridgeClient::Get();
++    // We send the *current* style state lazily — every public setter
++    // pushes the matching op to the bridge.
++    b->Send(blink::canvas_bridge::MsgBuilder::FillText(
++        id, text, static_cast<float>(x), static_cast<float>(y),
++        std::nullopt));
++  }
++
+   DrawTextInternal(text, x, y, CanvasRenderingContext2DState::kFillPaintType,
+                    state.GetTextAlign(), state.GetTextBaseline(), 0,
+                    text.length());
+@@ -924,6 +935,13 @@ void BaseRenderingContext2D::fillText(const String& text,
+                                       double y,
+                                       double max_width) {
+   MaybeFlagFpjsProbeCanvas(text);
++  if (uint32_t id = EnsureBridgeCanvas()) {
++    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
++        blink::canvas_bridge::MsgBuilder::FillText(
++            id, text, static_cast<float>(x), static_cast<float>(y),
++            static_cast<float>(max_width)));
++  }
++
+   CanvasRenderingContext2DState& state = GetState();
+   DrawTextInternal(text, x, y, CanvasRenderingContext2DState::kFillPaintType,
+                    state.GetTextAlign(), state.GetTextBaseline(), 0,
+@@ -1100,3 +1118,30 @@ void BaseRenderingContext2D::fillRect(double x, double y,
++
++uint32_t BaseRenderingContext2D::EnsureBridgeCanvas() {
++  // Returns the canvas id, allocating one on first call. 0 means the
++  // bridge is disabled — callers skip forwarding in that case.
++  auto* b = blink::canvas_bridge::CanvasBridgeClient::Get();
++  if (!b->IsEnabled()) {
++    return 0;
++  }
++  auto* host = GetCanvasRenderingContextHost();
++  if (!host || host->IsOffscreenCanvas()) {
++    return 0;
++  }
++  auto* el = static_cast<HTMLCanvasElement*>(host);
++  if (el->bridge_canvas_id_) {
++    return el->bridge_canvas_id_;
++  }
++  uint32_t id = b->AllocateCanvasId();
++  if (!id) {
++    return 0;
++  }
++  el->bridge_canvas_id_ = id;
++  b->Send(blink::canvas_bridge::MsgBuilder::CreateCanvas2D(
++      id, el->width(), el->height(),
++      /*opaque=*/!CreationAttributes().alpha));
++  return id;
++}
++

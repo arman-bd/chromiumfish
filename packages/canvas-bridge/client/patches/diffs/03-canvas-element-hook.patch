@@ -1,0 +1,63 @@
+Forward HTMLCanvasElement readback through the canvas-bridge client.
+
+Two surface points are modified:
+  * `ToDataURLInternal` — when the bridge is enabled, fetch raw
+    pixels from the server first, then run them through Blink's
+    normal PNG encoder.
+  * `GetImageDataInternalRaw` (called by getImageData) — same idea.
+
+When the bridge is disabled (default) the existing local paths run
+unchanged.
+
+--- a/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
++++ b/third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+@@ -136,6 +136,8 @@
+ #include "third_party/blink/renderer/core/probe/core_probes.h"
+ #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+ #include "third_party/blink/renderer/platform/bindings/script_state.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_client.h"
++#include "third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h"
+ #include "third_party/blink/renderer/platform/graphics/canvas_2d_layer_bridge.h"
+ #include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
+ #include "third_party/blink/renderer/platform/graphics/graphics_layer.h"
+@@ -1300,6 +1302,28 @@ String HTMLCanvasElement::ToDataURLInternal(
+   if (!OriginClean())
+     return String("data:,");
+
++  // canvas-bridge: when configured, fetch raw RGBA from the remote
++  // render server and feed it through Blink's standard PNG encoder
++  // below. The final data URL is identical to a native local render
++  // because Chromium's own libpng encodes it.
++  {
++    auto* bridge = blink::canvas_bridge::CanvasBridgeClient::Get();
++    if (bridge->IsEnabled() && bridge_canvas_id_) {
++      auto pixels = bridge->RequestImageData(bridge_canvas_id_,
++                                              0, 0, width(), height());
++      if (pixels.has_value() && pixels->pixels.size() ==
++          static_cast<size_t>(width()) * height() * 4) {
++        scoped_refptr<StaticBitmapImage> img =
++            UnacceleratedStaticBitmapImage::Create(
++                SkImage::MakeRasterCopy(SkPixmap(
++                    SkImageInfo::MakeN32Premul(width(), height()),
++                    pixels->pixels.data(),
++                    width() * 4)));
++        return EncodeImageAsDataURL(img.get(), mime_type, encoder_options);
++      }
++      // Fall through to local rendering on bridge timeout / error.
++    }
++  }
++
+   scoped_refptr<StaticBitmapImage> image_bitmap =
+       Snapshot(FlushReason::kToDataURL, kBackBuffer);
+   ...
+@@ -377,6 +401,12 @@ class HTMLCanvasElement final
+
+   void SetSize(const gfx::Size& new_size);
+
++  // canvas-bridge: opaque server-allocated handle for this element.
++  // 0 means "no bridge mapping yet" — allocated lazily on first
++  // forwarded op. See platform/canvas_bridge/.
++  uint32_t bridge_canvas_id_ = 0;
++
+   // Lightweight-fork: see SetFpjsCanvasProbeDetected() above.
+   bool fpjs_canvas_probe_detected_ = false;
