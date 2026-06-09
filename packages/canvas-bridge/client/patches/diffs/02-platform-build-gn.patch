@@ -1,0 +1,26 @@
+Wire the new canvas_bridge module into Blink's platform/.
+
+--- a/third_party/blink/renderer/platform/BUILD.gn
++++ b/third_party/blink/renderer/platform/BUILD.gn
+@@ -2380,6 +2380,7 @@ source_set("platform") {
+     "audio_low_latency_input_test.cc",
+     "blob/blob_url_registry_test.cc",
+     "bindings/script_state_test.cc",
++    "canvas_bridge:canvas_bridge",
+     "cookies/canonical_cookie_test.cc",
+     ...
+   ]
+@@ -2700,6 +2701,7 @@ component("platform") {
+   deps = [
+     "//base",
+     "//cc",
++    "//third_party/blink/renderer/platform/canvas_bridge",
+     "//gpu/command_buffer/client:gles2_implementation_no_check",
+     ...
+   ]
+
+NOTE: the exact line numbers above are placeholders — the gn file
+shifts across milestones. The substantive change is two-fold:
+  1. List the new `canvas_bridge` source_set as a dep of the
+     `platform` component.
+  2. Make sure it gets linked into the renderer process.

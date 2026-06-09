@@ -1,0 +1,37 @@
+Register canvas-bridge command-line switches in content/.
+
+Adds //components/canvas_bridge to the content_switches DEPS so the
+browser process can refer to the canonical switch names defined under
+//components/canvas_bridge/public/canvas_bridge_switches.h, and so the
+existing AppendRendererCommandLine path propagates them.
+
+--- a/content/browser/renderer_host/render_process_host_impl.cc
++++ b/content/browser/renderer_host/render_process_host_impl.cc
+@@ -50,6 +50,7 @@
+ #include "build/build_config.h"
+ #include "cc/base/switches.h"
+ #include "components/attribution_reporting/features.h"
++#include "components/canvas_bridge/public/canvas_bridge_switches.h"
+ #include "components/cdm/common/buildflags.h"
+ #include "components/discardable_memory/common/discardable_shared_memory_manager.h"
+ #include "components/embedder_support/switches.h"
+@@ -3380,6 +3381,8 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
+       switches::kVModule,
+       cc::switches::kEnableGpuBenchmarking,
+       cc::switches::kCheckDamageEarly,
++      canvas_bridge::switches::kCanvasBridgeUrl,
++      canvas_bridge::switches::kCanvasBridgeAuth,
+   };
+   renderer_cmd->CopySwitchesFrom(browser_cmd, kSwitchNames,
+                                  std::size(kSwitchNames));
+
+--- a/content/browser/BUILD.gn
++++ b/content/browser/BUILD.gn
+@@ -2010,6 +2010,7 @@ source_set("browser") {
+     "//cc/animation",
+     "//cc/base",
+     "//cc/mojo_embedder",
++    "//components/canvas_bridge",
+     "//components/attribution_reporting:features",
+     "//components/cdm:buildflags",
+     "//components/discardable_memory/common",

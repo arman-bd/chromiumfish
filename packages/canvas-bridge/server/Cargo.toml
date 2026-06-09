@@ -1,0 +1,62 @@
+[package]
+name = "canvas-bridge-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Remote canvas/WebGL/font render server for ChromiumFish."
+
+[[bin]]
+name = "canvas-bridge-server"
+path = "src/main.rs"
+
+[dependencies]
+canvas-bridge-proto = { path = "../proto" }
+
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+rmp-serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+clap = { version = "4", features = ["derive", "env"] }
+
+# WebSocket. TLS (rustls + ring) is intentionally NOT pulled in: the
+# bridge is a server-side-only internal service, not internet-exposed.
+# When TLS becomes needed, add the `tls` feature below.
+tokio-tungstenite = "0.21"
+tungstenite = "0.21"
+futures-util = "0.3"
+
+# Canvas2D — phase 1 backend (pure Rust, no GPU). Swap to skia-safe in
+# phase 2 for Win-Chrome-matching pixel output.
+tiny-skia = "0.11"
+fontdb = "0.16"
+cosmic-text = "0.10"
+png = "0.17"
+flate2 = "1"
+once_cell = "1"
+swash = "0.1"
+zeno = "0.2"
+
+# Fonts — cross-platform metric queries
+font-kit = "0.13"
+
+# WebGL — phase-2 backend uses `glow` over a headless EGL pbuffer.
+# We load libEGL.dll dynamically (Mesa3D ships one alongside us on
+# Windows) and use it for software-rasterized OpenGL ES. This works
+# on a GPU-less VPS, unlike `surfman` 0.9 whose Windows backend hard-
+# requires `WGL_NV_DX_interop` (an NVIDIA-vendor WGL extension absent
+# in Mesa's WGL gallium).
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
+glow = { version = "0.13", optional = true }
+khronos-egl = { version = "6", features = ["dynamic"], optional = true }
+libloading = { version = "0.8", optional = true }
+
+base64 = "0.21"
+
+[features]
+default = []
+webgl = ["dep:glow", "dep:khronos-egl", "dep:libloading"]

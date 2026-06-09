@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Arman Hossain <arman@bytetunnels.com>. ChromiumFish authors. All rights reserved.
+
+import("//third_party/blink/renderer/platform/platform.gni")
+
+blink_platform_sources("canvas_bridge") {
+  sources = [
+    "canvas_bridge_client.cc",
+    "canvas_bridge_client.h",
+    "canvas_bridge_codec.cc",
+    "canvas_bridge_codec.h",
+  ]
+
+  deps = [
+    "//base",
+    "//components/canvas_bridge",
+  ]
+}
