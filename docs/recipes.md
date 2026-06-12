@@ -286,13 +286,195 @@ export CHROMIUMFISH_GEOIP_VERSION=2026.06
 You can also pin the browser version in the environment with `CHROMIUMFISH_VERSION` instead
 of passing `version=` on every call.
 
+## Run many personas in parallel
+
+Each `persona_seed` is an independent identity, so a pool of them scrapes concurrently
+without correlating. Use the async API in Python and `Promise.all` in Node. Keep the pool
+modest — concurrency is usually bounded by your proxies, not the browser.
+
+### Python
+
+```python
+import asyncio
+from chromiumfish.async_api import AsyncChromiumfish
+
+async def fetch_title(seed: str, url: str) -> str:
+    async with AsyncChromiumfish(persona_seed=seed) as browser:
+        page = await browser.new_page()
+        await page.goto(url, wait_until="domcontentloaded")
+        return await page.title()
+
+async def main():
+    jobs = [
+        ("acct-1", "https://example.com/a"),
+        ("acct-2", "https://example.com/b"),
+        ("acct-3", "https://example.com/c"),
+    ]
+    titles = await asyncio.gather(*(fetch_title(s, u) for s, u in jobs))
+    print(titles)
+
+asyncio.run(main())
+```
+
+### Node
+
+```javascript
+import { ChromiumFish } from "chromiumfish";
+
+async function fetchTitle(seed, url) {
+  const browser = await ChromiumFish({ personaSeed: seed });
+  try {
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    return await page.title();
+  } finally {
+    await browser.close();
+  }
+}
+
+const jobs = [
+  ["acct-1", "https://example.com/a"],
+  ["acct-2", "https://example.com/b"],
+  ["acct-3", "https://example.com/c"],
+];
+const titles = await Promise.all(jobs.map(([s, u]) => fetchTitle(s, u)));
+console.log(titles);
+```
+
+## Reuse a logged-in session
+
+Log in once, save Playwright's `storage_state` (cookies + localStorage), and replay it on
+later runs to skip the login. Keep the **same `persona_seed`** so the saved session and the
+fingerprint stay consistent — a returning cookie on a brand-new device is itself a tell.
+
+### Python
+
+```python
+from chromiumfish.sync_api import Chromiumfish
+
+# First run: log in, then save the session.
+with Chromiumfish(persona_seed="acct-1") as browser:
+    context = browser.new_context()
+    page = context.new_page()
+    page.goto("https://example.com/login")
+    # ... perform the login ...
+    context.storage_state(path="acct-1.json")
+
+# Later runs: restore it and you're already signed in.
+with Chromiumfish(persona_seed="acct-1") as browser:
+    context = browser.new_context(storage_state="acct-1.json")
+    page = context.new_page()
+    page.goto("https://example.com/account")
+    print(page.title())
+```
+
+### Node
+
+```javascript
+import { ChromiumFish } from "chromiumfish";
+
+// First run: log in, then save the session.
+let browser = await ChromiumFish({ personaSeed: "acct-1" });
+let context = await browser.newContext();
+let page = await context.newPage();
+await page.goto("https://example.com/login");
+// ... perform the login ...
+await context.storageState({ path: "acct-1.json" });
+await browser.close();
+
+// Later runs: restore it and you're already signed in.
+browser = await ChromiumFish({ personaSeed: "acct-1" });
+context = await browser.newContext({ storageState: "acct-1.json" });
+page = await context.newPage();
+await page.goto("https://example.com/account");
+console.log(await page.title());
+await browser.close();
+```
+
+{: .note }
+> `storage_state` carries cookies and localStorage, not the persona. The persona comes from
+> the seed, so pass the same `persona_seed` both when you save and when you restore.
+
+## Verify your persona
+
+Before a real run, open a fingerprinting test page and confirm there are no automation or
+tampering tells. [CreepJS](https://abrahamjuliot.github.io/creepjs/) is the strictest
+freely-available check; `navigator.webdriver` should read `false` even under CDP.
+
+### Python
+
+```python
+from chromiumfish.sync_api import Chromiumfish
+
+with Chromiumfish(persona_seed="alpha-7") as browser:
+    page = browser.new_page()
+    page.goto("https://abrahamjuliot.github.io/creepjs/")
+    page.wait_for_timeout(4000)            # let the probes finish
+    print(page.evaluate("navigator.webdriver"))  # -> False
+    page.screenshot(path="creepjs.png", full_page=True)
+```
+
+### Node
+
+```javascript
+import { ChromiumFish } from "chromiumfish";
+
+const browser = await ChromiumFish({ personaSeed: "alpha-7" });
+const page = await browser.newPage();
+await page.goto("https://abrahamjuliot.github.io/creepjs/");
+await page.waitForTimeout(4000);                 // let the probes finish
+console.log(await page.evaluate("navigator.webdriver")); // -> false
+await page.screenshot({ path: "creepjs.png", fullPage: true });
+await browser.close();
+```
+
+Re-run with two different seeds and the visitor id should change; re-run with the same seed
+and it should stay put. See [Personas](personas) for what's deterministic per seed.
+
+## Route canvas/WebGL through the bridge
+
+Canvas and WebGL **pixels** pass through clean by default (SwiftShader on headless Linux). If
+a target hashes those reads, point the browser at the optional canvas-bridge with two flags
+through `args`. Both flags are required, and the bridge must be running on a separate Windows
+host — see [Canvas & WebGL bridge](canvas-bridge) for the full setup.
+
+### Python
+
+```python
+from chromiumfish.sync_api import Chromiumfish
+
+with Chromiumfish(
+    persona_seed="alpha-7",
+    args=[
+        "--canvas-bridge-url=ws://your-win-host:8443/render",
+        "--canvas-bridge-auth=user:secret",
+    ],
+) as browser:
+    page = browser.new_page()
+    page.goto("https://abrahamjuliot.github.io/creepjs/")
+```
+
+### Node
+
+```javascript
+import { ChromiumFish } from "chromiumfish";
+
+const browser = await ChromiumFish({
+  personaSeed: "alpha-7",
+  args: [
+    "--canvas-bridge-url=ws://your-win-host:8443/render",
+    "--canvas-bridge-auth=user:secret",
+  ],
+});
+const page = await browser.newPage();
+await page.goto("https://abrahamjuliot.github.io/creepjs/");
+```
+
 ## High-friction targets
 
 A persona spoofs the browser fingerprint, not the network. For sites with strict bot walls,
 combine a pinned persona with a clean residential proxy and a matching timezone, and pace
-your requests like a person would.
-
-{: .tip }
-> If a target still reads canvas or WebGL as headless-Linux SwiftShader, the optional
-> canvas-bridge answers those reads from a real Windows GPU. It runs as a separate render
-> service outside the SDK and is configured at the browser level, not through any SDK option.
+your requests like a person would. If a target still reads canvas or WebGL as headless-Linux
+SwiftShader, route those reads through the [canvas & WebGL bridge](canvas-bridge) — a
+separate, optional render service on a real Windows GPU. When you're still blocked, work
+through the [troubleshooting checklist](troubleshooting#im-still-getting-blocked).

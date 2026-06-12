@@ -105,6 +105,7 @@ It comes down to three pieces, each doing one thing:
 The full docs live at **[chromiumfish.com](https://chromiumfish.com)** (built with [Just the Docs](https://just-the-docs.com) from [`docs/`](docs/)):
 - [Introduction](https://chromiumfish.com/)
 - [Installation](https://chromiumfish.com/installation) · [Quickstart](https://chromiumfish.com/quickstart) · [Personas](https://chromiumfish.com/personas)
+- [Recipes](https://chromiumfish.com/recipes) · [Canvas & WebGL bridge](https://chromiumfish.com/canvas-bridge) · [Troubleshooting](https://chromiumfish.com/troubleshooting)
 - [Python API](https://chromiumfish.com/api/python) · [JavaScript API](https://chromiumfish.com/api/javascript)
 
 ## 🗂️ What's in here
