@@ -56,6 +56,9 @@ SDK resolves the version to the right platform asset, verifies its SHA-256, extr
 - [Installation](installation) — add ChromiumFish to a Python or Node project.
 - [Quickstart](quickstart) — launch a stealth browser in five lines.
 - [Personas](personas) — stable, rotatable identities via `persona_seed`.
+- [Canvas & WebGL bridge](canvas-bridge) — the optional render service for real-GPU pixels.
+- [Recipes](recipes) — copy-pasteable patterns: parallel personas, session reuse, proxies.
+- [Troubleshooting](troubleshooting) — fixes for the common launch, proxy, and block issues.
 - [API Reference](api) — full options for both SDKs.
 
 {: .warning }

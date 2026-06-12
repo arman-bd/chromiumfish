@@ -54,6 +54,34 @@ await browser.close();
 The object you get back is a **standard Playwright `Browser`**. Use contexts, pages,
 routing, tracing, and selectors exactly as you would with vanilla Playwright.
 
+## Watch it run while you build
+
+Launches are headless by default. While you're writing a selector or stepping through a
+login, open a visible window with `headless=False` and drop into the Playwright Inspector
+with `page.pause()`.
+
+### Python
+
+```python
+with Chromiumfish(persona_seed="alpha-7", headless=False) as browser:
+    page = browser.new_page()
+    page.goto("https://example.com")
+    page.pause()   # opens the Inspector; step through and pick selectors
+```
+
+### Node
+
+```javascript
+const browser = await ChromiumFish({ personaSeed: "alpha-7", headless: false });
+const page = await browser.newPage();
+await page.goto("https://example.com");
+await page.pause();
+```
+
+{: .note }
+> Headful mode needs a display. On a headless server, run under `xvfb-run`, or just keep
+> `headless=True` and use `page.screenshot(...)` to see what the page looked like.
+
 ## Using a proxy
 
 ### Python

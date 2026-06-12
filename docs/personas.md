@@ -100,9 +100,9 @@ two seeds can produce the same canvas hash.
 
 If you need those reads to look like a real GPU, ChromiumFish supports an optional
 **canvas-bridge**: a separate render service running on a Windows machine. When the build
-is pointed at the bridge, those reads are answered by the real Windows renderer instead of
-local SwiftShader. The bridge is configured at the browser level and has no SDK option or
-environment variable, so it's out of scope here.
+is pointed at the bridge (two command-line flags passed through the SDK's `args` list),
+those reads are answered by the real Windows renderer instead of local SwiftShader. See
+[Canvas & WebGL bridge](canvas-bridge) for the full setup.
 
 ## What's deterministic per seed
 
