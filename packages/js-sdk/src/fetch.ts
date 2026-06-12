@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 import * as https from "node:https";
 import * as os from "node:os";
 import * as path from "node:path";
-import { browserVersion, releaseBaseUrl } from "./version.js";
+import { assertSafeVersion, browserVersion, releaseBaseUrl } from "./version.js";
 
 export function cacheRoot(): string {
   const env = process.env.CHROMIUMFISH_CACHE_DIR;
@@ -33,13 +33,14 @@ export function platformSlug(): string {
 }
 
 function assetName(version: string): string {
+  assertSafeVersion(version);
   const slug = platformSlug();
   const ext = slug.startsWith("win") ? "zip" : "tar.gz";
   return `chromiumfish-${version}-${slug}.${ext}`;
 }
 
 export function installDir(version = browserVersion()): string {
-  return path.join(cacheRoot(), version, platformSlug());
+  return path.join(cacheRoot(), assertSafeVersion(version), platformSlug());
 }
 
 const BINARY_NAMES = ["chromiumfish", "chrome", "chromiumfish.exe", "chrome.exe", "ChromiumFish"];
@@ -48,7 +49,13 @@ export function findBinary(root: string): string | null {
   if (!fs.existsSync(root)) return null;
   for (const name of BINARY_NAMES) {
     const direct = path.join(root, name);
-    if (fs.existsSync(direct) && fs.statSync(direct).isFile()) return direct;
+    // statSync can throw if the file is removed between existsSync and stat
+    // (TOCTOU); treat any stat failure as "not a usable binary here".
+    try {
+      if (fs.statSync(direct).isFile()) return direct;
+    } catch {
+      /* keep looking */
+    }
   }
   const stack = [root];
   while (stack.length) {
@@ -62,11 +69,16 @@ export function findBinary(root: string): string | null {
   return null;
 }
 
+// Idle-timeout (ms) applied to every download/fetch socket. A stalled server
+// (no bytes for this long) aborts instead of hanging the launch forever.
+const DOWNLOAD_IDLE_TIMEOUT_MS = 60_000;
+const FETCH_IDLE_TIMEOUT_MS = 30_000;
+
 function download(url: string, dest: string): Promise<void> {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   return new Promise((resolve, reject) => {
     const get = (u: string) => {
-      https.get(u, (res) => {
+      const req = https.get(u, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
           return get(res.headers.location);
@@ -78,14 +90,27 @@ function download(url: string, dest: string): Promise<void> {
         const total = Number(res.headers["content-length"] || 0);
         let read = 0;
         const out = fs.createWriteStream(dest);
+        // On any failure: tear down both streams and remove the partial file
+        // so a later run doesn't trip over a truncated/corrupt download.
+        const fail = (err: Error) => {
+          res.destroy();
+          out.destroy();
+          try { fs.rmSync(dest, { force: true }); } catch { /* best effort */ }
+          reject(err);
+        };
         res.on("data", (c) => {
           read += c.length;
           if (total) process.stderr.write(`\r[chromiumfish] ${Math.floor((read / total) * 100)}%`);
         });
+        res.on("error", fail);
         res.pipe(out);
         out.on("finish", () => { process.stderr.write("\n"); out.close(() => resolve()); });
-        out.on("error", reject);
-      }).on("error", reject);
+        out.on("error", fail);
+      });
+      req.on("error", reject);
+      req.setTimeout(DOWNLOAD_IDLE_TIMEOUT_MS, () => {
+        req.destroy(new Error(`download timed out (no data for ${DOWNLOAD_IDLE_TIMEOUT_MS}ms) for ${u}`));
+      });
     };
     process.stderr.write(`[chromiumfish] downloading ${url}\n`);
     get(url);
@@ -94,8 +119,8 @@ function download(url: string, dest: string): Promise<void> {
 
 function fetchText(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const get = (u: string) =>
-      https.get(u, (res) => {
+    const get = (u: string) => {
+      const req = https.get(u, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
           return get(res.headers.location);
@@ -105,7 +130,13 @@ function fetchText(url: string): Promise<string> {
         res.setEncoding("utf8");
         res.on("data", (c) => (data += c));
         res.on("end", () => resolve(data));
-      }).on("error", reject);
+        res.on("error", reject);
+      });
+      req.on("error", reject);
+      req.setTimeout(FETCH_IDLE_TIMEOUT_MS, () => {
+        req.destroy(new Error(`request timed out for ${u}`));
+      });
+    };
     get(url);
   });
 }

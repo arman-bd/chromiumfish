@@ -17,7 +17,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from .version import browser_version, release_base_url
+from .version import assert_safe_version, browser_version, release_base_url
 
 
 class UnsupportedPlatformError(RuntimeError):
@@ -55,6 +55,7 @@ def platform_slug() -> str:
 
 
 def _asset_name(version: str) -> str:
+    assert_safe_version(version)
     slug = platform_slug()
     ext = "zip" if slug.startswith("win") else "tar.gz"
     return f"chromiumfish-{version}-{slug}.{ext}"
@@ -67,7 +68,7 @@ def _binary_name() -> str:
 
 
 def install_dir(version: str | None = None) -> Path:
-    version = version or browser_version()
+    version = assert_safe_version(version or browser_version())
     return cache_root() / version / platform_slug()
 
 
@@ -88,17 +89,26 @@ def find_binary(root: Path) -> Path | None:
 def _download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     print(f"[chromiumfish] downloading {url}", file=sys.stderr)
-    with urllib.request.urlopen(url) as resp, open(dest, "wb") as out:  # noqa: S310
-        total = int(resp.headers.get("Content-Length", 0))
-        read = 0
-        while chunk := resp.read(1 << 20):
-            out.write(chunk)
-            read += len(chunk)
-            if total:
-                pct = read * 100 // total
-                print(f"\r[chromiumfish] {pct:3d}%  ({read >> 20} / {total >> 20} MiB)",
-                      end="", file=sys.stderr)
-        print("", file=sys.stderr)
+    # Download to a temp file and rename on success so an interrupted transfer
+    # never leaves a truncated archive in the cache (which a later run would
+    # treat as complete). `timeout` bounds connection + per-read stalls.
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    try:
+        with urllib.request.urlopen(url, timeout=60) as resp, open(tmp, "wb") as out:  # noqa: S310
+            total = int(resp.headers.get("Content-Length", 0))
+            read = 0
+            while chunk := resp.read(1 << 20):
+                out.write(chunk)
+                read += len(chunk)
+                if total:
+                    pct = read * 100 // total
+                    print(f"\r[chromiumfish] {pct:3d}%  ({read >> 20} / {total >> 20} MiB)",
+                          end="", file=sys.stderr)
+            print("", file=sys.stderr)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    tmp.replace(dest)
 
 
 def _sha256(path: Path) -> str:
@@ -111,7 +121,7 @@ def _sha256(path: Path) -> str:
 
 def _verify(archive: Path, base_url: str, asset: str) -> None:
     try:
-        with urllib.request.urlopen(f"{base_url}/{asset}.sha256") as r:  # noqa: S310
+        with urllib.request.urlopen(f"{base_url}/{asset}.sha256", timeout=30) as r:  # noqa: S310
             expected = r.read().decode().split()[0].strip()
     except Exception:  # noqa: BLE001
         print("[chromiumfish] warning: no .sha256 published, skipping verification", file=sys.stderr)

@@ -9,9 +9,25 @@ use anyhow::{anyhow, Result};
 use canvas_bridge_proto::{Canvas2DOp, Paint};
 use std::io::Cursor;
 use tiny_skia::{
-    BlendMode, Color, FillRule, Paint as SkPaint, Path, PathBuilder, Pixmap, PixmapPaint,
+    BlendMode, Color, FillRule, IntRect, Paint as SkPaint, Path, PathBuilder, Pixmap, PixmapPaint,
     Rect as SkRect, Stroke as SkStroke, Transform,
 };
+
+/// Upper bound on a single canvas dimension. A client is untrusted input;
+/// without a cap, `CreateCanvas2D { width: u32::MAX, height: u32::MAX }`
+/// would request a multi-terabyte allocation and OOM the server. 8192²
+/// RGBA is 256 MiB — far above anything fpjs-class probes ever create.
+pub const MAX_CANVAS_DIM: u32 = 8192;
+
+/// Cap on save()/restore() nesting. Each `save` clones the graphics state
+/// onto a heap `Vec`; an unbounded `save` stream is a memory-exhaustion
+/// vector. Legitimate canvas code never nests anywhere near this deep.
+const MAX_SAVE_DEPTH: usize = 1024;
+
+/// Upper bound on a single `getImageData` readback buffer (256 MiB). The
+/// requested w/h are untrusted; this bounds the allocation independently of
+/// the canvas size.
+const MAX_IMAGE_DATA_BYTES: u64 = 256 * 1024 * 1024;
 
 pub struct Canvas2DContext {
     pixmap: Pixmap,
@@ -56,25 +72,37 @@ impl Default for State {
 }
 
 impl Canvas2DContext {
-    pub fn new(width: u32, height: u32, opaque: bool) -> Self {
+    pub fn new(width: u32, height: u32, opaque: bool) -> Result<Self> {
+        if width > MAX_CANVAS_DIM || height > MAX_CANVAS_DIM {
+            return Err(anyhow!(
+                "canvas {width}x{height} exceeds max dimension {MAX_CANVAS_DIM}"
+            ));
+        }
+        // `Pixmap::new` returns None on allocation failure / overflow; surface
+        // that as an error instead of panicking and killing the session task.
         let mut pixmap = Pixmap::new(width.max(1), height.max(1))
-            .expect("alloc Pixmap");
+            .ok_or_else(|| anyhow!("failed to allocate {width}x{height} pixmap"))?;
         if opaque {
             pixmap.fill(Color::WHITE);
         }
-        Self {
+        Ok(Self {
             pixmap,
             state: State::default(),
             state_stack: Vec::new(),
             path_builder: PathBuilder::new(),
             current_path: None,
-        }
+        })
     }
 
     pub fn replay(&mut self, op: Canvas2DOp) -> Result<()> {
         use Canvas2DOp::*;
         match op {
-            Save => self.state_stack.push(self.state.clone()),
+            Save => {
+                if self.state_stack.len() >= MAX_SAVE_DEPTH {
+                    return Err(anyhow!("save() stack exceeded {MAX_SAVE_DEPTH}"));
+                }
+                self.state_stack.push(self.state.clone());
+            }
             Restore => {
                 if let Some(s) = self.state_stack.pop() {
                     self.state = s;
@@ -209,7 +237,7 @@ impl Canvas2DContext {
                 }
             }
 
-            DrawImage { png_bytes, sx: _, sy: _, sw: _, sh: _, dx, dy, dw: _, dh: _ } => {
+            DrawImage { png_bytes, sx, sy, sw, sh, dx, dy, dw, dh } => {
                 let decoder = png::Decoder::new(Cursor::new(png_bytes));
                 let mut reader = decoder.read_info().map_err(|e| anyhow!("png header: {e}"))?;
                 let mut buf = vec![0; reader.output_buffer_size()];
@@ -220,15 +248,40 @@ impl Canvas2DContext {
                         .ok_or_else(|| anyhow!("png size 0"))?,
                 )
                 .ok_or_else(|| anyhow!("Pixmap::from_vec"))?;
+
+                // Honor the source crop rect (sx,sy,sw,sh). A non-positive
+                // crop size means "use the whole image" (the 3- and 5-arg
+                // drawImage overloads, which send sw/sh = 0).
+                let (img_w, img_h) = (src.width(), src.height());
+                let cropped = if sw > 0.0 && sh > 0.0 {
+                    let cx = (sx.round() as i32).clamp(0, img_w as i32);
+                    let cy = (sy.round() as i32).clamp(0, img_h as i32);
+                    let cw = (sw.round() as i32).clamp(0, img_w as i32 - cx) as u32;
+                    let ch = (sh.round() as i32).clamp(0, img_h as i32 - cy) as u32;
+                    IntRect::from_xywh(cx, cy, cw, ch)
+                        .and_then(|r| src.clone_rect(r))
+                        .unwrap_or(src)
+                } else {
+                    src
+                };
+
+                // Scale the (cropped) source to the destination box (dw,dh).
+                // A non-positive dest size means "natural size" (no scale).
+                let dest_w = if dw > 0.0 { dw } else { cropped.width() as f32 };
+                let dest_h = if dh > 0.0 { dh } else { cropped.height() as f32 };
+                let kx = dest_w / cropped.width().max(1) as f32;
+                let ky = dest_h / cropped.height().max(1) as f32;
+
+                // With draw_pixmap(0, 0, …) the source maps to the canvas
+                // purely through `transform`: world · translate(dx,dy) · scale.
+                let tf = self
+                    .state
+                    .transform
+                    .pre_translate(dx, dy)
+                    .pre_scale(kx, ky);
                 let paint = PixmapPaint::default();
-                self.pixmap.draw_pixmap(
-                    dx as i32,
-                    dy as i32,
-                    src.as_ref(),
-                    &paint,
-                    self.state.transform,
-                    None,
-                );
+                self.pixmap
+                    .draw_pixmap(0, 0, cropped.as_ref(), &paint, tf, None);
             }
         }
         Ok(())
@@ -260,15 +313,28 @@ impl Canvas2DContext {
     }
 
     pub fn image_data(&self, x: i32, y: i32, w: u32, h: u32) -> Result<Vec<u8>> {
-        let pm_w = self.pixmap.width() as i32;
-        let pm_h = self.pixmap.height() as i32;
+        // w/h come straight off the wire; `w * h * 4` in u32 would wrap and
+        // produce an undersized buffer, leading to OOB writes below. Size the
+        // allocation with checked 64-bit math and bound it.
+        let len = (w as u64)
+            .checked_mul(h as u64)
+            .and_then(|n| n.checked_mul(4))
+            .ok_or_else(|| anyhow!("getImageData {w}x{h} overflows"))?;
+        if len > MAX_IMAGE_DATA_BYTES {
+            return Err(anyhow!(
+                "getImageData {w}x{h} ({len} bytes) exceeds {MAX_IMAGE_DATA_BYTES}"
+            ));
+        }
+        // Index math runs in i64 so `row * w + col` can never overflow.
+        let pm_w = self.pixmap.width() as i64;
+        let pm_h = self.pixmap.height() as i64;
         let data = self.pixmap.data();
-        let mut out = vec![0u8; (w * h * 4) as usize];
-        for row in 0..h as i32 {
-            for col in 0..w as i32 {
-                let sx = x + col;
-                let sy = y + row;
-                let i = ((row * w as i32 + col) * 4) as usize;
+        let mut out = vec![0u8; len as usize];
+        for row in 0..h as i64 {
+            for col in 0..w as i64 {
+                let sx = x as i64 + col;
+                let sy = y as i64 + row;
+                let i = ((row * w as i64 + col) * 4) as usize;
                 if sx < 0 || sx >= pm_w || sy < 0 || sy >= pm_h {
                     // out-of-bounds reads are transparent black per spec
                     continue;
@@ -292,9 +358,11 @@ fn paint_to_color(p: &Paint) -> Color {
 }
 
 fn with_alpha(c: Color, alpha: f32) -> Color {
-    let r = (c.red() * 255.0) as u8;
-    let g = (c.green() * 255.0) as u8;
-    let b = (c.blue() * 255.0) as u8;
+    // Round every channel the same way (alpha was already rounded; RGB used to
+    // truncate, biasing colors ~half a level low and diverging from alpha).
+    let r = (c.red() * 255.0).round() as u8;
+    let g = (c.green() * 255.0).round() as u8;
+    let b = (c.blue() * 255.0).round() as u8;
     let a = (c.alpha() * alpha * 255.0).round() as u8;
     Color::from_rgba8(r, g, b, a)
 }
@@ -386,8 +454,6 @@ fn parse_baseline(s: &str) -> TextBaseline {
 /// This reproduces the byte-level structure of `HTMLCanvasElement.
 /// toDataURL("image/png")` output from upstream Chrome.
 fn encode_png_up(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>> {
-    use std::io::Write;
-
     let stride = (width as usize) * 4;
     if pixels.len() != stride * height as usize {
         return Err(anyhow!("encode_png_up: pixel buffer size mismatch"));
@@ -410,7 +476,7 @@ fn encode_png_up(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>> {
     }
 
     // zlib compress.
-    let compressed = miniz_oxide_deflate(&filtered);
+    let compressed = miniz_oxide_deflate(&filtered)?;
 
     let mut out = Vec::with_capacity(8 + 25 + 12 + compressed.len() + 12);
     out.extend_from_slice(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n']);
@@ -443,15 +509,16 @@ fn write_chunk(out: &mut Vec<u8>, ty: &[u8; 4], data: &[u8]) {
     out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
 }
 
-fn miniz_oxide_deflate(data: &[u8]) -> Vec<u8> {
+fn miniz_oxide_deflate(data: &[u8]) -> Result<Vec<u8>> {
     // The `png` crate already brings in `flate2` / `miniz_oxide`. We
-    // re-export through flate2 for simplicity.
+    // re-export through flate2 for simplicity. Errors propagate as a
+    // ServerMsg::Error rather than panicking the render task.
     use flate2::write::ZlibEncoder;
     use flate2::Compression;
     use std::io::Write;
     let mut e = ZlibEncoder::new(Vec::new(), Compression::new(6));
-    e.write_all(data).expect("deflate write");
-    e.finish().expect("deflate finish")
+    e.write_all(data).map_err(|e| anyhow!("deflate write: {e}"))?;
+    e.finish().map_err(|e| anyhow!("deflate finish: {e}"))
 }
 
 fn crc32(data: &[u8]) -> u32 {
@@ -508,5 +575,75 @@ fn approximate_arc(
         let (c2x, c2y) = (ex + t * r * b.sin(), ey - t * r * b.cos());
         pb.cubic_to(c1x, c1y, c2x, c2y, ex, ey);
         a = b;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Encode a 1x1 opaque-red PNG for DrawImage tests.
+    fn red_1x1_png() -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut enc = png::Encoder::new(&mut buf, 1, 1);
+            enc.set_color(png::ColorType::Rgba);
+            enc.set_depth(png::BitDepth::Eight);
+            let mut w = enc.write_header().unwrap();
+            w.write_image_data(&[255, 0, 0, 255]).unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn new_rejects_oversized_canvas() {
+        assert!(Canvas2DContext::new(MAX_CANVAS_DIM + 1, 10, false).is_err());
+        assert!(Canvas2DContext::new(10, MAX_CANVAS_DIM + 1, false).is_err());
+        assert!(Canvas2DContext::new(64, 64, false).is_ok());
+    }
+
+    #[test]
+    fn image_data_rejects_overflow_and_oversize() {
+        let ctx = Canvas2DContext::new(8, 8, false).unwrap();
+        // u32::MAX * u32::MAX * 4 overflows u64 -> checked path returns Err.
+        assert!(ctx.image_data(0, 0, u32::MAX, u32::MAX).is_err());
+        // Within u64 range but past the byte cap.
+        assert!(ctx.image_data(0, 0, 65536, 65536).is_err());
+        // A sane request still works.
+        assert_eq!(ctx.image_data(0, 0, 8, 8).unwrap().len(), 8 * 8 * 4);
+    }
+
+    #[test]
+    fn save_stack_depth_is_capped() {
+        let mut ctx = Canvas2DContext::new(8, 8, false).unwrap();
+        for _ in 0..MAX_SAVE_DEPTH {
+            ctx.replay(Canvas2DOp::Save).unwrap();
+        }
+        // One past the cap must error rather than grow without bound.
+        assert!(ctx.replay(Canvas2DOp::Save).is_err());
+    }
+
+    #[test]
+    fn draw_image_scales_to_destination_box() {
+        let mut ctx = Canvas2DContext::new(4, 4, false).unwrap();
+        // 1x1 red image scaled up to fill the whole 4x4 canvas. Source crop
+        // is omitted (sw/sh = 0 -> full image); dest box is 4x4.
+        ctx.replay(Canvas2DOp::DrawImage {
+            png_bytes: red_1x1_png(),
+            sx: 0.0,
+            sy: 0.0,
+            sw: 0.0,
+            sh: 0.0,
+            dx: 0.0,
+            dy: 0.0,
+            dw: 4.0,
+            dh: 4.0,
+        })
+        .unwrap();
+        let px = ctx.image_data(0, 0, 4, 4).unwrap();
+        // Center pixel (2,2) should be opaque red — proof the image was
+        // actually scaled across the destination, not drawn 1x1 at the origin.
+        let i = (2 * 4 + 2) * 4;
+        assert_eq!(&px[i..i + 4], &[255, 0, 0, 255]);
     }
 }

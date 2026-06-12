@@ -444,7 +444,7 @@ index 0000000000000..13a605d7b78f9
 +        seed = parsed;
 +      } else {
 +        // Non-numeric seed: hash the raw string to a stable uint64, not 0.
-+        seed = static_cast<uint64_t>(std::hash<std::string>{}(raw));
++        seed = [&] { uint64_t h = 14695981039346656037ULL; for (unsigned char c : raw) { h ^= c; h *= 1099511628211ULL; } return h; }();  // FNV-1a (std::hash isn't stable across builds)
 +      }
 +    }
 +    profile = new FingerprintProfile(DeriveFromSeed(seed));

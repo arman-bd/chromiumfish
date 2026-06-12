@@ -40,8 +40,12 @@ function proxyToUrl(proxy: LaunchOptions["proxy"]): string | undefined {
   if (!proxy?.server) return undefined;
   const { server, username, password } = proxy;
   if (username && server.includes("://")) {
-    const [scheme, host] = server.split("://", 2);
-    return `${scheme}://${username}:${password ?? ""}@${host}`;
+    const idx = server.indexOf("://");
+    const scheme = server.slice(0, idx);
+    const host = server.slice(idx + 3);
+    // Percent-encode credentials so a password containing ':' / '@' / '/'
+    // can't corrupt the URL; the egress probe decodes them again.
+    return `${scheme}://${encodeURIComponent(username)}:${encodeURIComponent(password ?? "")}@${host}`;
   }
   return server;
 }

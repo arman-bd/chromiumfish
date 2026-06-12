@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 # Flags that keep the GPU-less / SwiftShader path working and the persona
 # engine happy. Mirrors the production launch_lean.sh defaults (minus anything
@@ -43,7 +44,9 @@ def proxy_to_url(proxy: dict[str, Any] | None) -> str | None:
     user, pwd = proxy.get("username"), proxy.get("password")
     if user and "://" in server:
         scheme, host = server.split("://", 1)
-        return f"{scheme}://{user}:{pwd or ''}@{host}"
+        # Percent-encode credentials so a password containing ':' / '@' / '/'
+        # doesn't corrupt the URL. urllib's ProxyHandler unquotes them again.
+        return f"{scheme}://{quote(user, safe='')}:{quote(pwd or '', safe='')}@{host}"
     return server
 
 

@@ -7,7 +7,7 @@
  */
 
 /** SDK package version (kept in sync with package.json). */
-export const SDK_VERSION = "0.1.3";
+export const SDK_VERSION = "0.1.4";
 
 /** Default ChromiumFish browser build to fetch. Matches src/chrome/VERSION. */
 export const DEFAULT_BROWSER_VERSION = "150.0.7844";
@@ -32,8 +32,22 @@ export const DEFAULT_GEOIP_VERSION = "latest";
  */
 export const GEOIP_FALLBACK_VERSION = "2026.06";
 
+/**
+ * Reject version strings that aren't a plain build tag. Versions are
+ * interpolated into filesystem cache paths and release URLs, so a crafted
+ * value like `../../../etc` would escape the cache dir (path traversal).
+ * Real tags are digits, dots, and hyphens (e.g. "150.0.7844", "2026.06",
+ * "latest").
+ */
+export function assertSafeVersion(version: string): string {
+  if (!/^[A-Za-z0-9._-]+$/.test(version) || version === "." || version === "..") {
+    throw new Error(`invalid version string: ${JSON.stringify(version)}`);
+  }
+  return version;
+}
+
 export function browserVersion(): string {
-  return process.env.CHROMIUMFISH_VERSION || DEFAULT_BROWSER_VERSION;
+  return assertSafeVersion(process.env.CHROMIUMFISH_VERSION || DEFAULT_BROWSER_VERSION);
 }
 
 export function releaseBaseUrl(version = browserVersion()): string {
@@ -41,7 +55,7 @@ export function releaseBaseUrl(version = browserVersion()): string {
 }
 
 export function geoipVersion(): string {
-  return process.env.CHROMIUMFISH_GEOIP_VERSION || DEFAULT_GEOIP_VERSION;
+  return assertSafeVersion(process.env.CHROMIUMFISH_GEOIP_VERSION || DEFAULT_GEOIP_VERSION);
 }
 
 export function geoipBaseUrl(version = geoipVersion()): string {

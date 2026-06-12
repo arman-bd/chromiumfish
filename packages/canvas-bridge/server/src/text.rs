@@ -87,7 +87,29 @@ pub fn draw_fill_text(pix: &mut Pixmap, opts: TextOptions<'_>) -> Result<()> {
     // Baseline shift relative to `opts.y`. cosmic-text positions glyphs
     // such that y=0 is the top of the line box; we want the
     // alphabetic baseline at `opts.y` per canvas spec.
-    let ascent_em = 0.8_f32; // approximate; real metrics queried per-run
+    //
+    // Query the real ascent-to-em ratio from the primary (first shaped)
+    // font instead of assuming 0.8 — different families place the
+    // alphabetic baseline differently, and a fixed guess misplaces text
+    // for any font whose ascent != 0.8em. Falls back to 0.8 if the font
+    // can't be inspected.
+    let primary_font_id = buffer
+        .layout_runs()
+        .next()
+        .and_then(|run| run.glyphs.first().map(|g| g.physical((0.0, 0.0), 1.0).cache_key.font_id));
+    let ascent_em = primary_font_id
+        .and_then(|fid| fs.get_font(fid))
+        .and_then(|font| {
+            FontRef::from_index(font.data(), 0).map(|fr| {
+                let m = fr.metrics(&[]);
+                if m.units_per_em > 0 {
+                    m.ascent / m.units_per_em as f32
+                } else {
+                    0.8
+                }
+            })
+        })
+        .unwrap_or(0.8);
     let baseline_dy = match opts.baseline {
         crate::canvas2d::TextBaseline::Top => 0.0,
         crate::canvas2d::TextBaseline::Hanging => -ascent_em * parsed.size_px * 0.2,
@@ -101,6 +123,24 @@ pub fn draw_fill_text(pix: &mut Pixmap, opts: TextOptions<'_>) -> Result<()> {
     let pre_alpha_color = pre_alpha(opts.fill, opts.global_alpha);
     let world =
         opts.transform.post_translate(opts.x + align_dx, opts.y + baseline_dy);
+
+    // Glyph blitting is source-over only. To honor any other
+    // globalCompositeOperation, render the run onto a transparent scratch
+    // pixmap with source-over, then composite that whole layer onto the
+    // target with the requested blend mode (same approach the shape ops in
+    // canvas2d.rs use). source-over (the common case) blits in place.
+    let mut layer = if opts.composite == BlendMode::SourceOver {
+        None
+    } else {
+        Some(
+            Pixmap::new(pix.width(), pix.height())
+                .ok_or_else(|| anyhow!("alloc text composite layer"))?,
+        )
+    };
+    let target: &mut Pixmap = match layer.as_mut() {
+        Some(l) => l,
+        None => pix,
+    };
 
     for run in buffer.layout_runs() {
         for glyph in run.glyphs.iter() {
@@ -131,7 +171,7 @@ pub fn draw_fill_text(pix: &mut Pixmap, opts: TextOptions<'_>) -> Result<()> {
                 None => continue,
             };
             blit_alpha_mask(
-                pix,
+                target,
                 world,
                 glyph.x + phys.cache_key.x_bin.as_float() + image.placement.left as f32,
                 run.line_y + glyph.y - image.placement.top as f32,
@@ -139,9 +179,18 @@ pub fn draw_fill_text(pix: &mut Pixmap, opts: TextOptions<'_>) -> Result<()> {
                 image.placement.height as i32,
                 &image.data,
                 pre_alpha_color,
-                opts.composite,
             );
         }
+    }
+
+    // If we rendered onto a scratch layer, composite it with the requested
+    // blend mode now.
+    if let Some(layer) = layer {
+        let paint = tiny_skia::PixmapPaint {
+            blend_mode: opts.composite,
+            ..Default::default()
+        };
+        pix.draw_pixmap(0, 0, layer.as_ref(), &paint, Transform::identity(), None);
     }
     Ok(())
 }
@@ -207,9 +256,10 @@ fn parse_font_string(s: &str) -> ParsedFont {
 }
 
 fn pre_alpha(c: Color, alpha: f32) -> PremultipliedColorU8 {
-    let r = (c.red() * 255.0) as u8;
-    let g = (c.green() * 255.0) as u8;
-    let b = (c.blue() * 255.0) as u8;
+    // Round all channels consistently (matches with_alpha in canvas2d.rs).
+    let r = (c.red() * 255.0).round() as u8;
+    let g = (c.green() * 255.0).round() as u8;
+    let b = (c.blue() * 255.0).round() as u8;
     let a = (c.alpha() * alpha * 255.0).round() as u8;
     PremultipliedColorU8::from_rgba(
         ((r as u16 * a as u16) / 255) as u8,
@@ -237,7 +287,6 @@ fn blit_alpha_mask(
     h: i32,
     alpha: &[u8],
     color: PremultipliedColorU8,
-    composite: BlendMode,
 ) {
     if w <= 0 || h <= 0 {
         return;
@@ -254,12 +303,8 @@ fn blit_alpha_mask(
     let pmw = pix.width() as i32;
     let pmh = pix.height() as i32;
 
-    // Phase 1 supports source-over only — the canvas-2d default and
-    // the only composite mode fpjs's text probe uses. Other modes
-    // currently fall back to source-over; a real Skia backend will
-    // honor them.
-    let _ = composite;
-
+    // This blit is source-over only; non-source-over modes are handled by the
+    // caller compositing a scratch layer (see draw_fill_text).
     let dst = pix.pixels_mut();
     for row in 0..h {
         let dy = oy + row;
