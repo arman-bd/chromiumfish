@@ -76,9 +76,16 @@ impl Session {
 
             /* ------------ Canvas2D ------------ */
             ClientMsg::CreateCanvas2D { id, width, height, opaque } => {
-                self.canvases_2d
-                    .insert(id, Canvas2DContext::new(width, height, opaque));
-                vec![] // push semantics
+                match Canvas2DContext::new(width, height, opaque) {
+                    Ok(ctx) => {
+                        self.canvases_2d.insert(id, ctx);
+                        vec![] // push semantics
+                    }
+                    Err(e) => vec![ServerMsg::Error {
+                        code: ErrorCode::Internal,
+                        message: e.to_string(),
+                    }],
+                }
             }
             ClientMsg::Canvas2DOp { id, op } => match self.canvases_2d.get_mut(&id) {
                 Some(ctx) => match ctx.replay(op) {
@@ -135,9 +142,21 @@ impl Session {
 
             /* ------------ WebGL ------------ */
             ClientMsg::CreateWebGL { id, width, height, attrs, version } => {
-                self.gl_contexts
-                    .insert(id, WebGLContext::new(width, height, attrs, version));
-                vec![]
+                if width > crate::canvas2d::MAX_CANVAS_DIM
+                    || height > crate::canvas2d::MAX_CANVAS_DIM
+                {
+                    vec![ServerMsg::Error {
+                        code: ErrorCode::UnsupportedOp,
+                        message: format!(
+                            "webgl {width}x{height} exceeds max dimension {}",
+                            crate::canvas2d::MAX_CANVAS_DIM
+                        ),
+                    }]
+                } else {
+                    self.gl_contexts
+                        .insert(id, WebGLContext::new(width, height, attrs, version));
+                    vec![]
+                }
             }
             ClientMsg::WebGLOp { id, op } => match self.gl_contexts.get_mut(&id) {
                 Some(ctx) => match ctx.replay(op) {

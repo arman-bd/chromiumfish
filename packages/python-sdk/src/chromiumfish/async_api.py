@@ -56,9 +56,16 @@ class AsyncChromiumfish:
             proxy=self._opts["proxy"], download=self._download,
         )
         self._pw = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(
-            **launch_options(executable_path=exe, tz=tz, **self._opts)
-        )
+        try:
+            self._browser = await self._pw.chromium.launch(
+                **launch_options(executable_path=exe, tz=tz, **self._opts)
+            )
+        except BaseException:
+            # __aenter__ raising means __aexit__ never runs; stop the Playwright
+            # driver here so a failed launch doesn't leak its subprocess.
+            await self._pw.stop()
+            self._pw = None
+            raise
         return self._browser
 
     async def close(self) -> None:

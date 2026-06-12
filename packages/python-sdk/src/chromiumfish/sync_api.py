@@ -52,9 +52,16 @@ class Chromiumfish:
             self._timezone, proxy=self._opts["proxy"], download=self._download
         )
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(
-            **launch_options(executable_path=exe, tz=tz, **self._opts)
-        )
+        try:
+            self._browser = self._pw.chromium.launch(
+                **launch_options(executable_path=exe, tz=tz, **self._opts)
+            )
+        except BaseException:
+            # __enter__ raising means __exit__ never runs; stop the Playwright
+            # driver here so a failed launch doesn't leak its subprocess.
+            self._pw.stop()
+            self._pw = None
+            raise
         return self._browser
 
     def close(self) -> None:

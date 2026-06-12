@@ -294,7 +294,20 @@ impl Backend {
         h: u32,
     ) -> Result<Vec<u8>> {
         self.make_current()?;
-        let mut out = vec![0u8; (w * h * 4) as usize];
+        // w/h are untrusted; `w * h * 4` in u32 would wrap and undersize the
+        // buffer that glReadPixels writes into. Size it with checked 64-bit
+        // math and bound it (256 MiB — far above any real readback).
+        const MAX_READ_PIXELS_BYTES: u64 = 256 * 1024 * 1024;
+        let len = (w as u64)
+            .checked_mul(h as u64)
+            .and_then(|n| n.checked_mul(4))
+            .ok_or_else(|| anyhow!("readPixels {w}x{h} overflows"))?;
+        if len > MAX_READ_PIXELS_BYTES {
+            return Err(anyhow!(
+                "readPixels {w}x{h} ({len} bytes) exceeds {MAX_READ_PIXELS_BYTES}"
+            ));
+        }
+        let mut out = vec![0u8; len as usize];
         unsafe {
             self.gl.bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo));
             self.gl.read_pixels(

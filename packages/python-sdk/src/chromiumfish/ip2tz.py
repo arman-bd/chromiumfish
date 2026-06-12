@@ -33,6 +33,7 @@ from pathlib import Path
 from .fetch import cache_root
 from .version import (
     GEOIP_FALLBACK_VERSION,
+    assert_safe_version,
     geoip_base_url,
     geoip_latest_manifest_url,
     geoip_version,
@@ -104,11 +105,11 @@ def resolve_version(version: str | None = None, *, download: bool = True) -> str
 
 
 def asset_name(version: str | None = None) -> str:
-    return f"ip2tz-{resolve_version(version)}.bin"
+    return f"ip2tz-{assert_safe_version(resolve_version(version))}.bin"
 
 
 def db_path(version: str | None = None) -> Path:
-    return _geoip_dir() / f"ip2tz-{resolve_version(version)}.bin"
+    return _geoip_dir() / f"ip2tz-{assert_safe_version(resolve_version(version))}.bin"
 
 
 def _sha256(path: Path) -> str:
@@ -122,7 +123,7 @@ def _sha256(path: Path) -> str:
 def fetch_db(version: str | None = None, *, force: bool = False) -> Path:
     """Ensure the ip2tz DB is cached locally and return its path. Resolves the
     "latest" sentinel to a concrete version once, up front."""
-    version = resolve_version(version)  # concrete, e.g. "2026.06"
+    version = assert_safe_version(resolve_version(version))  # concrete, e.g. "2026.06"
     dest = _geoip_dir() / f"ip2tz-{version}.bin"
     if dest.exists() and not force:
         return dest
@@ -133,12 +134,16 @@ def fetch_db(version: str | None = None, *, force: bool = False) -> Path:
     url = f"{base}/{asset}"
     print(f"[chromiumfish] downloading {url}", file=sys.stderr)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    with urllib.request.urlopen(url) as r, open(tmp, "wb") as out:  # noqa: S310
-        while chunk := r.read(1 << 20):
-            out.write(chunk)
+    try:
+        with urllib.request.urlopen(url, timeout=60) as r, open(tmp, "wb") as out:  # noqa: S310
+            while chunk := r.read(1 << 20):
+                out.write(chunk)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
     try:
-        with urllib.request.urlopen(f"{url}.sha256") as r:  # noqa: S310
+        with urllib.request.urlopen(f"{url}.sha256", timeout=30) as r:  # noqa: S310
             expected = r.read().decode().split()[0].strip()
         actual = _sha256(tmp)
         if actual != expected:
@@ -226,14 +231,16 @@ class Ip2TzDB:
 
 
 _DB_LOCK = threading.Lock()
-_DB: Ip2TzDB | None = None
+# Keyed by *resolved* concrete version so a later lookup with a different
+# version doesn't silently reuse the first DB loaded.
+_DB_CACHE: dict[str, Ip2TzDB] = {}
 
 
 def _get_db(version: str | None = None, *, download: bool = True) -> Ip2TzDB:
-    global _DB
     with _DB_LOCK:
-        if _DB is None:
-            resolved = resolve_version(version, download=download)
+        resolved = assert_safe_version(resolve_version(version, download=download))
+        db = _DB_CACHE.get(resolved)
+        if db is None:
             path = _geoip_dir() / f"ip2tz-{resolved}.bin"
             if not path.exists():
                 if not download:
@@ -241,8 +248,9 @@ def _get_db(version: str | None = None, *, download: bool = True) -> Ip2TzDB:
                         "ip2tz DB not installed. Call chromiumfish.ip2tz.fetch_db()."
                     )
                 path = fetch_db(resolved)
-            _DB = Ip2TzDB.load(path)
-        return _DB
+            db = Ip2TzDB.load(path)
+            _DB_CACHE[resolved] = db
+        return db
 
 
 def lookup_timezone(ip: str, *, version: str | None = None,

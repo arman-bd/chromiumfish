@@ -7,10 +7,25 @@ downloads by default; override it at runtime with ``CHROMIUMFISH_VERSION``.
 from __future__ import annotations
 
 import os
+import re
+
+_VERSION_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def assert_safe_version(version: str) -> str:
+    """Reject version strings that aren't a plain build tag.
+
+    Versions are interpolated into filesystem cache paths and release URLs, so
+    a crafted value like ``../../../etc`` would escape the cache dir (path
+    traversal). Real tags are digits, dots, and hyphens (e.g. "150.0.7844",
+    "2026.06", "latest")."""
+    if version in (".", "..") or not _VERSION_RE.match(version):
+        raise ValueError(f"invalid version string: {version!r}")
+    return version
 
 # SDK package version. Single source of truth: pyproject.toml reads this via
 # [tool.hatch.version] (dynamic = ["version"]).
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 # Default ChromiumFish browser build to fetch. Matches src/chrome/VERSION.
 DEFAULT_BROWSER_VERSION = "150.0.7844"
@@ -35,7 +50,9 @@ GEOIP_FALLBACK_VERSION = "2026.06"
 
 def browser_version() -> str:
     """Resolved browser version (env override wins)."""
-    return os.environ.get("CHROMIUMFISH_VERSION", DEFAULT_BROWSER_VERSION)
+    return assert_safe_version(
+        os.environ.get("CHROMIUMFISH_VERSION", DEFAULT_BROWSER_VERSION)
+    )
 
 
 def release_base_url(version: str | None = None) -> str:
@@ -46,7 +63,9 @@ def release_base_url(version: str | None = None) -> str:
 def geoip_version() -> str:
     """Configured IP-to-Timezone DB version (env override wins). May be the
     sentinel "latest" — resolve it to a concrete version via ip2tz."""
-    return os.environ.get("CHROMIUMFISH_GEOIP_VERSION", DEFAULT_GEOIP_VERSION)
+    return assert_safe_version(
+        os.environ.get("CHROMIUMFISH_GEOIP_VERSION", DEFAULT_GEOIP_VERSION)
+    )
 
 
 def geoip_base_url(version: str | None = None) -> str:

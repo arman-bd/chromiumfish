@@ -18,10 +18,18 @@
  */
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
+import * as http from "node:http";
 import * as https from "node:https";
 import * as path from "node:path";
+import * as tls from "node:tls";
 import { cacheRoot } from "./fetch.js";
-import { GEOIP_FALLBACK_VERSION, geoipBaseUrl, geoipLatestManifestUrl, geoipVersion } from "./version.js";
+import {
+  assertSafeVersion,
+  GEOIP_FALLBACK_VERSION,
+  geoipBaseUrl,
+  geoipLatestManifestUrl,
+  geoipVersion,
+} from "./version.js";
 
 const MAGIC = Buffer.from("IP2TZ\x01", "latin1");
 const V4_REC = 6; // uint32 start + uint16 tz_idx
@@ -91,17 +99,21 @@ export async function resolveVersion(version = geoipVersion(), download = true):
 }
 
 export function assetName(version = geoipVersion()): string {
-  return `ip2tz-${resolveVersionSync(version)}.bin`;
+  return `ip2tz-${assertSafeVersion(resolveVersionSync(version))}.bin`;
 }
 
 export function dbPath(version = geoipVersion()): string {
-  return path.join(geoipDir(), `ip2tz-${resolveVersionSync(version)}.bin`);
+  return path.join(geoipDir(), `ip2tz-${assertSafeVersion(resolveVersionSync(version))}.bin`);
 }
+
+// Idle-timeout (ms) for the geoip manifest / DB / checksum fetches so a
+// stalled server can't hang resolution or download forever.
+const GET_IDLE_TIMEOUT_MS = 30_000;
 
 function get(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const go = (u: string) =>
-      https
+    const go = (u: string) => {
+      const req = https
         .get(u, (res) => {
           if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             res.resume();
@@ -114,14 +126,19 @@ function get(url: string): Promise<Buffer> {
           const chunks: Buffer[] = [];
           res.on("data", (c) => chunks.push(c));
           res.on("end", () => resolve(Buffer.concat(chunks)));
+          res.on("error", reject);
         })
         .on("error", reject);
+      req.setTimeout(GET_IDLE_TIMEOUT_MS, () => {
+        req.destroy(new Error(`request timed out for ${u}`));
+      });
+    };
     go(url);
   });
 }
 
 export async function fetchDb(version = geoipVersion(), force = false): Promise<string> {
-  const v = await resolveVersion(version); // concrete, e.g. "2026.06"
+  const v = assertSafeVersion(await resolveVersion(version)); // concrete, e.g. "2026.06"
   const dest = path.join(geoipDir(), `ip2tz-${v}.bin`);
   if (fs.existsSync(dest) && !force) return dest;
 
@@ -259,29 +276,30 @@ function parseV6(ip: string): Buffer | null {
   return b;
 }
 
-let cached: Ip2TzDB | null = null;
+// Keyed by *resolved* concrete version so a later lookup with a different
+// version doesn't silently reuse the first DB loaded.
+const cache = new Map<string, Ip2TzDB>();
 
 async function getDb(version = geoipVersion(), download = true): Promise<Ip2TzDB> {
-  if (cached) return cached;
-  const v = await resolveVersion(version, download);
+  const v = assertSafeVersion(await resolveVersion(version, download));
+  const existing = cache.get(v);
+  if (existing) return existing;
   let p = path.join(geoipDir(), `ip2tz-${v}.bin`);
   if (!fs.existsSync(p)) {
     if (!download) throw new Error("ip2tz DB not installed. Call fetchDb().");
     p = await fetchDb(v);
   }
-  cached = Ip2TzDB.load(p);
-  return cached;
+  const db = Ip2TzDB.load(p);
+  cache.set(v, db);
+  return db;
 }
 
 export async function lookupTimezone(ip: string, version = geoipVersion(), download = true): Promise<string | null> {
   return (await getDb(version, download)).lookup(ip);
 }
 
-export function egressIp(proxy?: string, timeoutMs = 8000): Promise<string | null> {
-  // Note: proxy support for the probe would require an https-proxy agent; when
-  // a proxy is configured we currently probe direct and rely on the caller to
-  // pass an explicit IP if egress differs.
-  void proxy;
+/** Probe the egress IP directly (no proxy). */
+function egressDirect(timeoutMs: number): Promise<string | null> {
   return new Promise((resolve) => {
     const req = https.get(EGRESS_PROBE, { headers: { "User-Agent": "chromiumfish" } }, (res) => {
       let data = "";
@@ -301,6 +319,103 @@ export function egressIp(proxy?: string, timeoutMs = 8000): Promise<string | nul
       resolve(null);
     });
   });
+}
+
+/**
+ * Probe the egress IP *through an HTTP(S) proxy* by CONNECT-tunnelling to the
+ * probe host, so the resolved timezone matches the proxy's exit — the whole
+ * point of timezone:"auto". Mirrors what the Python SDK gets from urllib's
+ * ProxyHandler. Returns null on any failure (never falls back to a direct
+ * probe, which would report the machine's real-IP timezone).
+ */
+function egressViaProxy(proxy: string, timeoutMs: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    let pu: URL;
+    let tu: URL;
+    try {
+      pu = new URL(proxy);
+      tu = new URL(EGRESS_PROBE);
+    } catch {
+      return resolve(null);
+    }
+    let settled = false;
+    const done = (ip: string | null) => {
+      if (!settled) {
+        settled = true;
+        resolve(ip);
+      }
+    };
+    const headers: Record<string, string> = {};
+    if (pu.username) {
+      const creds = `${decodeURIComponent(pu.username)}:${decodeURIComponent(pu.password)}`;
+      headers["Proxy-Authorization"] = "Basic " + Buffer.from(creds).toString("base64");
+    }
+    const connectReq = http.request({
+      host: pu.hostname,
+      port: Number(pu.port) || (pu.protocol === "https:" ? 443 : 80),
+      method: "CONNECT",
+      path: `${tu.hostname}:443`,
+      headers,
+      timeout: timeoutMs,
+    });
+    connectReq.on("connect", (res, socket) => {
+      if (res.statusCode !== 200) {
+        socket.destroy();
+        return done(null);
+      }
+      const tlsSock = tls.connect({ socket, servername: tu.hostname }, () => {
+        // HTTP/1.0 so the response isn't chunk-encoded (simpler to parse).
+        tlsSock.write(
+          `GET ${tu.pathname} HTTP/1.0\r\nHost: ${tu.hostname}\r\n` +
+            `User-Agent: chromiumfish\r\nAccept: application/json\r\nConnection: close\r\n\r\n`,
+        );
+      });
+      let raw = "";
+      tlsSock.setEncoding("utf8");
+      tlsSock.setTimeout(timeoutMs, () => {
+        tlsSock.destroy();
+        done(null);
+      });
+      tlsSock.on("data", (d) => (raw += d));
+      tlsSock.on("end", () => {
+        const body = raw.split("\r\n\r\n").slice(1).join("\r\n\r\n");
+        const m = body.match(/\{[\s\S]*\}/);
+        try {
+          done(m ? JSON.parse(m[0]).ip || null : null);
+        } catch {
+          done(null);
+        }
+      });
+      tlsSock.on("error", () => done(null));
+    });
+    connectReq.on("error", () => done(null));
+    connectReq.on("timeout", () => {
+      connectReq.destroy();
+      done(null);
+    });
+    connectReq.end();
+  });
+}
+
+export function egressIp(proxy?: string, timeoutMs = 8000): Promise<string | null> {
+  if (proxy) {
+    let scheme = "";
+    try {
+      scheme = new URL(proxy).protocol;
+    } catch {
+      /* invalid proxy URL */
+    }
+    if (scheme === "http:" || scheme === "https:") return egressViaProxy(proxy, timeoutMs);
+    // SOCKS / unknown schemes aren't supported for the probe. Return null
+    // (leave the timezone unset) rather than probing the direct connection
+    // and reporting the machine's real-IP timezone — the incoherence we want
+    // to avoid.
+    process.stderr.write(
+      `[chromiumfish] egress probe: unsupported proxy scheme '${scheme || proxy}'; skipping timezone resolution\n`,
+    );
+    return Promise.resolve(null);
+  }
+  return egressDirect(timeoutMs);
 }
 
 export async function resolveTimezone(opts: {
