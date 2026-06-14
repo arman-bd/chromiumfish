@@ -48,10 +48,10 @@ index 0000000000000..41444669c1bfd
 +}
 diff --git a/chrome/browser/ai_agent/agent_controller.cc b/chrome/browser/ai_agent/agent_controller.cc
 new file mode 100644
-index 0000000000000..623700cea1d51
+index 0000000000000..4762c68126a14
 --- /dev/null
 +++ b/chrome/browser/ai_agent/agent_controller.cc
-@@ -0,0 +1,1120 @@
+@@ -0,0 +1,1183 @@
 +// Copyright 2026 The ChromiumFish Authors
 +// Use of this source code is governed by an MIT-style license.
 +
@@ -174,10 +174,20 @@ index 0000000000000..623700cea1d51
 +    "{\"action\":\"done\",\"success\":true|false,\"final\":\"...\"} step by "
 +    "itself.\n\n"
 +    "Rules:\n"
++    "- If a cookie/consent dialog or modal is open — its elements are marked "
++    "(modal), or you see text like \"Accept all\" / \"Reject all\" / "
++    "\"consent\" / \"Before you continue\" — DISMISS it FIRST by clicking its "
++    "accept/agree/continue button, before attempting anything else. Elements "
++    "behind a modal are still listed but are visually covered and cannot be "
++    "used until it is gone.\n"
 +    "- Use only indices present in the CURRENT list; they are renumbered every "
 +    "step.\n"
-+    "- To submit a search or form, set \"enter\": true when typing, or click the "
-+    "submit/Continue button. Typing alone does not submit.\n"
++    "- To submit a SEARCH, type the query with \"enter\": true in the SAME "
++    "action. Do NOT click a search button, and do NOT click an "
++    "autocomplete/suggestion item that appears under the box — that replaces "
++    "your query with the suggestion (e.g. 'apple' -> 'apple watch'). For other "
++    "forms, use \"enter\": true while typing or click submit/Continue. Typing "
++    "alone never submits.\n"
 +    "- For a select, use action \"select\" with the exact value from its opts "
 +    "list — never guess the value.\n"
 +    "- After a click/navigate the page may still be loading; the change-note "
@@ -309,13 +319,22 @@ index 0000000000000..623700cea1d51
 +  return cands.front();
 +}
 +
-+// ---- In-page visual overlay (highlight box + cursor dot) -----------------
++// ---- In-page visual overlay (target highlight box) -----------------------
 +//
 +// Rendered INSIDE the page via an isolated-world script, not as an AppKit
 +// window/subview over the screen: it composites with the page, is positioned in
 +// exact CSS-viewport pixels (correct on any display / scale factor — no native
 +// coordinate math), clips to the viewport, and is captured by
 +// Page.captureScreenshot (so it is verifiable). pointer-events:none, no shadow.
++//
++// This draws ONLY the cyan target-outline box. The red CLICK indicator used to
++// be a persistent dot drawn here too, but it was placed instantly at the target
++// while the Actor "magic cursor" glides in over ~tens-to-150ms, so a frame
++// captured mid-glide showed the dot ahead of the cursor (they DO coincide at the
++// click instant). The red is now a one-shot ripple fired AT click time, where
++// the cursor actually lands: on the batch/Actor path by the magic cursor's own
++// click animation (a red ripple, see actor_overlay/app.css), and on the
++// humanized single-click path by ShowClickRipple() in OnHumanizedClickDone().
 +//
 +// world_id must be in (ISOLATED_WORLD_ID_GLOBAL, ISOLATED_WORLD_ID_MAX] or
 +// ExecuteJavaScriptInIsolatedWorld CHECK-fails. ISOLATED_WORLD_ID_MAX is the
@@ -331,9 +350,7 @@ index 0000000000000..623700cea1d51
 +  if (!OverlayFrameReady(wc)) {
 +    return;
 +  }
-+  const int cx = css_rect.x() + css_rect.width() / 2;
-+  const int cy = css_rect.y() + css_rect.height() / 2;
-+  // %% -> literal % (border-radius:50%). All coords are CSS viewport px.
++  // Cyan target-outline box only. All coords are CSS viewport px.
 +  std::string js = base::StringPrintf(
 +      "(function(){var ID='__cf_agent_overlay';"
 +      "var o=document.getElementById(ID);"
@@ -344,18 +361,58 @@ index 0000000000000..623700cea1d51
 +      "b.style.cssText='position:fixed;box-sizing:border-box;border:2px solid "
 +      "#19b6ff;border-radius:3px;transition:left .08s,top .08s,width .08s,"
 +      "height .08s';"
-+      "var d=document.createElement('div');d.setAttribute('data-cf','d');"
-+      "d.style.cssText='position:fixed;width:18px;height:18px;margin:-9px 0 0 "
-+      "-9px;border-radius:50%%;background:rgba(255,40,40,.82);border:1.5px solid "
-+      "#fff;transition:left .1s,top .1s';"
-+      "o.appendChild(b);o.appendChild(d);"
++      "o.appendChild(b);"
 +      "(document.body||document.documentElement).appendChild(o);}"
-+      "var b=o.querySelector('[data-cf=b]'),d=o.querySelector('[data-cf=d]');"
++      "var b=o.querySelector('[data-cf=b]');"
 +      "b.style.left='%dpx';b.style.top='%dpx';b.style.width='%dpx';"
-+      "b.style.height='%dpx';d.style.left='%dpx';d.style.top='%dpx';})()",
-+      css_rect.x(), css_rect.y(), css_rect.width(), css_rect.height(), cx, cy);
++      "b.style.height='%dpx';})()",
++      css_rect.x(), css_rect.y(), css_rect.width(), css_rect.height());
 +  wc->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
 +      base::UTF8ToUTF16(js), base::DoNothing(), kOverlayWorldId);
++}
++
++// Fires a one-shot red "click ripple" at (cx,cy) CSS-viewport px: an isolated-
++// world div that expands and fades, then removes itself. Used on the humanized
++// single-click path (which has no Actor magic cursor); the batch/Actor path gets
++// its red ripple from the magic cursor's own click animation instead.
++void ShowClickRipple(content::WebContents* wc, int cx, int cy) {
++  if (!OverlayFrameReady(wc)) {
++    return;
++  }
++  // %% -> literal % (border-radius:50%, keyframe percents). All coords CSS px.
++  std::string js = base::StringPrintf(
++      "(function(){"
++      "if(!document.getElementById('__cf_rip_kf')){"
++      "var s=document.createElement('style');s.id='__cf_rip_kf';"
++      "s.textContent='@keyframes __cf_rip{0%%{opacity:.9;transform:scale(.35)}"
++      "100%%{opacity:0;transform:scale(2.6)}}';"
++      "(document.head||document.documentElement).appendChild(s);}"
++      "var r=document.createElement('div');"
++      "r.style.cssText='position:fixed;left:%dpx;top:%dpx;width:20px;"
++      "height:20px;margin:-10px 0 0 -10px;border-radius:50%%;"
++      "background:rgba(255,40,40,.82);border:1.5px solid #fff;"
++      "z-index:2147483647;pointer-events:none;"
++      "animation:__cf_rip .4s ease-out forwards';"
++      "(document.body||document.documentElement).appendChild(r);"
++      "setTimeout(function(){r.remove();},450);})()",
++      cx, cy);
++  wc->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
++      base::UTF8ToUTF16(js), base::DoNothing(), kOverlayWorldId);
++}
++
++// Highlights `el`'s box UNLESS it sits behind an open modal. When a dialog is
++// present, only the modal's OWN elements are highlighted; everything else is
++// visually covered by the modal, so drawing a max-z-index box over it looks
++// like the highlight shows THROUGH the modal (e.g. a batch that dismisses the
++// modal AND acts on an occluded element ends the box on the covered element).
++void MaybeShowOverlay(content::WebContents* wc,
++                      const SerializedPage& page,
++                      const InteractiveElement& el,
++                      const gfx::Rect& css_rect) {
++  if (page.has_modal && !el.in_modal) {
++    return;
++  }
++  ShowInPageOverlay(wc, css_rect);
 +}
 +
 +void HideInPageOverlay(content::WebContents* wc) {
@@ -773,7 +830,7 @@ index 0000000000000..623700cea1d51
 +            tools.push_back(std::move(reveal));
 +          }
 +        }
-+        ShowInPageOverlay(web_contents(), css);
++        MaybeShowOverlay(web_contents(), *page, *el, css);
 +      }
 +      std::string err;
 +      std::unique_ptr<actor::ToolRequest> tool =
@@ -876,8 +933,8 @@ index 0000000000000..623700cea1d51
 +  if (matched) {
 +    if (const InteractiveElement* hl =
 +            page->ElementByIndex(act.FindInt("index").value_or(0))) {
-+      ShowInPageOverlay(
-+          web_contents(),
++      MaybeShowOverlay(
++          web_contents(), *page, *hl,
 +          gfx::ScaleToRoundedRect(hl->bbox_device_px,
 +                                  1.0f / device_scale_factor()));
 +    }
@@ -999,8 +1056,8 @@ index 0000000000000..623700cea1d51
 +  // human watching can see exactly what the agent is working on.
 +  if (const InteractiveElement* hl =
 +          page.ElementByIndex(action.FindInt("index").value_or(0))) {
-+    ShowInPageOverlay(
-+        web_contents(),
++    MaybeShowOverlay(
++        web_contents(), page, *hl,
 +        gfx::ScaleToRoundedRect(hl->bbox_device_px,
 +                                1.0f / device_scale_factor()));
 +  }
@@ -1068,6 +1125,12 @@ index 0000000000000..623700cea1d51
 +}
 +
 +void AgentController::OnHumanizedClickDone() {
++  // The humanized click has just landed (cursor arrived). Flash the red ripple
++  // where it landed -- last_cursor_dip_ is the click target in DIP == CSS px.
++  // (The batch/Actor path instead gets its ripple from the magic cursor's own
++  // click animation, so it is not rippled here.)
++  ShowClickRipple(web_contents(), static_cast<int>(last_cursor_dip_.x()),
++                  static_cast<int>(last_cursor_dip_.y()));
 +  StepDone("ok");
 +}
 +
@@ -1731,10 +1794,10 @@ index 0000000000000..0368146caab3b
 +#endif  // CHROME_BROWSER_AI_AGENT_LLM_CLIENT_H_
 diff --git a/chrome/browser/ai_agent/page_serializer.cc b/chrome/browser/ai_agent/page_serializer.cc
 new file mode 100644
-index 0000000000000..a1c5e5d6c6b8e
+index 0000000000000..7233b4388faa6
 --- /dev/null
 +++ b/chrome/browser/ai_agent/page_serializer.cc
-@@ -0,0 +1,317 @@
+@@ -0,0 +1,345 @@
 +// Copyright 2026 The ChromiumFish Authors
 +// Use of this source code is governed by an MIT-style license.
 +
@@ -1943,11 +2006,24 @@ index 0000000000000..a1c5e5d6c6b8e
 +}
 +
 +// Recursively walk the tree, collecting interactive elements in document order.
++// `in_modal` is true once an ancestor is a dialog/alertdialog: its descendants
++// belong to a modal overlay that visually covers the rest of the page.
 +void Walk(const proto::ContentNode& node,
 +          const std::string& doc_id,
++          bool in_modal,
 +          SerializedPage* out) {
 +  if (node.has_content_attributes()) {
 +    const proto::ContentAttributes& attrs = node.content_attributes();
++    // A dialog/alertdialog subtree is a modal overlay. Elements behind it are
++    // still serialized (they have a viewport bbox) but are visually covered and
++    // not usable until it is dismissed, which the model can't tell from a flat
++    // list. Flag the modal's elements + the page so it dismisses it first (see
++    // kSystemPrompt). aria_role is populated in ACTIONABLE_ELEMENTS mode.
++    if (attrs.aria_role() == proto::AX_ROLE_DIALOG ||
++        attrs.aria_role() == proto::AX_ROLE_ALERTDIALOG) {
++      in_modal = true;
++      out->has_modal = true;
++    }
 +    if (IsInteractive(attrs)) {
 +      InteractiveElement el;
 +      el.index = static_cast<int>(out->elements.size()) + 1;
@@ -1957,6 +2033,7 @@ index 0000000000000..a1c5e5d6c6b8e
 +      el.bbox_device_px =
 +          gfx::Rect(vbb.x(), vbb.y(), vbb.width(), vbb.height());
 +      el.role = RoleForNode(attrs);
++      el.in_modal = in_modal;
 +
 +      std::string label;
 +      if (attrs.attribute_type() == proto::CONTENT_ATTRIBUTE_FORM_CONTROL &&
@@ -2007,13 +2084,16 @@ index 0000000000000..a1c5e5d6c6b8e
 +          attrs.interaction_info().is_disabled()) {
 +        line += " (disabled)";
 +      }
++      if (in_modal) {
++        line += " (modal)";
++      }
 +      out->text += line;
 +      out->text += "\n";
 +      out->elements.push_back(std::move(el));
 +    }
 +  }
 +  for (const proto::ContentNode& child : node.children_nodes()) {
-+    Walk(child, doc_id, out);
++    Walk(child, doc_id, in_modal, out);
 +  }
 +}
 +
@@ -2042,7 +2122,18 @@ index 0000000000000..a1c5e5d6c6b8e
 +    out.viewport_dip = gfx::Rect(v.x(), v.y(), v.width(), v.height());
 +  }
 +  if (apc.has_root_node()) {
-+    Walk(apc.root_node(), default_document_identifier, &out);
++    Walk(apc.root_node(), default_document_identifier, /*in_modal=*/false,
++         &out);
++  }
++  if (out.has_modal) {
++    // Prepend (so it survives the max_chars cap): the model must clear the
++    // modal before the elements behind it become usable.
++    out.text = base::StrCat(
++        {"NOTE: a modal dialog is open — handle it FIRST. Its elements are "
++         "marked (modal); click its accept/agree/continue button before "
++         "anything else. Items without (modal) are behind it and not usable "
++         "yet.\n",
++         out.text});
 +  }
 +  if (out.text.size() > max_chars) {
 +    out.text = out.text.substr(0, max_chars) +
@@ -2054,10 +2145,10 @@ index 0000000000000..a1c5e5d6c6b8e
 +}  // namespace ai_agent
 diff --git a/chrome/browser/ai_agent/page_serializer.h b/chrome/browser/ai_agent/page_serializer.h
 new file mode 100644
-index 0000000000000..e0f090e1ba7b9
+index 0000000000000..57f161f62d362
 --- /dev/null
 +++ b/chrome/browser/ai_agent/page_serializer.h
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,68 @@
 +// Copyright 2026 The ChromiumFish Authors
 +// Use of this source code is governed by an MIT-style license.
 +//
@@ -2094,6 +2185,7 @@ index 0000000000000..e0f090e1ba7b9
 +  std::string role;          // short tag/role label, e.g. "button", "a".
 +  std::string name;          // stable semantic name (field name / label / text),
 +                             // WITHOUT volatile state; used as a replay locator.
++  bool in_modal = false;     // inside a dialog/alertdialog subtree (see has_modal).
 +};
 +
 +// Result of serializing one observation.
@@ -2106,6 +2198,7 @@ index 0000000000000..e0f090e1ba7b9
 +  std::string text;  // "[i]<role> label" lines, one per interactive element.
 +  std::vector<InteractiveElement> elements;  // elements[k].index == k+1.
 +  gfx::Rect viewport_dip;  // AnnotatedPageContent.viewport_geometry (DIP).
++  bool has_modal = false;  // a role=dialog/alertdialog subtree is present.
 +
 +  // Returns the element with the given 1-based index, or nullptr.
 +  const InteractiveElement* ElementByIndex(int index) const;
@@ -2124,6 +2217,65 @@ index 0000000000000..e0f090e1ba7b9
 +}  // namespace ai_agent
 +
 +#endif  // CHROME_BROWSER_AI_AGENT_PAGE_SERIALIZER_H_
+diff --git a/chrome/browser/resources/actor_overlay/app.css b/chrome/browser/resources/actor_overlay/app.css
+index 3b47d0722866f..4e23be090bc59 100644
+--- a/chrome/browser/resources/actor_overlay/app.css
++++ b/chrome/browser/resources/actor_overlay/app.css
+@@ -169,3 +169,42 @@ reduced motion */
+ .clicking {
+   animation: cursor-click 400ms ease-out;
+ }
++
++/*
++ * Red CLICK RIPPLE. Emanates from the cursor's hotspot (the element origin,
++ * which is translated to the click point) the moment a click lands, so the red
++ * indicator is co-located with the cursor on arrival -- replacing the fork's
++ * old in-page red dot that was placed early and raced ahead of the glide.
++ */
++#clickRipple {
++  position: absolute;
++  left: 0;
++  top: 0;
++  width: 20px;
++  height: 20px;
++  margin: -10px 0 0 -10px;
++  border-radius: 50%;
++  background: rgba(255, 40, 40, 0.82);
++  border: 1.5px solid #fff;
++  opacity: 0;
++  pointer-events: none;
++  will-change: transform, opacity;
++}
++
++#magicCursor.clicking #clickRipple {
++  animation: cf-click-ripple 400ms ease-out;
++}
++
++@keyframes cf-click-ripple {
++  0% {
++    opacity: 0.9;
++    transform: scale(0.35);
++  }
++  60% {
++    opacity: 0.5;
++  }
++  100% {
++    opacity: 0;
++    transform: scale(2.6);
++  }
++}
+diff --git a/chrome/browser/resources/actor_overlay/app.html.ts b/chrome/browser/resources/actor_overlay/app.html.ts
+index e749ea72e176a..a08f51404a3c4 100644
+--- a/chrome/browser/resources/actor_overlay/app.html.ts
++++ b/chrome/browser/resources/actor_overlay/app.html.ts
+@@ -15,6 +15,7 @@ export function getHtml(this: ActorOverlayAppElement) {
+ </div>
+ <div id="magicCursor">
+   <div id="cursorImage"></div>
++  <div id="clickRipple"></div>
+ </div>
+ <!--_html_template_end_-->`;
+   // clang-format on
 diff --git a/chrome/browser/ui/BUILD.gn b/chrome/browser/ui/BUILD.gn
 index 0290339053788..6e029726c5f32 100644
 --- a/chrome/browser/ui/BUILD.gn

@@ -392,7 +392,7 @@ index cccfafe8f93a0..96aac4b016dfc 100644
  
  }  // namespace
 diff --git a/third_party/blink/renderer/core/frame/local_dom_window.cc b/third_party/blink/renderer/core/frame/local_dom_window.cc
-index f442c8d8e331b..6b22a545f9521 100644
+index f442c8d8e331b..fb3a7e40060f4 100644
 --- a/third_party/blink/renderer/core/frame/local_dom_window.cc
 +++ b/third_party/blink/renderer/core/frame/local_dom_window.cc
 @@ -40,6 +40,7 @@
@@ -542,11 +542,24 @@ index f442c8d8e331b..6b22a545f9521 100644
  }
  
  double LocalDOMWindow::scrollX() const {
-@@ -1803,7 +1783,7 @@ double LocalDOMWindow::devicePixelRatio() const {
+@@ -1803,7 +1783,20 @@ double LocalDOMWindow::devicePixelRatio() const {
    if (!GetFrame())
      return 0.0;
  
 -  return GetFrame()->DevicePixelRatio();
++  // Lightweight-fork: the persona's claimed DPR (typically 1.0) is a
++  // fingerprinting defense for WEB content only. Chrome's own internal UI
++  // (chrome://, chrome-untrusted://, devtools://) must report the REAL device
++  // pixel ratio, or coordinate math in built-in overlays breaks — notably the
++  // Actor overlay's "magic cursor" (chrome://actor-overlay), which converts a
++  // physical-px target via `point / window.devicePixelRatio` and so lands at
++  // 2x (down-right) on a Retina display when it gets the spoofed 1.0.
++  const KURL& url = Url();
++  if (url.ProtocolIs("chrome") || url.ProtocolIs("chrome-untrusted") ||
++      url.ProtocolIs("devtools")) {
++    return GetFrame()->DevicePixelRatio();
++  }
++
 +  return fingerprinting::Current().device_pixel_ratio;
  }
  
