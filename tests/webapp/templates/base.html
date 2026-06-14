@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}ByteTunnels{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>" />
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="{{ url_for('index') }}" data-testid="nav-home">
+        <span class="logo">🧭</span> ByteTunnels
+      </a>
+      <div class="nav-links">
+        <a href="{{ url_for('search') }}" class="{{ 'active' if path.startswith('/search') }}" data-testid="nav-search">Search</a>
+        <a href="{{ url_for('shop') }}" class="{{ 'active' if path.startswith('/shop') or path.startswith('/product') }}" data-testid="nav-shop">Shop</a>
+        <a href="{{ url_for('todos') }}" class="{{ 'active' if path.startswith('/todos') }}" data-testid="nav-todos">Tasks</a>
+        <a href="{{ url_for('table') }}" class="{{ 'active' if path.startswith('/data') }}" data-testid="nav-data">Data</a>
+        <a href="{{ url_for('cart') }}" class="cart-link {{ 'active' if path.startswith('/cart') }}" data-testid="nav-cart">
+          🛒 <span class="cart-count" data-count="{{ cart_count }}" data-testid="cart-count">{{ cart_count or '' }}</span>
+        </a>
+        {% if current_user %}
+        <a href="{{ url_for('account') }}" class="{{ 'active' if path.startswith('/account') }}" data-testid="nav-account">Account</a>
+        {% else %}
+        <a href="{{ url_for('login') }}" class="{{ 'active' if path.startswith('/login') }}" data-testid="nav-login">Login</a>
+        {% endif %}
+        <button class="icon-btn" id="theme-toggle" title="Toggle theme" data-testid="theme-toggle">🌙</button>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    {% block body %}{% endblock %}
+  </main>
+
+  <footer class="foot">
+    <div class="container row spread wrap">
+      <span>🧭 ByteTunnels — a sandbox of browser-automation scenarios.</span>
+      <span class="muted">Built for testing autonomous browser agents.</span>
+    </div>
+  </footer>
+
+  <div class="toast-wrap" id="toast-wrap" data-testid="toast-wrap">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="toast {{ category if category in ['danger','brand'] else '' }}" role="status">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

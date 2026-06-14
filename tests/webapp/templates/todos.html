@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Tasks · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container section" style="max-width:600px;">
+  <h1 style="margin-bottom:4px;">Task manager</h1>
+  <p class="muted" style="margin-bottom:20px;">Add tasks, tick them off, filter and clear completed.</p>
+
+  <div class="card pad" data-testid="todo-app">
+    <form method="post" action="{{ url_for('todos_add') }}" class="row" style="gap:10px;" data-testid="todo-add-form">
+      <input type="hidden" name="filter" value="{{ filter }}" />
+      <input class="input grow" name="text" placeholder="What needs doing?"
+             data-testid="todo-input" autocomplete="off" required />
+      <button class="btn primary" type="submit" data-testid="todo-add">Add</button>
+    </form>
+
+    <div class="row spread" style="margin:16px 0;">
+      <div class="row" data-testid="todo-filters">
+        <a class="pill {{ 'active' if filter == 'all' }}" href="{{ url_for('todos', filter='all') }}" data-testid="filter-all">All</a>
+        <a class="pill {{ 'active' if filter == 'active' }}" href="{{ url_for('todos', filter='active') }}" data-testid="filter-active">Active</a>
+        <a class="pill {{ 'active' if filter == 'completed' }}" href="{{ url_for('todos', filter='completed') }}" data-testid="filter-completed">Completed</a>
+      </div>
+      <span class="badge dim" data-testid="todo-remaining">{{ remaining }} left</span>
+    </div>
+
+    {% if todos %}
+    <ul class="todo-list" data-testid="todo-list">
+      {% for t in todos %}
+      <li class="todo-item {{ 'done' if t.done }}" data-testid="todo-{{ t.id }}">
+        <form method="post" action="{{ url_for('todos_toggle') }}">
+          <input type="hidden" name="id" value="{{ t.id }}" />
+          <input type="hidden" name="filter" value="{{ filter }}" />
+          <button type="submit" class="check {{ 'checked' if t.done }}"
+                  title="Toggle" data-testid="toggle-{{ t.id }}">{{ '✓' if t.done else '' }}</button>
+        </form>
+        <span class="todo-text" data-testid="text-{{ t.id }}">{{ t.text }}</span>
+        <form method="post" action="{{ url_for('todos_delete') }}">
+          <input type="hidden" name="id" value="{{ t.id }}" />
+          <input type="hidden" name="filter" value="{{ filter }}" />
+          <button type="submit" class="icon-btn" title="Delete" data-testid="delete-{{ t.id }}">🗑️</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty" data-testid="todo-empty">
+      <div style="font-size:32px;">🗒️</div>
+      <p>{{ 'Nothing here — add your first task above.' if filter == 'all' else 'No ' ~ filter ~ ' tasks.' }}</p>
+    </div>
+    {% endif %}
+
+    <div class="row spread" style="margin-top:16px;">
+      <span class="small muted">{{ total }} task{{ 's' if total != 1 }} total</span>
+      <form method="post" action="{{ url_for('todos_clear') }}">
+        <input type="hidden" name="filter" value="{{ filter }}" />
+        <button class="btn ghost sm" type="submit" data-testid="clear-completed">Clear completed</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .todo-list { list-style:none; padding:0; margin:0; }
+  .todo-item { display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--border-soft); }
+  .todo-item:last-child { border-bottom:none; }
+  .check { width:24px; height:24px; flex:none; border-radius:50%; border:2px solid var(--border);
+    background:transparent; cursor:pointer; color:#04221a; font-size:.8rem; font-weight:700;
+    display:grid; place-items:center; transition:.15s; }
+  .check:hover { border-color:var(--accent); }
+  .check.checked { background:var(--accent); border-color:var(--accent); }
+  .todo-text { flex:1; }
+  .todo-item.done .todo-text { text-decoration:line-through; color:var(--text-dim); }
+</style>
+{% endblock %}

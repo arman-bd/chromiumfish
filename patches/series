@@ -18,3 +18,4 @@ network/tls-fingerprint.patch
 devtools/humanized-input.patch
 ui/chrome-ui.patch
 ui/search-engines.patch
+ai-agent/agent-layer.patch

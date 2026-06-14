@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Account · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container section" style="max-width:560px;">
+  <div class="card pad" data-testid="account-card">
+    <div class="row" style="gap:16px;">
+      <div class="avatar" data-testid="account-avatar">{{ current_user.name[0] }}</div>
+      <div>
+        <h1 style="font-size:1.5rem;margin-bottom:2px;" data-testid="account-name">{{ current_user.name }}</h1>
+        <span class="muted" data-testid="account-email">{{ current_user.email }}</span>
+      </div>
+      <span class="badge accent" style="margin-left:auto;">● Signed in</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <p>🎉 You're authenticated. This page is protected — visiting it while signed out
+       redirects to the login form, which makes it a clean target for verifying a
+       login automation flow end to end.</p>
+
+    <form method="post" action="{{ url_for('logout') }}">
+      <button class="btn danger" type="submit" data-testid="logout-btn">Sign out</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .avatar { width:56px; height:56px; border-radius:50%; display:grid; place-items:center;
+    font-size:1.4rem; font-weight:700; color:var(--brand);
+    background:var(--brand-soft); }
+</style>
+{% endblock %}

@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Search · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container" style="padding-top: {{ '36px' if searched else '90px' }};">
+
+  {% if not searched %}
+  <div style="text-align:center; margin-bottom:8px;">
+    <div class="search-logo">🔎 Byte<span>Tunnels</span></div>
+    <p class="muted">Search the knowledge base — try “autonomous agents” or “cart flows”.</p>
+  </div>
+  {% endif %}
+
+  <form class="search-bar {{ 'compact' if searched }}" action="{{ url_for('search') }}" method="get"
+        role="search" data-testid="search-form" autocomplete="off">
+    <span class="search-icon">🔍</span>
+    <input class="search-input" type="text" name="q" value="{{ query }}"
+           placeholder="Search anything…" aria-label="Search query"
+           data-testid="search-input" id="search-input" />
+    <button type="button" class="search-clear" id="search-clear" title="Clear"
+            data-testid="search-clear" {{ 'hidden' if not query }}>✕</button>
+    <button class="btn primary" type="submit" data-testid="search-submit">Search</button>
+    <ul class="suggestions" id="suggestions" data-testid="search-suggestions" hidden></ul>
+  </form>
+
+  {% if searched %}
+    <div class="results" data-testid="search-results">
+      <p class="results-meta" data-testid="results-meta">
+        {% if results %}About {{ results|length }} result{{ 's' if results|length != 1 }} for
+          <strong>“{{ query }}”</strong>{% else %}No results for <strong>“{{ query }}”</strong>{% endif %}
+      </p>
+
+      {% if results %}
+        {% for r in results %}
+        <article class="result" data-testid="result-{{ r.id }}">
+          <div class="result-site">
+            <span class="favicon">{{ r.favicon }}</span>
+            <span>{{ r.site }}</span>
+          </div>
+          <a class="result-title" href="{{ url_for('search_result', rid=r.id) }}"
+             data-testid="result-link-{{ r.id }}">{{ r.title }}</a>
+          <p class="result-snippet">{{ r.snippet }}</p>
+          <div class="result-tags">
+            {% for t in r.tags %}<span class="badge dim">#{{ t }}</span>{% endfor %}
+          </div>
+        </article>
+        {% endfor %}
+      {% else %}
+        <div class="empty" data-testid="results-empty">
+          <div style="font-size:34px;">🫥</div>
+          <p>We couldn't find anything. Try a broader term.</p>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .search-logo { font-size: 2.4rem; font-weight: 800; letter-spacing: -.03em; margin-bottom: 6px; }
+  .search-logo span { color: var(--brand); }
+  .search-bar {
+    position: relative; display: flex; align-items: center; gap: 10px;
+    max-width: 680px; margin: 0 auto 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 8px 8px 8px 50px; box-shadow: var(--shadow-soft);
+    transition: box-shadow .15s, border-color .15s;
+  }
+  .search-bar:focus-within { border-color: var(--brand); box-shadow: var(--ring); }
+  .search-bar.compact { max-width: 680px; margin-left: 0; }
+  .search-icon { position: absolute; left: 18px; font-size: 1.1rem; opacity: .7; }
+  .search-input { flex: 1; border: none; background: transparent; color: var(--text);
+    font: inherit; font-size: 1.02rem; padding: 8px 0; outline: none; }
+  .search-clear { border: none; background: transparent; color: var(--text-dim);
+    cursor: pointer; font-size: .95rem; padding: 6px; }
+  .search-clear[hidden] { display: none; }
+  .suggestions {
+    position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 30;
+    list-style: none; margin: 0; padding: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; box-shadow: var(--shadow);
+  }
+  .suggestions[hidden] { display: none; }
+  .suggestions li { padding: 10px 14px; border-radius: 10px; cursor: pointer;
+    display: flex; align-items: center; gap: 10px; color: var(--text-soft); }
+  .suggestions li:hover, .suggestions li.active { background: var(--brand-soft); color: var(--text); }
+  .results { max-width: 680px; margin: 26px auto 0; }
+  .search-bar.compact + .results { margin-left: 0; }
+  .results-meta { color: var(--text-dim); font-size: .9rem; margin-bottom: 18px; }
+  .result { padding: 16px 0; border-bottom: 1px solid var(--border-soft); }
+  .result-site { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: var(--text-dim); margin-bottom: 4px; }
+  .favicon { width: 22px; height: 22px; border-radius: 6px; background: var(--surface-2);
+    display: grid; place-items: center; font-size: .9rem; }
+  .result-title { font-size: 1.15rem; color: #1a56db; font-weight: 600; }
+  :root[data-theme="dark"] .result-title { color: #8ab4ff; }
+  .result-title:hover { text-decoration: underline; }
+  .result-snippet { margin: 4px 0 8px; color: var(--text-soft); }
+  .result-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const input = document.getElementById('search-input');
+    const box   = document.getElementById('suggestions');
+    const clear = document.getElementById('search-clear');
+    let active  = -1, items = [];
+
+    async function fetchSuggestions(q) {
+      try {
+        const res = await fetch('/api/suggest?q=' + encodeURIComponent(q));
+        const data = await res.json();
+        render(data.suggestions || []);
+      } catch (e) { render([]); }
+    }
+    function render(list) {
+      items = list;
+      active = -1;
+      if (!list.length || document.activeElement !== input) { box.hidden = true; return; }
+      box.innerHTML = list.map(s => `<li role="option" data-value="${s}">🔍 <span>${s}</span></li>`).join('');
+      box.hidden = false;
+      box.querySelectorAll('li').forEach((li, i) => {
+        li.addEventListener('mousedown', (e) => { e.preventDefault(); choose(i); });
+      });
+    }
+    function choose(i) {
+      input.value = items[i];
+      box.hidden = true;
+      input.form.submit();
+    }
+    input.addEventListener('input', () => {
+      clear.hidden = !input.value;
+      if (input.value.trim()) fetchSuggestions(input.value.trim());
+      else box.hidden = true;
+    });
+    input.addEventListener('focus', () => { if (input.value.trim()) fetchSuggestions(input.value.trim()); });
+    input.addEventListener('keydown', (e) => {
+      if (box.hidden) return;
+      const lis = box.querySelectorAll('li');
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(active + 1, lis.length - 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); }
+      else if (e.key === 'Enter' && active >= 0) { e.preventDefault(); choose(active); return; }
+      else if (e.key === 'Escape') { box.hidden = true; return; }
+      lis.forEach((li, i) => li.classList.toggle('active', i === active));
+    });
+    clear.addEventListener('click', () => { input.value = ''; clear.hidden = true; box.hidden = true; input.focus(); });
+    document.addEventListener('click', (e) => { if (!input.parentElement.contains(e.target)) box.hidden = true; });
+  })();
+</script>
+{% endblock %}

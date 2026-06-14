@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }} · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container section" style="max-width:760px;">
+  <a class="btn ghost sm" href="{{ url_for('search') }}" data-testid="back-to-search">← Back to search</a>
+
+  <article class="card pad" style="margin-top:18px;" data-testid="article">
+    <div class="row" style="gap:10px; color:var(--text-dim); font-size:.85rem;">
+      <span class="favicon" style="width:26px;height:26px;">{{ doc.favicon }}</span>
+      <span>{{ doc.site }}</span>
+      <span>·</span>
+      <span>{{ doc.url }}</span>
+    </div>
+    <h1 style="margin-top:14px;">{{ doc.title }}</h1>
+    <div class="result-tags" style="display:flex;gap:6px;margin-bottom:16px;">
+      {% for t in doc.tags %}<span class="badge">#{{ t }}</span>{% endfor %}
+    </div>
+    <p style="font-size:1.05rem;color:var(--text);">{{ doc.snippet }}</p>
+    <p>This is a demo article page. In a real automation flow your agent would land
+       here after clicking a search result, then read the content or follow another
+       link. The button below confirms the action completed.</p>
+    <button class="btn primary" data-testid="article-action"
+            onclick="window.AL.toast('Action completed on article ✓','brand')">
+      Mark as read
+    </button>
+  </article>
+
+  <h3 style="margin:28px 0 12px;">Related reading</h3>
+  <div class="grid cols-3">
+    {% for r in related %}
+    <a class="card pad" href="{{ url_for('search_result', rid=r.id) }}"
+       data-testid="related-{{ r.id }}" style="display:block;">
+      <div style="font-size:22px;margin-bottom:8px;">{{ r.favicon }}</div>
+      <strong style="display:block;margin-bottom:6px;">{{ r.title }}</strong>
+      <span class="small muted">{{ r.site }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

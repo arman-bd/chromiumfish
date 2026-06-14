@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Login · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container section" style="max-width:420px;">
+  <div class="card pad" data-testid="login-card">
+    <div style="text-align:center;margin-bottom:18px;">
+      <div class="login-logo">🔐</div>
+      <h1 style="font-size:1.6rem;">Welcome back</h1>
+      <p class="muted small">Sign in to continue to ByteTunnels.</p>
+    </div>
+
+    {% if error %}
+    <div class="alert" role="alert" data-testid="login-error">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('login') }}{{ '?next=' ~ request.args.get('next') if request.args.get('next') }}"
+          novalidate data-testid="login-form">
+      <label class="field"><span class="field-label">Email</span>
+        <input class="input" type="email" name="email" data-testid="login-email"
+               placeholder="you@example.com" required autofocus /></label>
+      <label class="field" style="margin-top:14px;"><span class="field-label">Password</span>
+        <div class="pw-wrap">
+          <input class="input" type="password" name="password" id="pw" data-testid="login-password"
+                 placeholder="••••••••" required />
+          <button type="button" class="pw-toggle" id="pw-toggle" data-testid="toggle-password">👁</button>
+        </div>
+      </label>
+      <label class="row" style="gap:8px;margin:14px 0;">
+        <input type="checkbox" name="remember" data-testid="remember-me" />
+        <span class="small muted">Remember me</span>
+      </label>
+      <button class="btn primary block lg" type="submit" data-testid="login-submit">Sign in</button>
+    </form>
+
+    <div class="demo-creds" data-testid="demo-credentials">
+      <span class="badge">Demo credentials</span>
+      <div class="small" style="margin-top:8px;">
+        <div>📧 <code data-testid="demo-email">{{ demo.email }}</code></div>
+        <div>🔑 <code data-testid="demo-password">{{ demo.password }}</code></div>
+      </div>
+      <button class="btn ghost sm" type="button" id="fill-demo" data-testid="fill-demo" style="margin-top:10px;">
+        Autofill demo credentials
+      </button>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .login-logo { font-size:40px; width:72px; height:72px; margin:0 auto 12px; border-radius:18px;
+    display:grid; place-items:center; background:var(--brand-soft); border:1px solid var(--border); }
+  .alert { background:var(--danger-soft); color:var(--danger); border:1px solid var(--danger);
+    border-radius:var(--radius-sm); padding:11px 14px; font-size:.88rem; margin-bottom:16px; }
+  .pw-wrap { position:relative; }
+  .pw-toggle { position:absolute; right:8px; top:50%; transform:translateY(-50%);
+    border:none; background:transparent; cursor:pointer; font-size:1rem; opacity:.7; }
+  .demo-creds { margin-top:20px; padding-top:18px; border-top:1px solid var(--border-soft); text-align:center; }
+  .demo-creds code { background:var(--surface-2); padding:2px 8px; border-radius:6px; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('pw-toggle').addEventListener('click', () => {
+    const pw = document.getElementById('pw');
+    pw.type = pw.type === 'password' ? 'text' : 'password';
+  });
+  document.getElementById('fill-demo').addEventListener('click', () => {
+    document.querySelector('[name=email]').value = '{{ demo.email }}';
+    document.querySelector('[name=password]').value = '{{ demo.password }}';
+    window.AL.toast('Demo credentials filled', 'brand');
+  });
+</script>
+{% endblock %}

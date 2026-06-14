@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}ByteTunnels — browser automation scenarios{% endblock %}
+
+{% block body %}
+<section class="container hero">
+  <span class="eyebrow">🧭 Browser automation sandbox</span>
+  <h1>Scenarios your browser can drive on its own.</h1>
+  <p>
+    A handful of realistic web flows — search, shopping, checkout, login, tasks and
+    data — built so an autonomous browser agent can perceive a page, plan a step and
+    act. Every control exposes a stable <span class="kbd">data-testid</span> hook.
+  </p>
+  <div class="row center wrap">
+    <a class="btn primary lg" href="{{ url_for('search') }}" data-testid="cta-search">Try the search demo →</a>
+    <a class="btn lg" href="{{ url_for('shop') }}" data-testid="cta-shop">Open the store</a>
+  </div>
+</section>
+
+<section class="container section">
+  <div class="row spread" style="margin-bottom:18px;">
+    <h2>Pick a scenario</h2>
+    <span class="badge dim">{{ scenarios|length }} flows</span>
+  </div>
+  <div class="grid cols-3">
+    {% for s in scenarios %}
+    <a class="card pad scenario-card" href="{{ url_for(s.endpoint) }}" data-testid="scenario-{{ s.slug }}">
+      <div class="scenario-icon">{{ s.icon }}</div>
+      <h3 style="margin-bottom:6px;">{{ s.title }}</h3>
+      <p class="small">{{ s.desc }}</p>
+      <span class="badge accent">{{ s.tag }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="container section">
+  <div class="card pad">
+    <div class="row spread wrap" style="gap:24px;">
+      <div style="max-width:560px;">
+        <span class="badge">Tip for agents</span>
+        <h2 style="margin-top:12px;">Drive it like a user would</h2>
+        <p>
+          These pages use real server-side routes, a session-backed cart and login,
+          form POSTs and a small JSON API. Navigate, type, click and submit — state
+          persists across pages exactly like a production site.
+        </p>
+      </div>
+      <ul class="stack small" style="list-style:none;padding:0;margin:0;min-width:240px;">
+        <li class="row"><span class="tag-dot" style="background:var(--brand)"></span> <code>GET /api/suggest?q=…</code></li>
+        <li class="row"><span class="tag-dot" style="background:var(--accent)"></span> Session cart at <code>/cart</code></li>
+        <li class="row"><span class="tag-dot" style="background:var(--warn)"></span> Auth at <code>/login</code></li>
+        <li class="row"><span class="tag-dot" style="background:var(--danger)"></span> Sort/filter via query params</li>
+      </ul>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .scenario-card { display:block; transition:transform .12s, border-color .15s, box-shadow .15s; }
+  .scenario-card:hover { transform:translateY(-3px); border-color:var(--brand); box-shadow:var(--shadow); }
+  .scenario-icon {
+    width:46px; height:46px; border-radius:10px; display:grid; place-items:center;
+    font-size:24px; margin-bottom:14px;
+    background:var(--surface-2); border:1px solid var(--border-soft);
+  }
+</style>
+{% endblock %}

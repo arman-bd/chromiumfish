@@ -242,7 +242,7 @@ index 26feac287c1f6..e3d8dbfa60403 100644
  
  // static
 diff --git a/chrome/browser/ui/startup/bad_flags_prompt.cc b/chrome/browser/ui/startup/bad_flags_prompt.cc
-index 0deb93f45504c..d31cd891e24c0 100644
+index 0deb93f45504c..47fc835cc2dde 100644
 --- a/chrome/browser/ui/startup/bad_flags_prompt.cc
 +++ b/chrome/browser/ui/startup/bad_flags_prompt.cc
 @@ -121,10 +121,15 @@ const char* const kBadFlags[] = {
@@ -265,8 +265,21 @@ index 0deb93f45504c..d31cd891e24c0 100644
  
      // This flag allows people to allowlist certain origins as secure, even
      // if they are not.
+@@ -252,6 +257,12 @@ void ShowBadFlagsInfoBarHelper(content::WebContents* web_contents,
+ }  // namespace
+ 
+ void ShowBadFlagsPrompt(content::WebContents* web_contents) {
++  // Lightweight-fork: suppress ALL "unsupported command-line flag" warning
++  // infobars. The fork deliberately launches with --enable-unsafe-webgpu (so
++  // navigator.gpu is exposed) and --disable-actor-safety-checks (agent), and
++  // the banner is a visible tell that shifts the viewport. No-op early return;
++  // kBadFlags is left intact for upstream-merge reference.
++  return;
+ // On Android, ShowBadFlagsPrompt doesn't show the warning notification
+ // for flags which are not available in about:flags.
+ #if !BUILDFLAG(IS_ANDROID)
 diff --git a/chrome/browser/ui/startup/infobar_utils.cc b/chrome/browser/ui/startup/infobar_utils.cc
-index 4907b9a951040..4373e819e9d02 100644
+index 4907b9a951040..27d7e2ae0f986 100644
 --- a/chrome/browser/ui/startup/infobar_utils.cc
 +++ b/chrome/browser/ui/startup/infobar_utils.cc
 @@ -18,7 +18,6 @@
@@ -285,7 +298,24 @@ index 4907b9a951040..4373e819e9d02 100644
  
  #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
  #include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt.h"
-@@ -185,9 +183,11 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
+@@ -145,9 +143,13 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
+     return;
+   }
+ 
+-  // Web apps should not display the session restore bubble (crbug.com/40800614)
+-  const bool should_display_bubble =
+-      !is_web_app && HasPendingUncleanExit(browser->GetProfile());
++  // Lightweight-fork: never surface the "Restore pages? <browser> didn't shut
++  // down correctly" session-restore bubble. Every launch is treated as clean
++  // so this crash-restore UI is suppressed unconditionally.
++  // Original upstream logic preserved for upstream-merge reference:
++  //   const bool should_display_bubble =
++  //       !is_web_app && HasPendingUncleanExit(browser->GetProfile());
++  const bool should_display_bubble = false;
+   base::UmaHistogramBoolean("Startup.CrashBubbleShown", should_display_bubble);
+   if (should_display_bubble) {
+     SessionCrashedBubble::ShowIfNotOffTheRecordProfile(
+@@ -185,9 +187,11 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
    infobars::ContentInfoBarManager* infobar_manager =
        infobars::ContentInfoBarManager::FromWebContents(web_contents);
  

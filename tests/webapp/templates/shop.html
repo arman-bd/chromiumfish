@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Shop · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container section">
+  <div class="row spread wrap" style="margin-bottom:22px;">
+    <div>
+      <span class="badge">🛍️ ByteTunnels Store</span>
+      <h1 style="margin-top:10px;margin-bottom:4px;">Shop the collection</h1>
+      <p class="muted">Browse, filter, then add anything to your cart.</p>
+    </div>
+    <form action="{{ url_for('shop') }}" method="get" class="shop-search" data-testid="shop-search-form">
+      <input type="hidden" name="category" value="{{ category }}" />
+      <input class="input" type="text" name="q" value="{{ query }}"
+             placeholder="Search products…" data-testid="shop-search-input" />
+      <button class="btn" type="submit" data-testid="shop-search-submit">Search</button>
+    </form>
+  </div>
+
+  <div class="row spread wrap" style="margin-bottom:20px;gap:14px;">
+    <div class="row wrap" data-testid="category-filters">
+      <a class="pill {{ 'active' if category == 'All' }}"
+         href="{{ url_for('shop', q=query, sort=sort) }}" data-testid="filter-all">All</a>
+      {% for c in categories %}
+      <a class="pill {{ 'active' if category == c }}"
+         href="{{ url_for('shop', category=c, q=query, sort=sort) }}"
+         data-testid="filter-{{ c|lower }}">{{ c }}</a>
+      {% endfor %}
+    </div>
+    <form method="get" action="{{ url_for('shop') }}" id="sort-form">
+      <input type="hidden" name="category" value="{{ category }}" />
+      <input type="hidden" name="q" value="{{ query }}" />
+      <select class="select" name="sort" data-testid="sort-select"
+              onchange="document.getElementById('sort-form').submit()"
+              style="width:auto;">
+        <option value="" {{ 'selected' if not sort }}>Sort: Featured</option>
+        <option value="price-asc"  {{ 'selected' if sort == 'price-asc' }}>Price: Low to High</option>
+        <option value="price-desc" {{ 'selected' if sort == 'price-desc' }}>Price: High to Low</option>
+        <option value="rating"     {{ 'selected' if sort == 'rating' }}>Top rated</option>
+      </select>
+    </form>
+  </div>
+
+  {% if products %}
+  <div class="grid cols-4" data-testid="product-grid">
+    {% for p in products %}
+    <div class="card product-card" data-testid="product-{{ p.slug }}">
+      <a href="{{ url_for('product', slug=p.slug) }}" class="product-thumb thumb-tint"
+         style="--tint:{{ p.tint }};"
+         data-testid="product-link-{{ p.slug }}">
+        <span class="product-emoji">{{ p.emoji }}</span>
+        {% if p.badge %}<span class="product-badge">{{ p.badge }}</span>{% endif %}
+      </a>
+      <div class="product-body">
+        <span class="small muted">{{ p.category }}</span>
+        <a href="{{ url_for('product', slug=p.slug) }}" class="product-name"
+           data-testid="product-name-{{ p.slug }}">{{ p.name }}</a>
+        <div class="row" style="gap:6px;">
+          <span class="stars" title="{{ p.rating }} / 5">{{ '★★★★★'[:(p.rating|round(0,'common')|int)] }}<span class="stars-dim">{{ '★★★★★'[(p.rating|round(0,'common')|int):] }}</span></span>
+          <span class="small muted">{{ p.rating }} ({{ p.reviews }})</span>
+        </div>
+        <div class="row spread" style="margin-top:auto;">
+          <div class="price-line">
+            <span class="price" data-testid="price-{{ p.slug }}">${{ '%.2f'|format(p.price) }}</span>
+            {% if p.old_price %}<span class="old-price">${{ '%.2f'|format(p.old_price) }}</span>{% endif %}
+          </div>
+        </div>
+        <form action="{{ url_for('cart_add') }}" method="post" class="add-form">
+          <input type="hidden" name="slug" value="{{ p.slug }}" />
+          <input type="hidden" name="qty" value="1" />
+          <input type="hidden" name="next" value="{{ url_for('shop', category=category, q=query, sort=sort) }}" />
+          <button class="btn primary block sm" type="submit" data-testid="add-{{ p.slug }}">Add to cart</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty" data-testid="shop-empty">
+    <div style="font-size:34px;">🛒</div>
+    <p>No products match your filters.</p>
+    <a class="btn" href="{{ url_for('shop') }}">Reset filters</a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .shop-search { display:flex; gap:10px; }
+  .shop-search .input { width:220px; }
+  .product-card { display:flex; flex-direction:column; overflow:hidden; transition:transform .12s, box-shadow .15s; }
+  .product-card:hover { transform:translateY(-3px); box-shadow:var(--shadow); }
+  .product-thumb { position:relative; aspect-ratio:4/3; display:grid; place-items:center; }
+  .product-emoji { font-size:54px; }
+  .product-badge {
+    position:absolute; top:10px; left:10px; padding:3px 10px; border-radius:999px;
+    background:rgba(0,0,0,.55); color:#fff; font-size:.72rem; font-weight:700; backdrop-filter:blur(4px);
+  }
+  .product-body { padding:14px; display:flex; flex-direction:column; gap:7px; flex:1; }
+  .product-name { font-weight:600; color:var(--text); line-height:1.3; }
+  .product-name:hover { color:var(--brand); }
+  .stars { color:var(--star); letter-spacing:1px; font-size:.85rem; }
+  .stars-dim { color:var(--border); }
+  .price-line { display:flex; align-items:baseline; gap:8px; }
+  .price { font-size:1.15rem; font-weight:700; }
+  .old-price { color:var(--text-dim); text-decoration:line-through; font-size:.85rem; }
+  .add-form { margin-top:4px; }
+</style>
+{% endblock %}

@@ -1,5 +1,5 @@
 diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
-index 1519637194b4a..45c284e7706e3 100644
+index 1519637194b4a..d562c9d90a510 100644
 --- a/content/browser/BUILD.gn
 +++ b/content/browser/BUILD.gn
 @@ -122,6 +122,7 @@ source_set("browser") {
@@ -18,7 +18,15 @@ index 1519637194b4a..45c284e7706e3 100644
      "devtools/protocol/device_access_handler.cc",
      "devtools/protocol/device_access_handler.h",
      "devtools/protocol/device_orientation_handler.cc",
-@@ -2864,6 +2866,8 @@ source_set("browser") {
+@@ -1196,6 +1198,7 @@ source_set("browser") {
+     "host_zoom_level_context.h",
+     "host_zoom_map_impl.cc",
+     "host_zoom_map_impl.h",
++    "humanized_click.cc",
+     "idle/idle_manager_impl.cc",
+     "idle/idle_manager_impl.h",
+     "image_capture/image_capture_impl.cc",
+@@ -2864,6 +2867,8 @@ source_set("browser") {
          [ "file_system_access/file_path_watcher/file_path_watcher_stub.cc" ]
  
      sources += [
@@ -28,10 +36,10 @@ index 1519637194b4a..45c284e7706e3 100644
        "../app_shim_remote_cocoa/popup_window_mac.h",
        "../app_shim_remote_cocoa/popup_window_mac.mm",
 diff --git a/content/browser/devtools/protocol/browser_handler.cc b/content/browser/devtools/protocol/browser_handler.cc
-index 4e6024318432d..88e55a41e5f5f 100644
+index 4e6024318432d..b1ee252411521 100644
 --- a/content/browser/devtools/protocol/browser_handler.cc
 +++ b/content/browser/devtools/protocol/browser_handler.cc
-@@ -32,6 +32,20 @@
+@@ -32,6 +32,21 @@
  #include "content/browser/devtools/devtools_agent_host_impl.h"
  #include "content/browser/devtools/devtools_manager.h"
  #include "content/browser/devtools/protocol/devtools_download_manager_delegate.h"
@@ -41,6 +49,7 @@ index 4e6024318432d..88e55a41e5f5f 100644
 +#include "content/browser/renderer_host/render_widget_host_impl.h"
 +#include "content/browser/renderer_host/render_widget_host_view_base.h"
 +#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_contents_delegate.h"
 +#include "third_party/blink/public/common/input/web_mouse_event.h"
 +#include "ui/events/base_event_utils.h"
 +#include "ui/latency/latency_info.h"
@@ -52,7 +61,7 @@ index 4e6024318432d..88e55a41e5f5f 100644
  #include "content/browser/gpu/gpu_process_host.h"
  #include "content/browser/interest_group/interest_group_manager_impl.h"
  #include "content/browser/permissions/permission_controller_impl.h"
-@@ -704,6 +718,462 @@ Response BrowserHandler::CrashGpuProcess() {
+@@ -704,6 +719,486 @@ Response BrowserHandler::CrashGpuProcess() {
    return Response::Success();
  }
  
@@ -177,32 +186,17 @@ index 4e6024318432d..88e55a41e5f5f 100644
 +    if (!view) {
 +      return;
 +    }
-+    // Convert viewport CSS coords → screen coords. WebContents-attached
-+    // RenderWidgetHostView gives us the origin (in screen DIPs) of the
-+    // content area; the path point is a viewport CSS coord relative to
-+    // that origin. CG screen coords are y-down from the primary display
-+    // top-left, which matches ShowCursorOverlay's NSWindow positioning
-+    // convention in humanized_cursor_overlay_mac.mm — so no Y flip here.
-+    const gfx::Rect bounds = view->GetViewBounds();  // screen-DIP coords
-+    const int screen_x =
-+        bounds.x() + static_cast<int>(viewport_point.x());
-+    const int screen_y =
-+        bounds.y() + static_cast<int>(viewport_point.y());
++    // The cursor overlay is a child view of the content view, positioned in the
++    // view's own coordinate space (CSS/DIP, top-left) — which is exactly the
++    // viewport point. No screen / primary-display conversion (that was wrong on
++    // secondary or fractionally-scaled displays).
++    const int vx = static_cast<int>(viewport_point.x());
++    const int vy = static_cast<int>(viewport_point.y());
 +    if (!overlay_visible_) {
-+      // fprintf(stderr) bypasses the --disable-logging / --log-level=3
-+      // filter that launch_lean.sh sets — LOG(WARNING) would otherwise
-+      // never reach the captured launch log and we'd have no way to
-+      // tell if the overlay is being commanded with sensible coords.
-+      fprintf(stderr,
-+              "[humanizedClick] overlay show view=(%d,%d %dx%d) "
-+              "viewport=(%.1f,%.1f) screen=(%d,%d)\n",
-+              bounds.x(), bounds.y(), bounds.width(), bounds.height(),
-+              viewport_point.x(), viewport_point.y(),
-+              screen_x, screen_y);
-+      devtools::ShowCursorOverlay(view->GetNativeView(), screen_x, screen_y);
++      devtools::ShowCursorOverlay(view->GetNativeView(), vx, vy);
 +      overlay_visible_ = true;
 +    } else {
-+      devtools::UpdateCursorOverlay(screen_x, screen_y);
++      devtools::UpdateCursorOverlay(vx, vy);
 +    }
 +#endif
 +  }
@@ -375,6 +369,45 @@ index 4e6024318432d..88e55a41e5f5f 100644
 +      std::move(callback));
 +}
 +
++void BrowserHandler::AgentRunTask(
++    const std::string& in_target_id,
++    const std::string& in_goal,
++    std::optional<int> in_max_steps,
++    std::optional<std::string> in_model,
++    std::optional<std::string> in_plan_json,
++    std::unique_ptr<AgentRunTaskCallback> callback) {
++  scoped_refptr<DevToolsAgentHost> host =
++      DevToolsAgentHost::GetForId(in_target_id);
++  if (!host) {
++    callback->sendFailure(
++        Response::InvalidParams("No target with given targetId"));
++    return;
++  }
++  WebContents* web_contents = host->GetWebContents();
++  if (!web_contents) {
++    callback->sendFailure(
++        Response::InvalidParams("Target has no WebContents"));
++    return;
++  }
++  WebContentsDelegate* delegate = web_contents->GetDelegate();
++  if (!delegate) {
++    callback->sendFailure(Response::ServerError("Target has no delegate"));
++    return;
++  }
++  // The agent loop is owned by the chrome layer (Browser, via the delegate);
++  // content/ cannot depend on chrome/. Forward and answer the async callback
++  // when the task completes.
++  delegate->RunAgentTask(
++      web_contents, in_goal, in_max_steps.value_or(20),
++      in_model.value_or(std::string()), in_plan_json.value_or(std::string()),
++      base::BindOnce(
++          [](std::unique_ptr<AgentRunTaskCallback> cb, bool success,
++             const std::string& final_text, const std::string& steps_json) {
++            cb->sendSuccess(success, final_text, steps_json);
++          },
++          std::move(callback)));
++}
++
 +namespace {
 +
 +// Build a JS expression that returns [x, y] of the element's center, or null
@@ -516,10 +549,10 @@ index 4e6024318432d..88e55a41e5f5f 100644
      const std::string& in_api,
      const std::string& in_coordinator_origin,
 diff --git a/content/browser/devtools/protocol/browser_handler.h b/content/browser/devtools/protocol/browser_handler.h
-index 916cdc7f05134..020ecf16d0905 100644
+index 916cdc7f05134..b407eac7a3902 100644
 --- a/content/browser/devtools/protocol/browser_handler.h
 +++ b/content/browser/devtools/protocol/browser_handler.h
-@@ -101,6 +101,22 @@ class BrowserHandler : public DevToolsDomainHandler,
+@@ -101,6 +101,29 @@ class BrowserHandler : public DevToolsDomainHandler,
    Response Crash() override;
    Response CrashGpuProcess() override;
  
@@ -538,16 +571,23 @@ index 916cdc7f05134..020ecf16d0905 100644
 +      std::optional<bool> in_no_click,
 +      std::optional<bool> in_visualize,
 +      std::unique_ptr<HumanizedClickSelectorCallback> callback) override;
++  // ChromiumFish: native in-browser AI agent task (see Browser.agentRunTask).
++  void AgentRunTask(const std::string& in_target_id,
++                    const std::string& in_goal,
++                    std::optional<int> in_max_steps,
++                    std::optional<std::string> in_model,
++                    std::optional<std::string> in_plan_json,
++                    std::unique_ptr<AgentRunTaskCallback> callback) override;
 +
    void AddPrivacySandboxCoordinatorKeyConfig(
        const std::string& in_api,
        const std::string& in_coordinator_origin,
 diff --git a/content/browser/devtools/protocol/humanized_cursor_overlay_mac.h b/content/browser/devtools/protocol/humanized_cursor_overlay_mac.h
 new file mode 100644
-index 0000000000000..39e765ed1ef17
+index 0000000000000..edde69ca4ef80
 --- /dev/null
 +++ b/content/browser/devtools/protocol/humanized_cursor_overlay_mac.h
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,37 @@
 +// Copyright 2026 Lightweight-Fork Authors. All rights reserved.
 +
 +#ifndef CONTENT_BROWSER_DEVTOOLS_PROTOCOL_HUMANIZED_CURSOR_OVERLAY_MAC_H_
@@ -569,16 +609,28 @@ index 0000000000000..39e765ed1ef17
 +void UpdateCursorOverlay(int screen_x, int screen_y);
 +void HideCursorOverlay();
 +
++// Draws a hollow highlight box around the element the agent is acting on. The
++// rect (x,y,w,h) is in the web-content view's OWN coordinate space (CSS/DIP,
++// top-left origin); it is converted to screen coords via AppKit so it is
++// correct on any display / scale factor / window position. HideRectOverlay()
++// removes it. Repeated Show calls move/resize the same window.
++void ShowRectOverlay(gfx::NativeView parent_view,
++                     int x,
++                     int y,
++                     int width,
++                     int height);
++void HideRectOverlay();
++
 +}  // namespace devtools
 +}  // namespace content
 +
 +#endif  // CONTENT_BROWSER_DEVTOOLS_PROTOCOL_HUMANIZED_CURSOR_OVERLAY_MAC_H_
 diff --git a/content/browser/devtools/protocol/humanized_cursor_overlay_mac.mm b/content/browser/devtools/protocol/humanized_cursor_overlay_mac.mm
 new file mode 100644
-index 0000000000000..6637ca26970b9
+index 0000000000000..99ef9592c9c8a
 --- /dev/null
 +++ b/content/browser/devtools/protocol/humanized_cursor_overlay_mac.mm
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,149 @@
 +// Copyright 2026 Lightweight-Fork Authors. All rights reserved.
 +
 +#include "content/browser/devtools/protocol/humanized_cursor_overlay_mac.h"
@@ -586,114 +638,144 @@ index 0000000000000..6637ca26970b9
 +#import <AppKit/AppKit.h>
 +#import <QuartzCore/QuartzCore.h>
 +
++// The cursor dot and the element highlight box are rendered as borderless,
++// click-through CHILD VIEWS of the web-content NSView — not separate windows.
++// That keeps them INSIDE the browser content (clipped to it, composited with
++// the page, never floating over the toolbar or other apps), positions them in
++// the view's own coordinate space (correct on any display / scale factor /
++// window position — no primary-screen math), and avoids stealing key-window
++// focus the way a child NSWindow did. No drop shadows (no "glow").
++
++// A click-through child view that paints a CALayer. Declared at global scope —
++// Objective-C class declarations may not appear inside a C++ namespace.
++@interface CFOverlayView : NSView
++@end
++
++@implementation CFOverlayView
++- (NSView*)hitTest:(NSPoint)point {
++  return nil;  // click-through: the page, not the overlay, gets the event.
++}
++- (BOOL)isFlipped {
++  return YES;  // top-left origin, matching web-content coordinates.
++}
++@end
++
 +namespace content {
 +namespace devtools {
-+
 +namespace {
 +
-+// 2026-05-31: bumped 18 → 32 → 60. 32 still rendered as 16 logical
-+// pixels at the user's eye distance on a Retina display (effectively
-+// invisible during a 3-second multi-hundred-pixel crawl). 60 is roughly
-+// the size of a fingertip; impossible to miss.
-+constexpr CGFloat kDiameter = 60.0;
++constexpr CGFloat kDiameter = 44.0;
 +constexpr CGFloat kRadius = kDiameter / 2.0;
 +
-+NSWindow* g_overlay = nil;
-+__weak NSWindow* g_parent = nil;
++CFOverlayView* g_cursor = nil;
++CFOverlayView* g_rect = nil;
 +
-+void EnsureWindow() {
-+  if (g_overlay) {
-+    return;
++CFOverlayView* EnsureCursor() {
++  if (g_cursor) {
++    return g_cursor;
 +  }
-+  NSRect frame = NSMakeRect(0, 0, kDiameter, kDiameter);
-+  g_overlay = [[NSWindow alloc] initWithContentRect:frame
-+                                          styleMask:NSWindowStyleMaskBorderless
-+                                            backing:NSBackingStoreBuffered
-+                                              defer:NO];
-+  // NSFloatingWindowLevel is parent-relative when attached as a child window —
-+  // it follows the parent and is hidden when the parent app isn't active.
-+  [g_overlay setLevel:NSFloatingWindowLevel];
-+  [g_overlay setIgnoresMouseEvents:YES];
-+  [g_overlay setBackgroundColor:[NSColor clearColor]];
-+  [g_overlay setOpaque:NO];
-+  [g_overlay setHasShadow:NO];
-+  // 2026-05-31: was YES — that meant when the click was dispatched
-+  // from a separate process (e.g. python tools/open_tracker_click.py
-+  // launched from a terminal) the overlay's host app could still be
-+  // the terminal at the moment Show fires, and the ring stayed hidden
-+  // for the entire trajectory. Use NO so the ring shows whenever the
-+  // parent ChromiumFish window is on-screen; the floating window level
-+  // already constrains it from rendering above unrelated apps.
-+  [g_overlay setHidesOnDeactivate:NO];
-+
-+  NSView* view = [[NSView alloc] initWithFrame:frame];
-+  view.wantsLayer = YES;
-+  CALayer* layer = view.layer;
++  g_cursor = [[CFOverlayView alloc]
++      initWithFrame:NSMakeRect(0, 0, kDiameter, kDiameter)];
++  g_cursor.wantsLayer = YES;
++  CALayer* layer = g_cursor.layer;
 +  layer.backgroundColor =
-+      [[NSColor colorWithRed:1.0 green:0.15 blue:0.15 alpha:0.85] CGColor];
++      [[NSColor colorWithRed:1.0 green:0.15 blue:0.15 alpha:0.80] CGColor];
 +  layer.cornerRadius = kRadius;
 +  layer.borderWidth = 1.5;
 +  layer.borderColor = [[NSColor whiteColor] CGColor];
-+  layer.shadowColor = [[NSColor blackColor] CGColor];
-+  layer.shadowOpacity = 0.6;
-+  layer.shadowRadius = 3.0;
-+  layer.shadowOffset = CGSizeMake(0, 0);
-+  layer.masksToBounds = NO;
-+  [g_overlay setContentView:view];
++  layer.masksToBounds = YES;  // no shadow / glow.
++  return g_cursor;
 +}
 +
-+NSPoint CGToCocoa(int screen_x, int screen_y) {
-+  NSScreen* primary = [NSScreen.screens firstObject];
-+  CGFloat primary_height = primary ? primary.frame.size.height : 0.0;
-+  return NSMakePoint(screen_x - kRadius,
-+                     primary_height - screen_y - kRadius);
++CFOverlayView* EnsureRect() {
++  if (g_rect) {
++    return g_rect;
++  }
++  g_rect = [[CFOverlayView alloc] initWithFrame:NSMakeRect(0, 0, 10, 10)];
++  g_rect.wantsLayer = YES;
++  CALayer* layer = g_rect.layer;
++  // Clean cyan outline, no fill wash and no shadow.
++  layer.backgroundColor = [[NSColor clearColor] CGColor];
++  layer.borderColor =
++      [[NSColor colorWithRed:0.0 green:0.82 blue:1.0 alpha:0.95] CGColor];
++  layer.borderWidth = 2.0;
++  layer.cornerRadius = 3.0;
++  layer.masksToBounds = YES;
++  return g_rect;
 +}
 +
-+void AttachToParent(NSWindow* parent) {
-+  if (g_parent == parent) {
-+    return;
++// Converts a top-left (y-down) y into the parent view's frame coordinate space.
++CGFloat OriginY(NSView* parent, CGFloat top_left_y, CGFloat height) {
++  if ([parent isFlipped]) {
++    return top_left_y;
 +  }
-+  if (g_parent) {
-+    [g_parent removeChildWindow:g_overlay];
++  return [parent bounds].size.height - top_left_y - height;
++}
++
++// (Re)attaches `overlay` as the frontmost child of `parent`.
++void AttachFrontmost(NSView* parent, NSView* overlay) {
++  if ([overlay superview]) {
++    [overlay removeFromSuperview];
 +  }
-+  if (parent) {
-+    [parent addChildWindow:g_overlay ordered:NSWindowAbove];
-+  }
-+  g_parent = parent;
++  [parent addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
 +}
 +
 +}  // namespace
 +
-+void ShowCursorOverlay(gfx::NativeView parent_view,
-+                       int screen_x,
-+                       int screen_y) {
-+  EnsureWindow();
-+  [g_overlay setFrameOrigin:CGToCocoa(screen_x, screen_y)];
++void ShowRectOverlay(gfx::NativeView parent_view,
++                     int x,
++                     int y,
++                     int width,
++                     int height) {
++  width = width < 2 ? 2 : width;
++  height = height < 2 ? 2 : height;
++  NSView* parent = parent_view.GetNativeNSView();
++  if (!parent) {
++    return;
++  }
++  CFOverlayView* v = EnsureRect();
++  // (x, y, w, h) is in the content view's own coordinate space (CSS/DIP,
++  // top-left). A subview frame lives in the parent's coordinate space.
++  v.frame = NSMakeRect(x, OriginY(parent, y, height), width, height);
++  AttachFrontmost(parent, v);
++}
 +
-+  NSView* ns_view = parent_view.GetNativeNSView();
-+  NSWindow* parent_window = ns_view ? [ns_view window] : nil;
-+  AttachToParent(parent_window);
-+  if (parent_window) {
-+    [g_overlay orderFront:nil];
++void HideRectOverlay() {
++  if (g_rect) {
++    [g_rect removeFromSuperview];
 +  }
 +}
 +
-+void UpdateCursorOverlay(int screen_x, int screen_y) {
-+  if (!g_overlay) {
++void ShowCursorOverlay(gfx::NativeView parent_view, int view_x, int view_y) {
++  NSView* parent = parent_view.GetNativeNSView();
++  if (!parent) {
 +    return;
 +  }
-+  [g_overlay setFrameOrigin:CGToCocoa(screen_x, screen_y)];
++  CFOverlayView* v = EnsureCursor();
++  const CGFloat tlx = view_x - kRadius;
++  const CGFloat tly = view_y - kRadius;
++  v.frame = NSMakeRect(tlx, OriginY(parent, tly, kDiameter), kDiameter, kDiameter);
++  AttachFrontmost(parent, v);
++}
++
++void UpdateCursorOverlay(int view_x, int view_y) {
++  if (!g_cursor) {
++    return;
++  }
++  NSView* parent = [g_cursor superview];
++  if (!parent) {
++    return;
++  }
++  const CGFloat tlx = view_x - kRadius;
++  const CGFloat tly = view_y - kRadius;
++  g_cursor.frame =
++      NSMakeRect(tlx, OriginY(parent, tly, kDiameter), kDiameter, kDiameter);
 +}
 +
 +void HideCursorOverlay() {
-+  if (!g_overlay) {
-+    return;
++  if (g_cursor) {
++    [g_cursor removeFromSuperview];
 +  }
-+  if (g_parent) {
-+    [g_parent removeChildWindow:g_overlay];
-+    g_parent = nil;
-+  }
-+  [g_overlay orderOut:nil];
 +}
 +
 +}  // namespace devtools
@@ -837,7 +919,7 @@ index 4c25a8c1c26c3..2e4fb7298bf18 100644
        scoped_ignore_input_events_;
    bool intercept_drags_ = false;
 diff --git a/content/browser/devtools/protocol_config.json b/content/browser/devtools/protocol_config.json
-index bd0f75dee534f..6df993149b6c8 100644
+index bd0f75dee534f..822db982542b0 100644
 --- a/content/browser/devtools/protocol_config.json
 +++ b/content/browser/devtools/protocol_config.json
 @@ -20,8 +20,8 @@
@@ -846,16 +928,16 @@ index bd0f75dee534f..6df993149b6c8 100644
                  "include": ["getVersion", "getHistograms", "getHistogram", "getBrowserCommandLine", "grantPermissions", "setDownloadBehavior", "cancelDownload", "resetPermissions", "crash", "crashGpuProcess", "setPermission",
 -                "addPrivacySandboxCoordinatorKeyConfig"],
 -                "async": ["addPrivacySandboxCoordinatorKeyConfig", "grantPermissions", "resetPermissions", "setPermission"]
-+                "addPrivacySandboxCoordinatorKeyConfig", "humanizedClick", "humanizedClickSelector"],
-+                "async": ["addPrivacySandboxCoordinatorKeyConfig", "grantPermissions", "resetPermissions", "setPermission", "humanizedClick", "humanizedClickSelector"]
++                "addPrivacySandboxCoordinatorKeyConfig", "humanizedClick", "humanizedClickSelector", "agentRunTask"],
++                "async": ["addPrivacySandboxCoordinatorKeyConfig", "grantPermissions", "resetPermissions", "setPermission", "humanizedClick", "humanizedClickSelector", "agentRunTask"]
              },
              {
                  "domain": "DOM",
 diff --git a/third_party/blink/public/devtools_protocol/domains/Browser.pdl b/third_party/blink/public/devtools_protocol/domains/Browser.pdl
-index 6015a94554c21..e51563bb9733f 100644
+index 6015a94554c21..49e950d3f8f98 100644
 --- a/third_party/blink/public/devtools_protocol/domains/Browser.pdl
 +++ b/third_party/blink/public/devtools_protocol/domains/Browser.pdl
-@@ -350,3 +350,46 @@ domain Browser
+@@ -350,3 +350,75 @@ domain Browser
        # BrowserContext to perform the action in. When omitted, default browser
        # context is used.
        optional BrowserContextID browserContextId
@@ -902,3 +984,32 @@ index 6015a94554c21..e51563bb9733f 100644
 +      # Resolved CSS viewport coordinates the click landed on.
 +      number x
 +      number y
++
++  # ChromiumFish: run a native in-browser AI agent task. Drives Chrome's Actor
++  # framework + AIPageContent with a configured OpenAI-compatible LLM (see the
++  # --agent-llm-url/--agent-llm-key/--agent-model switches). Async: resolves
++  # when the task completes or the step budget is exhausted.
++  experimental command agentRunTask
++    parameters
++      # The target page to run the agent on. Get via Target.getTargets.
++      string targetId
++      # Natural-language task goal.
++      string goal
++      # Max think/act steps before giving up (default 20).
++      optional integer maxSteps
++      # Override the configured default model (e.g. an OpenRouter slug).
++      optional string model
++      # Optional JSON array of previously-recorded steps to REPLAY (the flow
++      # cache). Each step's {role,name,ordinal} target descriptor is re-resolved
++      # against the live page and dispatched without the LLM; a step that no
++      # longer matches is healed via the LLM and replay continues. Omit/empty to
++      # run fresh (and record).
++      optional string planJson
++    returns
++      # Whether the agent reported the task as successfully completed.
++      boolean success
++      # Final human-readable message from the agent.
++      string finalText
++      # JSON array of the resolved/executed steps, each tagged
++      # recorded|replayed|healed. Persist this as the flow's plan for replay.
++      string stepsJson

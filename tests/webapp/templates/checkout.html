@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Checkout · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container section">
+  <h1 style="margin-bottom:6px;">Checkout</h1>
+  <p class="muted" style="margin-bottom:22px;">A four-step wizard — fill each step and advance to place the order.</p>
+
+  <div class="checkout-layout">
+    <div>
+      <!-- Step indicator -->
+      <ol class="steps" data-testid="step-indicator">
+        <li class="step active" data-step="1"><span class="step-dot">1</span> Contact</li>
+        <li class="step" data-step="2"><span class="step-dot">2</span> Shipping</li>
+        <li class="step" data-step="3"><span class="step-dot">3</span> Payment</li>
+        <li class="step" data-step="4"><span class="step-dot">4</span> Review</li>
+      </ol>
+
+      <form id="checkout-form" action="{{ url_for('checkout_place') }}" method="post" novalidate>
+        <!-- Step 1 -->
+        <div class="card pad panel active" data-panel="1" data-testid="panel-contact">
+          <h3>Contact details</h3>
+          <label class="field"><span class="field-label">Full name</span>
+            <input class="input" name="full_name" data-testid="input-name" required placeholder="Ada Lovelace" /></label>
+          <label class="field" style="margin-top:14px;"><span class="field-label">Email</span>
+            <input class="input" type="email" name="email" data-testid="input-email" required placeholder="you@example.com" /></label>
+          <label class="field" style="margin-top:14px;"><span class="field-label">Phone (optional)</span>
+            <input class="input" name="phone" data-testid="input-phone" placeholder="+1 555 0100" /></label>
+          <div class="panel-actions">
+            <span></span>
+            <button type="button" class="btn primary" data-next data-testid="next-1">Continue →</button>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="card pad panel" data-panel="2" data-testid="panel-shipping">
+          <h3>Shipping address</h3>
+          <label class="field"><span class="field-label">Street address</span>
+            <input class="input" name="address" data-testid="input-address" required placeholder="1 Infinite Loop" /></label>
+          <div class="grid cols-2" style="margin-top:14px;">
+            <label class="field"><span class="field-label">City</span>
+              <input class="input" name="city" data-testid="input-city" required placeholder="Cupertino" /></label>
+            <label class="field"><span class="field-label">Postal code</span>
+              <input class="input" name="zip" data-testid="input-zip" required placeholder="95014" /></label>
+          </div>
+          <label class="field" style="margin-top:14px;"><span class="field-label">Country</span>
+            <select class="select" name="country" data-testid="input-country">
+              <option>United States</option><option>United Kingdom</option>
+              <option>Canada</option><option>Germany</option><option>Australia</option>
+            </select></label>
+          <div class="panel-actions">
+            <button type="button" class="btn ghost" data-back data-testid="back-2">← Back</button>
+            <button type="button" class="btn primary" data-next data-testid="next-2">Continue →</button>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="card pad panel" data-panel="3" data-testid="panel-payment">
+          <h3>Payment</h3>
+          <label class="field"><span class="field-label">Card number</span>
+            <input class="input" name="card" data-testid="input-card" inputmode="numeric"
+                   required placeholder="4242 4242 4242 4242" /></label>
+          <div class="grid cols-2" style="margin-top:14px;">
+            <label class="field"><span class="field-label">Expiry</span>
+              <input class="input" name="expiry" data-testid="input-expiry" required placeholder="MM/YY" /></label>
+            <label class="field"><span class="field-label">CVC</span>
+              <input class="input" name="cvc" data-testid="input-cvc" required placeholder="123" /></label>
+          </div>
+          <p class="small muted" style="margin-top:12px;">🔒 Demo only — no real payment is processed.</p>
+          <div class="panel-actions">
+            <button type="button" class="btn ghost" data-back data-testid="back-3">← Back</button>
+            <button type="button" class="btn primary" data-next data-testid="next-3">Review order →</button>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="card pad panel" data-panel="4" data-testid="panel-review">
+          <h3>Review &amp; place order</h3>
+          <div class="review-block" data-testid="review-summary">
+            <div class="row spread"><span class="muted">Ship to</span><span id="review-name" data-testid="review-name">—</span></div>
+            <div class="row spread"><span class="muted">Address</span><span id="review-address" data-testid="review-address">—</span></div>
+            <div class="row spread"><span class="muted">Email</span><span id="review-email" data-testid="review-email">—</span></div>
+            <div class="row spread"><span class="muted">Payment</span><span id="review-card" data-testid="review-card">—</span></div>
+          </div>
+          <label class="row" style="gap:10px;margin-top:14px;align-items:flex-start;">
+            <input type="checkbox" id="agree" data-testid="agree-terms" />
+            <span class="small muted">I agree to the demo terms and confirm this is a test order.</span>
+          </label>
+          <div class="panel-actions">
+            <button type="button" class="btn ghost" data-back data-testid="back-4">← Back</button>
+            <button type="submit" class="btn accent lg" id="place-order" data-testid="place-order" disabled>Place order</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Order summary rail -->
+    <aside class="card pad summary" data-testid="checkout-summary">
+      <h3>Summary</h3>
+      <div class="stack" style="margin:8px 0;">
+        {% for it in items %}
+        <div class="row spread small">
+          <span>{{ it.product.emoji }} {{ it.product.name }} × {{ it.qty }}</span>
+          <span>${{ '%.2f'|format(it.line_total) }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="divider"></div>
+      <div class="row spread"><span class="muted">Subtotal</span><span>${{ '%.2f'|format(subtotal) }}</span></div>
+      <div class="row spread"><span class="muted">Shipping</span><span>{{ 'Free' if shipping == 0 else '$%.2f'|format(shipping) }}</span></div>
+      <div class="divider"></div>
+      <div class="row spread" style="font-size:1.2rem;font-weight:700;"><span>Total</span><span>${{ '%.2f'|format(total) }}</span></div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .checkout-layout { display:grid; grid-template-columns:1fr 300px; gap:22px; align-items:start; }
+  @media (max-width:820px){ .checkout-layout{ grid-template-columns:1fr; } }
+  .steps { list-style:none; display:flex; gap:8px; padding:0; margin:0 0 18px; flex-wrap:wrap; }
+  .step { display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px;
+    background:var(--surface); border:1px solid var(--border); color:var(--text-dim); font-size:.9rem; font-weight:600; }
+  .step-dot { width:22px; height:22px; border-radius:50%; display:grid; place-items:center;
+    background:var(--surface-2); font-size:.78rem; }
+  .step.active { color:var(--text); border-color:var(--brand); }
+  .step.active .step-dot { background:var(--brand); color:#fff; }
+  .step.done .step-dot { background:var(--accent); color:#04221a; }
+  .panel { display:none; }
+  .panel.active { display:block; animation:fade .2s ease; }
+  @keyframes fade { from { opacity:0; transform:translateY(6px); } }
+  .panel-actions { display:flex; justify-content:space-between; align-items:center; margin-top:20px; }
+  .review-block { background:var(--surface-2); border-radius:var(--radius-sm); padding:14px; display:flex; flex-direction:column; gap:8px; }
+  .summary { position:sticky; top:80px; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const form = document.getElementById('checkout-form');
+  const panels = [...form.querySelectorAll('.panel')];
+  const steps = [...document.querySelectorAll('.step')];
+  let current = 1;
+
+  function show(n) {
+    current = n;
+    panels.forEach(p => p.classList.toggle('active', +p.dataset.panel === n));
+    steps.forEach(s => {
+      const i = +s.dataset.step;
+      s.classList.toggle('active', i === n);
+      s.classList.toggle('done', i < n);
+    });
+    if (n === 4) fillReview();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function validate(panel) {
+    let ok = true;
+    panel.querySelectorAll('[required]').forEach(f => {
+      const bad = !f.value.trim();
+      f.classList.toggle('error', bad);
+      let msg = f.parentElement.querySelector('.error-text');
+      if (bad && !msg) {
+        msg = document.createElement('span');
+        msg.className = 'error-text';
+        msg.textContent = 'This field is required';
+        f.parentElement.appendChild(msg);
+      } else if (!bad && msg) { msg.remove(); }
+      if (bad) ok = false;
+    });
+    return ok;
+  }
+  function fillReview() {
+    const v = name => (form.elements[name]?.value || '').trim();
+    document.getElementById('review-name').textContent = v('full_name') || '—';
+    document.getElementById('review-email').textContent = v('email') || '—';
+    document.getElementById('review-address').textContent =
+      [v('address'), v('city'), v('zip')].filter(Boolean).join(', ') || '—';
+    const card = v('card').replace(/\s+/g, '');
+    document.getElementById('review-card').textContent = card ? '•••• ' + card.slice(-4) : '—';
+  }
+
+  form.querySelectorAll('[data-next]').forEach(btn => btn.addEventListener('click', () => {
+    if (validate(panels[current - 1])) show(current + 1);
+    else window.AL.toast('Please fill the required fields', 'danger');
+  }));
+  form.querySelectorAll('[data-back]').forEach(btn =>
+    btn.addEventListener('click', () => show(current - 1)));
+
+  document.getElementById('agree').addEventListener('change', e =>
+    document.getElementById('place-order').disabled = !e.target.checked);
+
+  form.addEventListener('submit', e => {
+    if (!document.getElementById('agree').checked) { e.preventDefault(); }
+  });
+})();
+</script>
+{% endblock %}

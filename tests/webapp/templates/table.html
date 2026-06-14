@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Data grid · ByteTunnels{% endblock %}
+
+{% macro sort_link(col) %}
+  {% set next_dir = 'desc' if (sort == col.key and direction == 'asc') else 'asc' %}
+  <a class="th-sort {{ 'active' if sort == col.key }}"
+     href="{{ url_for('table', q=q, sort=col.key, dir=next_dir, page=1) }}"
+     data-testid="sort-{{ col.key }}">
+    {{ col.label }}
+    <span class="caret">{{ '▲' if (sort == col.key and direction == 'asc') else '▼' if sort == col.key else '↕' }}</span>
+  </a>
+{% endmacro %}
+
+{% block body %}
+<section class="container section">
+  <div class="row spread wrap" style="margin-bottom:18px;">
+    <div>
+      <span class="badge">📊 Directory</span>
+      <h1 style="margin-top:10px;margin-bottom:2px;">Team directory</h1>
+      <p class="muted">Search, sort any column and page through the records.</p>
+    </div>
+    <form method="get" action="{{ url_for('table') }}" class="row" style="gap:10px;" data-testid="table-search-form">
+      <input type="hidden" name="sort" value="{{ sort }}" />
+      <input type="hidden" name="dir" value="{{ direction }}" />
+      <input class="input" type="text" name="q" value="{{ q }}" placeholder="Filter by name, role, team…"
+             style="width:260px;" data-testid="table-search-input" />
+      <button class="btn" type="submit" data-testid="table-search-submit">Filter</button>
+      {% if q %}<a class="btn ghost" href="{{ url_for('table', sort=sort, dir=direction) }}" data-testid="table-clear">Clear</a>{% endif %}
+    </form>
+  </div>
+
+  <div class="card" style="overflow:hidden;">
+    <div class="table-scroll">
+      <table class="data-table" data-testid="data-table">
+        <thead>
+          <tr>
+            {% for col in columns %}<th class="{{ 'num' if col.type in ['number','date'] }}">{{ sort_link(col) }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody data-testid="table-body">
+          {% for r in rows %}
+          <tr data-testid="row-{{ r.id }}">
+            <td>
+              <div class="row" style="gap:10px;">
+                <span class="row-avatar">{{ r.name[0] }}</span>
+                <strong>{{ r.name }}</strong>
+              </div>
+            </td>
+            <td>{{ r.role }}</td>
+            <td><span class="badge dim">{{ r.team }}</span></td>
+            <td>{{ r.location }}</td>
+            <td>
+              <span class="status {{ 'on-leave' if r.status == 'On leave' }}">
+                <span class="tag-dot" style="background:{{ 'var(--warn)' if r.status == 'On leave' else 'var(--accent)' }}"></span>
+                {{ r.status }}
+              </span>
+            </td>
+            <td class="num">{{ r.joined }}</td>
+            <td class="num">${{ '{:,}'.format(r.salary) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="{{ columns|length }}">
+            <div class="empty" style="border:none;" data-testid="table-empty">No records match “{{ q }}”.</div>
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="row spread table-foot" data-testid="pagination">
+      <span class="small muted" data-testid="pagination-info">
+        {% if total %}Showing {{ start + 1 }}–{{ start + rows|length }} of {{ total }}{% else %}0 results{% endif %}
+      </span>
+      <div class="row" style="gap:6px;">
+        <a class="btn sm {{ 'disabled' if page <= 1 }}"
+           href="{{ url_for('table', q=q, sort=sort, dir=direction, page=page-1) if page > 1 else '#' }}"
+           data-testid="page-prev" {{ 'aria-disabled=true' if page <= 1 }}>← Prev</a>
+        {% for p in range(1, pages + 1) %}
+        <a class="btn sm {{ 'primary' if p == page }}"
+           href="{{ url_for('table', q=q, sort=sort, dir=direction, page=p) }}"
+           data-testid="page-{{ p }}">{{ p }}</a>
+        {% endfor %}
+        <a class="btn sm {{ 'disabled' if page >= pages }}"
+           href="{{ url_for('table', q=q, sort=sort, dir=direction, page=page+1) if page < pages else '#' }}"
+           data-testid="page-next" {{ 'aria-disabled=true' if page >= pages }}>Next →</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .table-scroll { overflow-x:auto; }
+  .data-table { width:100%; border-collapse:collapse; font-size:.92rem; }
+  .data-table th { text-align:left; padding:0; border-bottom:1px solid var(--border); background:var(--surface-2); }
+  .data-table th.num, .data-table td.num { text-align:right; }
+  .th-sort { display:flex; align-items:center; gap:6px; padding:13px 16px; color:var(--text-soft);
+    font-weight:600; font-size:.82rem; text-transform:uppercase; letter-spacing:.03em; }
+  .data-table th.num .th-sort { justify-content:flex-end; }
+  .th-sort:hover { color:var(--text); }
+  .th-sort.active { color:var(--brand); }
+  .caret { opacity:.6; font-size:.7rem; }
+  .data-table td { padding:13px 16px; border-bottom:1px solid var(--border-soft); }
+  .data-table tbody tr { transition:background .12s; }
+  .data-table tbody tr:hover { background:var(--surface-2); }
+  .data-table tbody tr:last-child td { border-bottom:none; }
+  .row-avatar { width:30px; height:30px; border-radius:50%; flex:none; display:grid; place-items:center;
+    font-size:.8rem; font-weight:700; color:var(--brand); background:var(--brand-soft); }
+  .status { display:inline-flex; align-items:center; gap:7px; font-size:.86rem; }
+  .table-foot { padding:14px 16px; border-top:1px solid var(--border); }
+  .btn.disabled, .btn[aria-disabled=true] { opacity:.4; pointer-events:none; }
+</style>
+{% endblock %}

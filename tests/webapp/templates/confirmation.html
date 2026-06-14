@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Order confirmed · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container section" style="max-width:560px;text-align:center;">
+  <div class="confirm-check" data-testid="confirm-check">✓</div>
+  <h1 data-testid="confirm-heading">Order confirmed!</h1>
+  <p>Thanks, {{ order.name }}. A receipt is on its way to {{ order.email }}.</p>
+
+  <div class="card pad" style="text-align:left;margin:22px 0;" data-testid="order-receipt">
+    <div class="row spread"><span class="muted">Order number</span><strong data-testid="order-id">{{ order.order_id }}</strong></div>
+    <div class="divider"></div>
+    <div class="row spread"><span class="muted">Items</span><span data-testid="order-count">{{ order.count }}</span></div>
+    <div class="row spread"><span class="muted">Total paid</span><strong data-testid="order-total">${{ '%.2f'|format(order.total) }}</strong></div>
+  </div>
+
+  <div class="row center wrap">
+    <a class="btn primary" href="{{ url_for('shop') }}" data-testid="confirm-continue">Continue shopping</a>
+    <a class="btn ghost" href="{{ url_for('index') }}" data-testid="confirm-home">Back to home</a>
+  </div>
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .confirm-check {
+    width:84px; height:84px; margin:10px auto 18px; border-radius:50%;
+    display:grid; place-items:center; font-size:40px; font-weight:700; color:#fff;
+    background:var(--accent);
+    box-shadow:var(--shadow); animation:pop .3s ease;
+  }
+  @keyframes pop { from { transform:scale(.5); opacity:0; } }
+</style>
+{% endblock %}

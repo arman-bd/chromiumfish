@@ -24,6 +24,11 @@ dependencies = [
     "playwright>=1.40",
 ]
 
+[project.optional-dependencies]
+# The native AI agent client (chromiumfish.agent / chromiumfish.flow) drives the
+# fork's Browser.agentRunTask over raw CDP and needs a WebSocket client.
+agent = ["websocket-client>=1.6"]
+
 [project.urls]
 Homepage = "https://chromiumfish.com"
 Repository = "https://github.com/arman-bd/chromiumfish"

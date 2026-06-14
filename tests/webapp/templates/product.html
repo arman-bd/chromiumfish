@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container section">
+  <div class="row small muted" style="gap:8px;margin-bottom:18px;" data-testid="breadcrumb">
+    <a href="{{ url_for('shop') }}">Shop</a> ›
+    <a href="{{ url_for('shop', category=product.category) }}">{{ product.category }}</a> ›
+    <span>{{ product.name }}</span>
+  </div>
+
+  <div class="grid cols-2 product-detail">
+    <div class="detail-thumb thumb-tint"
+         style="--tint:{{ product.tint }};">
+      <span style="font-size:118px;">{{ product.emoji }}</span>
+      {% if product.badge %}<span class="product-badge" style="top:18px;left:18px;">{{ product.badge }}</span>{% endif %}
+    </div>
+
+    <div data-testid="product-info">
+      <span class="small muted">{{ product.category }}</span>
+      <h1 style="margin:6px 0 10px;">{{ product.name }}</h1>
+      <div class="row" style="gap:8px;margin-bottom:14px;">
+        <span class="stars" style="font-size:1rem;">{{ '★★★★★'[:(product.rating|round(0,'common')|int)] }}<span class="stars-dim">{{ '★★★★★'[(product.rating|round(0,'common')|int):] }}</span></span>
+        <span class="small muted">{{ product.rating }} · {{ product.reviews }} reviews</span>
+      </div>
+
+      <div class="row" style="gap:10px;align-items:baseline;margin-bottom:16px;">
+        <span style="font-size:2rem;font-weight:800;" data-testid="detail-price">${{ '%.2f'|format(product.price) }}</span>
+        {% if product.old_price %}
+          <span class="old-price" style="font-size:1.1rem;">${{ '%.2f'|format(product.old_price) }}</span>
+          <span class="badge accent">Save ${{ '%.2f'|format(product.old_price - product.price) }}</span>
+        {% endif %}
+      </div>
+
+      <p>{{ product.description }}</p>
+
+      <form action="{{ url_for('cart_add') }}" method="post" class="stack" data-testid="add-to-cart-form">
+        <input type="hidden" name="slug" value="{{ product.slug }}" />
+        <input type="hidden" name="next" value="{{ url_for('cart') }}" />
+
+        <div>
+          <span class="field-label">Option</span>
+          <div class="row wrap" data-testid="option-group">
+            {% for opt in product.options %}
+            <label class="pill option-pill">
+              <input type="radio" name="option" value="{{ opt }}" {{ 'checked' if loop.first }} hidden />
+              {{ opt }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="row" style="gap:14px;margin-top:6px;">
+          <div class="qty-stepper" data-testid="qty-stepper">
+            <button type="button" class="qty-btn" data-step="-1" data-testid="qty-minus">−</button>
+            <input class="qty-input" type="number" name="qty" value="1" min="1" max="{{ product.stock }}"
+                   data-testid="qty-input" readonly />
+            <button type="button" class="qty-btn" data-step="1" data-testid="qty-plus">+</button>
+          </div>
+          <span class="small muted" data-testid="stock">{{ product.stock }} in stock</span>
+        </div>
+
+        <button class="btn primary lg block" type="submit" data-testid="add-to-cart-submit">
+          🛒 Add to cart
+        </button>
+      </form>
+
+      <div class="divider"></div>
+      <ul class="stack small muted" style="list-style:none;padding:0;margin:0;">
+        <li>🚚 Free shipping on orders over $150</li>
+        <li>↩️ 30-day returns</li>
+        <li>🔒 Secure checkout</li>
+      </ul>
+    </div>
+  </div>
+
+  {% if related %}
+  <h2 style="margin:38px 0 14px;">You might also like</h2>
+  <div class="grid cols-3">
+    {% for p in related %}
+    <a class="card pad" href="{{ url_for('product', slug=p.slug) }}"
+       data-testid="related-{{ p.slug }}" style="display:flex;gap:12px;align-items:center;">
+      <span class="related-thumb thumb-tint" style="--tint:{{ p.tint }};">{{ p.emoji }}</span>
+      <span>
+        <strong style="display:block;">{{ p.name }}</strong>
+        <span class="muted">${{ '%.2f'|format(p.price) }}</span>
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  .product-detail { align-items:start; }
+  @media (max-width:760px){ .product-detail{ grid-template-columns:1fr; } }
+  .detail-thumb { position:relative; aspect-ratio:1/1; border-radius:var(--radius-lg);
+    display:grid; place-items:center; box-shadow:var(--shadow); }
+  .option-pill { user-select:none; }
+  .option-pill:has(input:checked) { background:var(--brand-soft); border-color:var(--brand); color:var(--text); }
+  .qty-stepper { display:inline-flex; align-items:center; border:1px solid var(--border);
+    border-radius:var(--radius-sm); overflow:hidden; }
+  .qty-btn { width:42px; height:44px; border:none; background:var(--surface-2); color:var(--text);
+    font-size:1.2rem; cursor:pointer; }
+  .qty-btn:hover { background:var(--brand-soft); }
+  .qty-input { width:54px; height:44px; border:none; background:var(--surface); color:var(--text);
+    text-align:center; font:inherit; font-weight:600; }
+  .qty-input::-webkit-outer-spin-button,.qty-input::-webkit-inner-spin-button{ -webkit-appearance:none; }
+  .related-thumb { width:48px; height:48px; border-radius:12px; display:grid; place-items:center; font-size:24px; flex:none; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll('.qty-stepper').forEach(s => {
+    const input = s.querySelector('.qty-input');
+    s.querySelectorAll('.qty-btn').forEach(b => b.addEventListener('click', () => {
+      const step = parseInt(b.dataset.step, 10);
+      const max = parseInt(input.max || '99', 10);
+      let v = parseInt(input.value, 10) + step;
+      input.value = Math.max(1, Math.min(max, v));
+    }));
+  });
+  document.querySelectorAll('.option-pill').forEach(p =>
+    p.addEventListener('click', () => p.querySelector('input').checked = true));
+</script>
+{% endblock %}
