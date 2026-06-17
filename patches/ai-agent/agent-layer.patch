@@ -48,10 +48,10 @@ index 0000000000000..41444669c1bfd
 +}
 diff --git a/chrome/browser/ai_agent/agent_controller.cc b/chrome/browser/ai_agent/agent_controller.cc
 new file mode 100644
-index 0000000000000..4762c68126a14
+index 0000000000000..8a6ece3d8467a
 --- /dev/null
 +++ b/chrome/browser/ai_agent/agent_controller.cc
-@@ -0,0 +1,1183 @@
+@@ -0,0 +1,1244 @@
 +// Copyright 2026 The ChromiumFish Authors
 +// Use of this source code is governed by an MIT-style license.
 +
@@ -156,7 +156,7 @@ index 0000000000000..4762c68126a14
 +    "  \"actions\": [ <one or more action steps, run in order, in one shot> ]\n"
 +    "}\n"
 +    "Each step in \"actions\" is an object: {\"action\": "
-+    "\"click|type|scroll|navigate|select|wait|done\", \"index\": <element "
++    "\"click|type|scroll|navigate|select|read|wait|done\", \"index\": <element "
 +    "index>, \"text\": \"to type\", \"enter\": true (type: press Enter), "
 +    "\"url\": \"https://...\" (navigate), \"value\": \"exact option value\" "
 +    "(select), \"direction\": \"down|up|left|right\" (scroll), \"seconds\": 1 "
@@ -182,6 +182,13 @@ index 0000000000000..4762c68126a14
 +    "used until it is gone.\n"
 +    "- Use only indices present in the CURRENT list; they are renumbered every "
 +    "step.\n"
++    "- Link items (role a) show their destination URL after \" -> \". To report "
++    "or use a link's URL, READ it from the list — do NOT click or navigate to "
++    "the link just to find its address.\n"
++    "- The element list shows only INTERACTIVE controls, NOT the article/body "
++    "text. To read or summarize page CONTENT (an article, blog post, "
++    "paragraphs), issue {\"action\":\"read\"} by itself; the page's text "
++    "appears in your NEXT observation as PAGE TEXT — then answer from it.\n"
 +    "- To submit a SEARCH, type the query with \"enter\": true in the SAME "
 +    "action. Do NOT click a search button, and do NOT click an "
 +    "autocomplete/suggestion item that appears under the box — that replaces "
@@ -327,14 +334,13 @@ index 0000000000000..4762c68126a14
 +// coordinate math), clips to the viewport, and is captured by
 +// Page.captureScreenshot (so it is verifiable). pointer-events:none, no shadow.
 +//
-+// This draws ONLY the cyan target-outline box. The red CLICK indicator used to
-+// be a persistent dot drawn here too, but it was placed instantly at the target
-+// while the Actor "magic cursor" glides in over ~tens-to-150ms, so a frame
-+// captured mid-glide showed the dot ahead of the cursor (they DO coincide at the
-+// click instant). The red is now a one-shot ripple fired AT click time, where
-+// the cursor actually lands: on the batch/Actor path by the magic cursor's own
-+// click animation (a red ripple, see actor_overlay/app.css), and on the
-+// humanized single-click path by ShowClickRipple() in OnHumanizedClickDone().
++// Agent visualization = the magic cursor (mouse effect) + a one-shot red click
++// ripple (click effect). A cyan target-outline box used to be drawn too, but it
++// read as unnatural (a real user gets no box around the field they type into),
++// so it was removed — the cursor + ripple are enough. The ripple fires AT click
++// time where the cursor lands: on the batch/Actor path via the magic cursor's
++// own click animation (actor_overlay/app.css), and on the humanized single-click
++// path via ShowClickRipple() in OnHumanizedClickDone().
 +//
 +// world_id must be in (ISOLATED_WORLD_ID_GLOBAL, ISOLATED_WORLD_ID_MAX] or
 +// ExecuteJavaScriptInIsolatedWorld CHECK-fails. ISOLATED_WORLD_ID_MAX is the
@@ -344,31 +350,6 @@ index 0000000000000..4762c68126a14
 +bool OverlayFrameReady(content::WebContents* wc) {
 +  return wc && wc->GetPrimaryMainFrame() &&
 +         wc->GetPrimaryMainFrame()->IsRenderFrameLive();
-+}
-+
-+void ShowInPageOverlay(content::WebContents* wc, const gfx::Rect& css_rect) {
-+  if (!OverlayFrameReady(wc)) {
-+    return;
-+  }
-+  // Cyan target-outline box only. All coords are CSS viewport px.
-+  std::string js = base::StringPrintf(
-+      "(function(){var ID='__cf_agent_overlay';"
-+      "var o=document.getElementById(ID);"
-+      "if(!o){o=document.createElement('div');o.id=ID;"
-+      "o.style.cssText='position:fixed;left:0;top:0;width:0;height:0;"
-+      "z-index:2147483647;pointer-events:none';"
-+      "var b=document.createElement('div');b.setAttribute('data-cf','b');"
-+      "b.style.cssText='position:fixed;box-sizing:border-box;border:2px solid "
-+      "#19b6ff;border-radius:3px;transition:left .08s,top .08s,width .08s,"
-+      "height .08s';"
-+      "o.appendChild(b);"
-+      "(document.body||document.documentElement).appendChild(o);}"
-+      "var b=o.querySelector('[data-cf=b]');"
-+      "b.style.left='%dpx';b.style.top='%dpx';b.style.width='%dpx';"
-+      "b.style.height='%dpx';})()",
-+      css_rect.x(), css_rect.y(), css_rect.width(), css_rect.height());
-+  wc->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
-+      base::UTF8ToUTF16(js), base::DoNothing(), kOverlayWorldId);
 +}
 +
 +// Fires a one-shot red "click ripple" at (cx,cy) CSS-viewport px: an isolated-
@@ -400,20 +381,14 @@ index 0000000000000..4762c68126a14
 +      base::UTF8ToUTF16(js), base::DoNothing(), kOverlayWorldId);
 +}
 +
-+// Highlights `el`'s box UNLESS it sits behind an open modal. When a dialog is
-+// present, only the modal's OWN elements are highlighted; everything else is
-+// visually covered by the modal, so drawing a max-z-index box over it looks
-+// like the highlight shows THROUGH the modal (e.g. a batch that dismisses the
-+// modal AND acts on an occluded element ends the box on the covered element).
-+void MaybeShowOverlay(content::WebContents* wc,
-+                      const SerializedPage& page,
-+                      const InteractiveElement& el,
-+                      const gfx::Rect& css_rect) {
-+  if (page.has_modal && !el.in_modal) {
-+    return;
-+  }
-+  ShowInPageOverlay(wc, css_rect);
-+}
++// No-op: the cyan target-outline box was removed (it looked unnatural, esp.
++// around input fields a user just types into). The agent's visualization is now
++// just the magic cursor + the click ripple. Kept as a no-op so the act-site call
++// contract doesn't change at every call site.
++void MaybeShowOverlay(content::WebContents* /*wc*/,
++                      const SerializedPage& /*page*/,
++                      const InteractiveElement& /*el*/,
++                      const gfx::Rect& /*css_rect*/) {}
 +
 +void HideInPageOverlay(content::WebContents* wc) {
 +  if (!OverlayFrameReady(wc)) {
@@ -492,8 +467,15 @@ index 0000000000000..4762c68126a14
 +  const InteractiveElement* el =
 +      page.ElementByIndex(action.FindInt("index").value_or(0));
 +  auto node_target = [&]() {
-+    return actor::PageTarget(actor::DomNode{.node_id = el->dom_node_id,
-+                                            .document_identifier = doc_id});
++    // Target the element's OWN frame document, not unconditionally the main
++    // frame: an element inside a same-origin iframe carries its child frame's
++    // identifier. (Fall back to the passed-in main-frame id when APC supplied
++    // no per-element id.) Cross-origin frame elements have an empty id and are
++    // routed to the coordinate click path before reaching here.
++    return actor::PageTarget(actor::DomNode{
++        .node_id = el->dom_node_id,
++        .document_identifier =
++            el->document_identifier.empty() ? doc_id : el->document_identifier});
 +  };
 +  if (verb == "navigate") {
 +    GURL url(GetString(action, "url"));
@@ -736,11 +718,16 @@ index 0000000000000..4762c68126a14
 +       pending_observation_.empty()
 +           ? ""
 +           : base::StrCat({"Last result: ", pending_observation_, "\n"}),
++       pending_read_text_.empty()
++           ? ""
++           : base::StrCat({"PAGE TEXT (from your 'read' — use it to answer or "
++                           "summarize):\n", pending_read_text_, "\n\n"}),
 +       "Interactive elements (", base::NumberToString(page->elements.size()),
 +       "):\n", page->text,
 +       "\nReply with JSON {\"thought\":..., \"actions\":[...]} — batch all "
 +       "steps you can do now into the actions array."});
 +  pending_observation_.clear();
++  pending_read_text_.clear();
 +
 +  // Request = system preamble + this one user message (no growing transcript).
 +  base::ListValue request = messages_.Clone();
@@ -771,6 +758,27 @@ index 0000000000000..4762c68126a14
 +    StepDone("your last reply was not a single JSON object; reply with JSON "
 +             "only");
 +    return;
++  }
++  // A "read" action pulls the page's main text into the next observation so the
++  // model can summarize/extract body content (the element list is actionable
++  // only). Standalone + async — handle it before the normal dispatch.
++  {
++    auto is_read = [](const base::DictValue& a) {
++      return GetString(a, "action") == "read";
++    };
++    const base::ListValue* rb = action->FindList("actions");
++    const bool wants_read =
++        is_read(*action) ||
++        (rb && !rb->empty() && (*rb)[0].is_dict() && is_read((*rb)[0].GetDict()));
++    if (wants_read) {
++      if (!web_contents()) {
++        Finish(false, "tab closed");
++        return;
++      }
++      pending_action_desc_ = "read page text";
++      DoReadPageText();
++      return;
++    }
 +  }
 +  // One-shot batch: an "actions" array runs several steps as a single Actor
 +  // PerformActions (e.g. fill a whole form + submit) -> far fewer LLM turns.
@@ -811,6 +819,26 @@ index 0000000000000..4762c68126a14
 +      }
 +      const InteractiveElement* el =
 +          page->ElementByIndex(a.FindInt("index").value_or(0));
++      // A click on a cross-origin (out-of-process) iframe element can't be
++      // node-targeted -- APC redacts the child frame's document id, and the
++      // Actor node click is renderer-scoped, so it would silently miss (the
++      // cause of the endless "click the same element" loop on e.g. an embedded
++      // CAPTCHA). Dispatch a browser-level humanized click at its viewport point
++      // instead: that path routes through the cross-process input router and so
++      // reaches OOPIFs. Any other actions queued this turn are re-proposed next.
++      if (el && GetString(a, "action") == "click" && el->in_frame &&
++          el->document_identifier.empty()) {
++        MaybeShowOverlay(web_contents(), *page, *el,
++                         gfx::ScaleToRoundedRect(
++                             el->bbox_device_px, 1.0f / device_scale_factor()));
++        pending_action_desc_ = DescribeAction(a);
++        RecordExecutedStep(a, *page, pending_status_);
++        std::string err;
++        if (!HumanizedClickElement(*el, &err)) {
++          StepDone(err.empty() ? "click could not be performed" : err);
++        }
++        return;
++      }
 +      if (el) {
 +        gfx::Rect css = gfx::ScaleToRoundedRect(
 +            el->bbox_device_px, 1.0f / device_scale_factor());
@@ -1072,26 +1100,7 @@ index 0000000000000..4762c68126a14
 +                                 base::NumberToString(index)});
 +      return false;
 +    }
-+    content::RenderWidgetHost* rwh = render_widget_host();
-+    if (!rwh) {
-+      *error_out = "no render widget host";
-+      return false;
-+    }
-+    const float dsf = device_scale_factor();
-+    // APC geometry is visual-viewport device pixels; humanized input wants DIP.
-+    const gfx::PointF target(
-+        (el->bbox_device_px.x() + el->bbox_device_px.width() / 2.0f) / dsf,
-+        (el->bbox_device_px.y() + el->bbox_device_px.height() / 2.0f) / dsf);
-+    LOG(ERROR) << "[ai_agent] CLICK idx=" << index << " <" << el->role
-+               << "> bbox_devpx=" << el->bbox_device_px.ToString()
-+               << " dsf=" << dsf << " -> dip=" << target.ToString();
-+    content::PerformHumanizedClick(
-+        web_contents(), last_cursor_dip_, target,
-+        base::Seconds(kClickDurationSeconds), /*move_only=*/false,
-+        base::BindOnce(&AgentController::OnHumanizedClickDone,
-+                       weak_factory_.GetWeakPtr()));
-+    last_cursor_dip_ = target;
-+    return true;
++    return HumanizedClickElement(*el, error_out);
 +  }
 +
 +  // ---- Actor-framework tools ----
@@ -1122,6 +1131,58 @@ index 0000000000000..4762c68126a14
 +      base::BindOnce(&AgentController::OnActorActed,
 +                     weak_factory_.GetWeakPtr()));
 +  return true;
++}
++
++bool AgentController::HumanizedClickElement(const InteractiveElement& el,
++                                            std::string* error_out) {
++  content::RenderWidgetHost* rwh = render_widget_host();
++  if (!rwh) {
++    *error_out = "no render widget host";
++    return false;
++  }
++  const float dsf = device_scale_factor();
++  // APC geometry is visual-viewport device pixels; humanized input wants DIP.
++  const gfx::PointF target(
++      (el.bbox_device_px.x() + el.bbox_device_px.width() / 2.0f) / dsf,
++      (el.bbox_device_px.y() + el.bbox_device_px.height() / 2.0f) / dsf);
++  LOG(ERROR) << "[ai_agent] CLICK <" << el.role
++             << "> bbox_devpx=" << el.bbox_device_px.ToString() << " dsf=" << dsf
++             << " in_frame=" << el.in_frame << " -> dip=" << target.ToString();
++  content::PerformHumanizedClick(
++      web_contents(), last_cursor_dip_, target,
++      base::Seconds(kClickDurationSeconds), /*move_only=*/false,
++      base::BindOnce(&AgentController::OnHumanizedClickDone,
++                     weak_factory_.GetWeakPtr()));
++  last_cursor_dip_ = target;
++  return true;
++}
++
++void AgentController::DoReadPageText() {
++  content::WebContents* wc = web_contents();
++  if (!wc || !wc->GetPrimaryMainFrame()) {
++    StepDone("read failed: no page");
++    return;
++  }
++  // Prefer a main article/content region; fall back to the whole body. Clip to
++  // keep the prompt bounded.
++  const std::u16string js = base::UTF8ToUTF16(std::string(
++      "(function(){var n=document.querySelector('article,main,[role=main]')"
++      "||document.body;var t=n?n.innerText:'';return t.slice(0,8000);})()"));
++  wc->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
++      js,
++      base::BindOnce(&AgentController::OnReadPageText,
++                     weak_factory_.GetWeakPtr()),
++      kOverlayWorldId);
++}
++
++void AgentController::OnReadPageText(base::Value result) {
++  const std::string text = result.is_string() ? result.GetString() : std::string();
++  pending_read_text_ = text;
++  StepDone(text.empty()
++               ? "read: no readable text found on the page"
++               : base::StrCat({"read page text (",
++                               base::NumberToString(text.size()),
++                               " chars) — shown below as PAGE TEXT"}));
 +}
 +
 +void AgentController::OnHumanizedClickDone() {
@@ -1237,10 +1298,10 @@ index 0000000000000..4762c68126a14
 +}  // namespace ai_agent
 diff --git a/chrome/browser/ai_agent/agent_controller.h b/chrome/browser/ai_agent/agent_controller.h
 new file mode 100644
-index 0000000000000..e79d3afedd0a8
+index 0000000000000..1026aff9b509b
 --- /dev/null
 +++ b/chrome/browser/ai_agent/agent_controller.h
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,180 @@
 +// Copyright 2026 The ChromiumFish Authors
 +// Use of this source code is governed by an MIT-style license.
 +//
@@ -1286,6 +1347,7 @@ index 0000000000000..e79d3afedd0a8
 +
 +class LlmClient;
 +struct SerializedPage;
++struct InteractiveElement;
 +
 +class AgentController {
 + public:
@@ -1355,7 +1417,18 @@ index 0000000000000..e79d3afedd0a8
 +  bool DispatchAction(const base::DictValue& action,
 +                      const SerializedPage& page,
 +                      std::string* error_out);
++  // Browser-level humanized click at `el`'s viewport center. Routed through the
++  // cross-process input router, so unlike the Actor node-id click it reaches
++  // out-of-process (cross-origin) iframes. Used by DispatchAction and as the
++  // fallback for cross-origin-frame elements in the batch path.
++  bool HumanizedClickElement(const InteractiveElement& el,
++                             std::string* error_out);
 +  void OnHumanizedClickDone();
++  // "read" action: pull the page's main readable text into the next observation
++  // so the model can summarize/extract body content (the element list is
++  // actionable-only). Async: runs JS, then OnReadPageText advances the loop.
++  void DoReadPageText();
++  void OnReadPageText(base::Value result);
 +  void OnActorActed(std::vector<actor::ActionResultWithLatencyInfo> results);
 +
 +  // Advances to the next step (or finishes when steps are exhausted) after
@@ -1388,6 +1461,9 @@ index 0000000000000..e79d3afedd0a8
 +  std::vector<std::string> history_;  // Compact "step N: action => result" log.
 +  std::string pending_action_desc_;   // Description of the action in flight.
 +  std::string pending_observation_;   // outcome note for the next user turn.
++  std::string pending_read_text_;     // one-shot page text from a "read" action,
++                                      // injected into the NEXT prompt then cleared
++                                      // (kept out of history_ to avoid bloat).
 +  std::string last_url_;              // for change detection across steps.
 +  std::string last_page_text_;        // for change detection across steps.
 +  std::string transcript_path_;       // --agent-log-file (empty = disabled).
@@ -1794,10 +1870,10 @@ index 0000000000000..0368146caab3b
 +#endif  // CHROME_BROWSER_AI_AGENT_LLM_CLIENT_H_
 diff --git a/chrome/browser/ai_agent/page_serializer.cc b/chrome/browser/ai_agent/page_serializer.cc
 new file mode 100644
-index 0000000000000..7233b4388faa6
+index 0000000000000..61de34865cb19
 --- /dev/null
 +++ b/chrome/browser/ai_agent/page_serializer.cc
-@@ -0,0 +1,345 @@
+@@ -0,0 +1,380 @@
 +// Copyright 2026 The ChromiumFish Authors
 +// Use of this source code is governed by an MIT-style license.
 +
@@ -2011,7 +2087,16 @@ index 0000000000000..7233b4388faa6
 +void Walk(const proto::ContentNode& node,
 +          const std::string& doc_id,
 +          bool in_modal,
++          bool in_frame,
 +          SerializedPage* out) {
++  // Frame context propagated to this node's CHILDREN. An <iframe> subtree is a
++  // different document: its descendants must be node-targeted via THAT frame's
++  // identifier (DOM node ids are per-document). Same-origin frames expose
++  // frame_data.document_identifier; cross-origin frames are redacted (no id) ->
++  // empty, which signals the dispatcher to fall back to coordinate input, the
++  // only click path that reaches an out-of-process iframe.
++  std::string child_doc_id = doc_id;
++  bool child_in_frame = in_frame;
 +  if (node.has_content_attributes()) {
 +    const proto::ContentAttributes& attrs = node.content_attributes();
 +    // A dialog/alertdialog subtree is a modal overlay. Elements behind it are
@@ -2024,6 +2109,17 @@ index 0000000000000..7233b4388faa6
 +      in_modal = true;
 +      out->has_modal = true;
 +    }
++    if (attrs.has_iframe_data()) {
++      child_in_frame = true;
++      child_doc_id =
++          (attrs.iframe_data().has_frame_data() &&
++           attrs.iframe_data().frame_data().has_document_identifier())
++              ? attrs.iframe_data()
++                    .frame_data()
++                    .document_identifier()
++                    .serialized_token()
++              : std::string();
++    }
 +    if (IsInteractive(attrs)) {
 +      InteractiveElement el;
 +      el.index = static_cast<int>(out->elements.size()) + 1;
@@ -2034,6 +2130,7 @@ index 0000000000000..7233b4388faa6
 +          gfx::Rect(vbb.x(), vbb.y(), vbb.width(), vbb.height());
 +      el.role = RoleForNode(attrs);
 +      el.in_modal = in_modal;
++      el.in_frame = in_frame;
 +
 +      std::string label;
 +      if (attrs.attribute_type() == proto::CONTENT_ATTRIBUTE_FORM_CONTROL &&
@@ -2057,6 +2154,20 @@ index 0000000000000..7233b4388faa6
 +      }
 +      std::string line = base::StrCat({"[", base::NumberToString(el.index),
 +                                       "]<", el.role, ">", label});
++      // For links, also surface the destination URL so the model can READ a
++      // result's URL straight from the list instead of clicking/navigating to
++      // it (and so it can report several links' URLs at once). Skip when the
++      // label already IS the URL (LabelForNode's no-text fallback).
++      if (el.role == "a" && attrs.has_anchor_data() &&
++          !attrs.anchor_data().url().empty()) {
++        std::string url = CleanLabel(attrs.anchor_data().url());
++        if (url.size() > 120) {
++          url = url.substr(0, 117) + "...";
++        }
++        if (!url.empty() && url != label) {
++          line += base::StrCat({" -> ", url});
++        }
++      }
 +      // For <select>, list the option values so the model picks an exact one.
 +      if (attrs.has_form_control_data() &&
 +          attrs.form_control_data().select_options_size() > 0) {
@@ -2093,7 +2204,7 @@ index 0000000000000..7233b4388faa6
 +    }
 +  }
 +  for (const proto::ContentNode& child : node.children_nodes()) {
-+    Walk(child, doc_id, in_modal, out);
++    Walk(child, child_doc_id, in_modal, child_in_frame, out);
 +  }
 +}
 +
@@ -2123,7 +2234,7 @@ index 0000000000000..7233b4388faa6
 +  }
 +  if (apc.has_root_node()) {
 +    Walk(apc.root_node(), default_document_identifier, /*in_modal=*/false,
-+         &out);
++         /*in_frame=*/false, &out);
 +  }
 +  if (out.has_modal) {
 +    // Prepend (so it survives the max_chars cap): the model must clear the
@@ -2145,10 +2256,10 @@ index 0000000000000..7233b4388faa6
 +}  // namespace ai_agent
 diff --git a/chrome/browser/ai_agent/page_serializer.h b/chrome/browser/ai_agent/page_serializer.h
 new file mode 100644
-index 0000000000000..57f161f62d362
+index 0000000000000..0c7393899da57
 --- /dev/null
 +++ b/chrome/browser/ai_agent/page_serializer.h
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,72 @@
 +// Copyright 2026 The ChromiumFish Authors
 +// Use of this source code is governed by an MIT-style license.
 +//
@@ -2180,12 +2291,16 @@ index 0000000000000..57f161f62d362
 +struct InteractiveElement {
 +  int index = 0;             // 1-based; what the LLM sees and returns.
 +  int dom_node_id = 0;       // ContentAttributes.common_ancestor_dom_node_id.
-+  std::string document_identifier;  // Frame token; for ActionTarget/DomNode.
++  std::string document_identifier;  // Owning frame's token; for ActionTarget/
++                             // DomNode. EMPTY for a cross-origin (out-of-process)
++                             // iframe element — APC redacts the child frame's id,
++                             // so it can't be node-targeted; click via coordinates.
 +  gfx::Rect bbox_device_px;  // visible_bounding_box (visual-viewport device px).
 +  std::string role;          // short tag/role label, e.g. "button", "a".
 +  std::string name;          // stable semantic name (field name / label / text),
 +                             // WITHOUT volatile state; used as a replay locator.
 +  bool in_modal = false;     // inside a dialog/alertdialog subtree (see has_modal).
++  bool in_frame = false;     // inside an <iframe> subtree (same- or cross-origin).
 +};
 +
 +// Result of serializing one observation.

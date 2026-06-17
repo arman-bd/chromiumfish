@@ -1,6 +1,11 @@
 # examples
 
-Small scripts showing how to drive ChromiumFish.
+Small scripts showing how to drive ChromiumFish, in two flavors:
+
+- **Native AI agent** (`run_agent.py`, `search_web.py`) — hand it a plain-language
+  task; it perceives + acts inside the browser process. Needs an LLM (`.env`).
+- **Plain Playwright** (`playwright_*.py`) — drive the stealth browser yourself
+  with ordinary Playwright, under a per-seed persona. No LLM needed.
 
 ## `run_agent.py` — native AI agent
 
@@ -42,3 +47,29 @@ with launch_agent() as agent:
 ```sh
 python3 examples/search_web.py
 ```
+
+## `playwright_*.py` — plain Playwright (the stealth browser)
+
+`Chromiumfish` / `AsyncChromiumfish` wrap `playwright.chromium.launch` at the
+ChromiumFish build and apply a `persona_seed`; they hand back a normal Playwright
+`Browser`, so all of Playwright works as usual.
+
+```python
+from chromiumfish.sync_api import Chromiumfish
+
+with Chromiumfish(persona_seed="alpha-7") as browser:   # also: headless=, proxy=,
+    page = browser.new_page()                            # window_size=, timezone="auto"
+    page.goto("https://www.wikipedia.org/")
+    print(page.title())
+```
+
+```sh
+pip install chromiumfish        # pulls Playwright; the published build is fetched on first run
+python3 examples/playwright_basic.py        # open a page, print its title
+python3 examples/playwright_fingerprint.py  # what a page sees: a Windows persona; per-seed entropy
+python3 examples/playwright_screenshot.py   # full-page PNG of a real site -> hn.png
+python3 examples/playwright_async.py        # AsyncChromiumfish: fetch several pages concurrently
+```
+
+These don't need an LLM or `.env`. Unlike the agent examples, the Playwright
+wrapper always uses the fetched/installed build (it doesn't read `CHROME_BIN`).

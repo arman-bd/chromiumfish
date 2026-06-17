@@ -69,7 +69,20 @@ AGENT_SYSTEM_PROMPT = (
     "in a single response. Use a single step only when the next step truly "
     "depends on this one's result.\n\n"
     "Rules:\n"
+    "- If a cookie/consent dialog or modal is open — its elements are marked "
+    "(modal), or you see text like \"Accept all\" / \"Reject all\" / "
+    "\"consent\" / \"Before you continue\" — DISMISS it FIRST by clicking its "
+    "accept/agree/continue button, before attempting anything else. Elements "
+    "behind a modal are still listed but are visually covered and cannot be "
+    "used until it is gone.\n"
     "- Use only indices in the CURRENT list; they are renumbered every step.\n"
+    "- Link items (role a) show their destination URL after \" -> \". To report "
+    "or use a link's URL, READ it from the list — do not click/navigate to the "
+    "link just to find its address.\n"
+    "- The element list shows only INTERACTIVE controls, NOT the article/body "
+    "text. To read or summarize page CONTENT (article, blog post, paragraphs), "
+    "issue {\"action\":\"read\"} by itself; the page's text appears in your NEXT "
+    "observation as PAGE TEXT — then answer from it.\n"
     "- To submit a search or form, set \"enter\": true when typing, or click the "
     "submit/Continue button. Typing alone does not submit.\n"
     "- For a select, use action \"select\" with an exact value from its opts.\n"
@@ -269,6 +282,7 @@ def launch_agent(
     *,
     port: int = 9222,
     chrome: Optional[os.PathLike | str] = None,
+    model: str = "",
     load_dotenv: bool = True,
     extra_args: Optional[list[str]] = None,
     timeout: float = 30.0,
@@ -282,8 +296,10 @@ def launch_agent(
             print(agent.run_task("...").final_text)
 
     LLM config is read from ``OPENAI_API_BASE`` / ``OPENAI_API_KEY`` /
-    ``OPENAI_API_MODEL`` (a nearby ``.env`` is loaded automatically). The binary
-    is ``chrome=`` / the ``CHROME_BIN`` env var / the published build.
+    ``OPENAI_API_MODEL`` (a nearby ``.env`` is loaded automatically). Pass
+    ``model=`` to set the model for this session in-script (overrides
+    ``OPENAI_API_MODEL``); ``run_task(model=...)`` overrides it per task. The
+    binary is ``chrome=`` / the ``CHROME_BIN`` env var / the published build.
     """
     if load_dotenv:
         _load_dotenv()
@@ -300,10 +316,18 @@ def launch_agent(
             "--remote-allow-origins=*",
             f"--user-data-dir={profile}",
             "--disable-actor-safety-checks",  # let the agent act unattended
+            # Type at a human cadence. The Actor framework's incremental-typing
+            # default is 25ms down + 25ms up per key (~240 WPM, superhuman) and
+            # a 0.2x speed-boost for long text. Slow it to ~75 WPM and keep long
+            # text from going superhuman so the agent's typing looks human.
+            "--enable-features=GlicActorIncrementalTyping:"
+            "glic-actor-incremental-typing-key-down-duration/45ms/"
+            "glic-actor-incremental-typing-key-up-duration/110ms/"
+            "glic-actor-incremental-typing-long-multiplier/0.7",
             "--no-first-run", "--no-default-browser-check",
             f"--agent-llm-url={os.environ.get('OPENAI_API_BASE', '')}",
             f"--agent-llm-key={os.environ.get('OPENAI_API_KEY', '')}",
-            f"--agent-model={os.environ.get('OPENAI_API_MODEL', '')}",
+            f"--agent-model={model or os.environ.get('OPENAI_API_MODEL', '')}",
             *(extra_args or []),
         ],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
