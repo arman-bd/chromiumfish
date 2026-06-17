@@ -1,5 +1,5 @@
 diff --git a/third_party/blink/renderer/modules/webaudio/audio_context.cc b/third_party/blink/renderer/modules/webaudio/audio_context.cc
-index fdebe5684e41b..6f80ec9b7bee7 100644
+index e60e454815d33..dea9295f2fe06 100644
 --- a/third_party/blink/renderer/modules/webaudio/audio_context.cc
 +++ b/third_party/blink/renderer/modules/webaudio/audio_context.cc
 @@ -19,6 +19,7 @@
@@ -25,7 +25,7 @@ index fdebe5684e41b..6f80ec9b7bee7 100644
  // Operations tracked in the WebAudio.AudioContext.Operation histogram.
  enum class AudioContextOperation {
    kCreate,
-@@ -617,7 +610,7 @@ AudioContext::AudioContext(LocalDOMWindow& window,
+@@ -618,7 +611,7 @@ AudioContext::AudioContext(LocalDOMWindow& window,
    }
  
    destination_node_ = RealtimeAudioDestinationNode::Create(
@@ -34,7 +34,7 @@ index fdebe5684e41b..6f80ec9b7bee7 100644
        update_echo_cancellation_on_first_start);
  
    TRACE_EVENT2("webaudio", "AudioContext::AudioContext", "UUID", Uuid(),
-@@ -1150,17 +1143,14 @@ double AudioContext::baseLatency() const {
+@@ -1144,17 +1137,14 @@ double AudioContext::baseLatency() const {
    DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
    DCHECK(destination());
  
@@ -46,7 +46,7 @@ index fdebe5684e41b..6f80ec9b7bee7 100644
    DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
    DCHECK(destination());
  
--  DeferredTaskHandler::GraphAutoLocker locker(GetDeferredTaskHandler());
+-  DeferredTaskHandler::GraphAutoLocker locker(this);
 -
 -  double factor = GetOutputLatencyQuantizingFactor();
 -  return std::round(output_position_.hardware_output_latency / factor) * factor;
@@ -54,7 +54,7 @@ index fdebe5684e41b..6f80ec9b7bee7 100644
  }
  
  AudioPlaybackStats* AudioContext::playbackStats() {
-@@ -1648,13 +1638,6 @@ void AudioContext::DidInitialPermissionCheck(
+@@ -1638,13 +1628,6 @@ void AudioContext::DidInitialPermissionCheck(
        std::move(observer));
  }
  
@@ -69,10 +69,10 @@ index fdebe5684e41b..6f80ec9b7bee7 100644
    DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
  
 diff --git a/third_party/blink/renderer/modules/webaudio/audio_context.h b/third_party/blink/renderer/modules/webaudio/audio_context.h
-index d36e7a82a32df..95d30c4eff756 100644
+index b15ba3892f28e..e8b263d46c627 100644
 --- a/third_party/blink/renderer/modules/webaudio/audio_context.h
 +++ b/third_party/blink/renderer/modules/webaudio/audio_context.h
-@@ -362,7 +362,6 @@ class MODULES_EXPORT AudioContext final
+@@ -356,7 +356,6 @@ class MODULES_EXPORT AudioContext final
  
    void DidInitialPermissionCheck(mojom::blink::PermissionDescriptorPtr,
                                   mojom::blink::PermissionStatusWithDetailsPtr);
@@ -81,7 +81,7 @@ index d36e7a82a32df..95d30c4eff756 100644
    void InitializeMediaDeviceService();
    void UninitializeMediaDeviceService();
 diff --git a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
-index 6a6623a605699..aaa2a224bbda1 100644
+index a63cffefb5522..0bc2761475924 100644
 --- a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
 +++ b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
 @@ -28,6 +28,8 @@
@@ -260,11 +260,14 @@ index 6a6623a605699..aaa2a224bbda1 100644
      // promise too.
      DispatchEvent(*OfflineAudioCompletionEvent::Create(rendered_buffer));
 diff --git a/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc b/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc
-index 6db772e60558e..1653f5386ac72 100644
+index c02c792af301a..189fa86eb37dd 100644
 --- a/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc
 +++ b/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc
-@@ -7,9 +7,12 @@
+@@ -5,11 +5,15 @@
+ #include "third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.h"
+ 
  #include <algorithm>
++#include <vector>
  
  #include "base/compiler_specific.h"
 +#include "base/containers/span.h"
@@ -276,47 +279,57 @@ index 6db772e60558e..1653f5386ac72 100644
  #include "third_party/blink/renderer/core/execution_context/execution_context.h"
  #include "third_party/blink/renderer/modules/webaudio/audio_node_input.h"
  #include "third_party/blink/renderer/modules/webaudio/audio_node_output.h"
-@@ -191,6 +194,35 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
+@@ -180,6 +184,10 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
+   // If there is more to process and there is no suspension at the moment,
+   // do continue to render quanta. Then calling OfflineAudioContext.resume()
+   // will pick up the render loop again from where it was suspended.
++  // Reused per-quantum scratch for audio fingerprint isolation (see below).
++  // Sized once to the render quantum; never reallocated mid-stream.
++  std::vector<float> isolation_scratch;
++
+   while (frames_to_process_ > 0) {
+     // Suspend the rendering if a scheduled suspend found at the current
+     // sample frame. Otherwise render one quantum.
+@@ -191,16 +199,38 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
      uint32_t frames_available_to_copy = std::min(
          frames_to_process_, GetDeferredTaskHandler().RenderQuantumFrames());
  
-+    // 2026-05-31: Per-seed audio fingerprint isolation. Apply on every
-+    // platform EXCEPT Mac — on Apple Silicon the hook crashed the
-+    // renderer with SIGSEGV at NULL+0x60 on any page that runs
-+    // OfflineAudioContext (commercial fingerprinters, a fingerprint test site). Linux x86_64 runs
-+    // it cleanly, so we keep it enabled there. Suspected Mac trigger:
-+    // AudioChannel::MutableSpan() side-effects on the silent flag
-+    // intersecting CoreAudio's offline render assumptions.
-+#if !BUILDFLAG(IS_MAC)
++    // Per-seed audio fingerprint isolation, applied on EVERY platform
++    // including Mac. 2026-06-16: the previous `#if !BUILDFLAG(IS_MAC)`
++    // carve-out existed because AudioChannel::MutableSpan() SIGSEGV'd
++    // (NULL+0x60) during Apple-Silicon offline render — MutableSpan()
++    // calls ClearSilentFlag() and can hand back a span backed by the
++    // shared/never-materialized silent buffer. We now read through the
++    // const Span() into a reusable local scratch buffer, isolate THAT,
++    // and write to the shared target. That is exactly the set of
++    // operations the old Mac fallback already ran without crashing
++    // (Span() + copy_from), so audio isolation is finally live on Mac
++    // too — closing the Windows-persona-on-Mac audio fingerprint leak.
 +    const uint64_t persona_seed =
 +        blink::fingerprinting::Current().persona_seed;
-+    for (unsigned channel_index = 0; channel_index < number_of_channels;
-+         ++channel_index) {
-+      auto channel_span = render_bus_->Channel(channel_index)
-+                              ->MutableSpan()
-+                              .first(frames_available_to_copy);
+     for (unsigned channel_index = 0; channel_index < number_of_channels;
+          ++channel_index) {
++      auto channel_src = render_bus_->Channel(channel_index)
++                             ->Span()
++                             .first(frames_available_to_copy);
++      isolation_scratch.assign(channel_src.begin(), channel_src.end());
 +      // Thread frames_processed_ as the global sample offset so the
 +      // noise key never resets between render quanta — otherwise the
 +      // per-quantum pattern repeats and the integrated the fingerprinter sum cancels.
 +      blink::fingerprinting::IsolateAudioSamples(
-+          channel_span, frames_processed_, persona_seed);
-+      shared_render_target_->channels()[channel_index]
-+          .ByteSpan()
-+          .subspan(frames_processed_ * sizeof(float),
-+                   frames_available_to_copy * sizeof(float))
-+          .copy_from(base::as_bytes(base::allow_nonunique_obj,
-+                                    base::span<const float>(channel_span)));
-+    }
-+#else
-+    // Mac path — plain upstream copy_from, no noise. See above.
-     for (unsigned channel_index = 0; channel_index < number_of_channels;
-          ++channel_index) {
++          base::span<float>(isolation_scratch), frames_processed_,
++          persona_seed);
        shared_render_target_->channels()[channel_index]
-@@ -202,6 +234,7 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
-                                         ->Span()
-                                         .first(frames_available_to_copy)));
+           .ByteSpan()
+           .subspan(frames_processed_ * sizeof(float),
+                    frames_available_to_copy * sizeof(float))
+-          .copy_from(base::as_bytes(base::allow_nonunique_obj,
+-                                    render_bus_->Channel(channel_index)
+-                                        ->Span()
+-                                        .first(frames_available_to_copy)));
++          .copy_from(
++              base::as_bytes(base::allow_nonunique_obj,
++                             base::span<const float>(isolation_scratch)));
      }
-+#endif
  
      frames_processed_ += frames_available_to_copy;
- 

@@ -13,10 +13,10 @@ index 6f48104544022..ca1df0809b316 100644
      "frame/frame_ad_evidence_mojom_traits.cc",
 diff --git a/third_party/blink/common/fingerprinting/fingerprint_profile.cc b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
 new file mode 100644
-index 0000000000000..13a605d7b78f9
+index 0000000000000..6b7084d558386
 --- /dev/null
 +++ b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
-@@ -0,0 +1,436 @@
+@@ -0,0 +1,440 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -82,16 +82,20 @@ index 0000000000000..13a605d7b78f9
 +  double weight;
 +};
 +
-+// Pinned to current Chrome 148 stable (148.0.7778.179 = the version
-+// shipped by Google as of capture date, captured side-by-side from real
-+// chrome.exe on a Win box). Switched FROM 150.0.7844.0: Chrome 150 has
-+// no stable release yet, so claiming v150 is itself a bot tell on the bot detector
-+// managed-challenge tiers. Pinning to the canonical stable also gives
-+// us the matching GREASE brand order automatically (the shuffle is
-+// seeded by major version; orders[148%6]={2,0,1} → [Chromium, Google
-+// Chrome, Not/A)Brand], matching real Chrome 148 byte-for-byte).
++// Pinned to MATCH the engine: this tree is built from Chromium
++// 149.0.7827.115 (the current stable as of migration), so the persona
++// claims exactly 149.0.7827.115. Claiming the engine's own version is
++// the only way to stay consistent with feature-detected reality — a
++// persona one milestone behind (we previously claimed 148 on a 149
++// engine, after earlier claiming 148 on a 150 engine) risks UA-vs-engine
++// tampering hits if a probe gates on a 149-era API. Keep this in lockstep
++// with the checked-out Chromium tag whenever the engine is re-based.
++// The GREASE brand order is NOT hardcoded here: Chromium's built-in
++// GetGreasedUserAgentBrandList seeds its permutation from the major
++// version, so setting major=149 yields real-Chrome-149's brand order
++// (and Sec-CH-UA-Full-Version-List) automatically, byte-for-byte.
 +constexpr std::array<WeightedEntry<ChromeVer>, 1> kChromeVersions = {{
-+    {{148, "148.0.7778.179"}, 1.00},
++    {{149, "149.0.7827.115"}, 1.00},
 +}};
 +
 +// Lock to Win 11 (15.0.0). Captured the bot detector WIN traffic on 2026-05-24 showed
