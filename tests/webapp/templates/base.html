@@ -21,6 +21,7 @@
         <a href="{{ url_for('search') }}" class="{{ 'active' if path.startswith('/search') }}" data-testid="nav-search">Search</a>
         <a href="{{ url_for('shop') }}" class="{{ 'active' if path.startswith('/shop') or path.startswith('/product') }}" data-testid="nav-shop">Shop</a>
         <a href="{{ url_for('todos') }}" class="{{ 'active' if path.startswith('/todos') }}" data-testid="nav-todos">Tasks</a>
+        <a href="{{ url_for('notes') }}" class="{{ 'active' if path.startswith('/notes') }}" data-testid="nav-notes">Notes</a>
         <a href="{{ url_for('table') }}" class="{{ 'active' if path.startswith('/data') }}" data-testid="nav-data">Data</a>
         <a href="{{ url_for('cart') }}" class="cart-link {{ 'active' if path.startswith('/cart') }}" data-testid="nav-cart">
           🛒 <span class="cart-count" data-count="{{ cart_count }}" data-testid="cart-count">{{ cart_count or '' }}</span>

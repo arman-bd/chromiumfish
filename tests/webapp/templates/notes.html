@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Notes · ByteTunnels{% endblock %}
+
+{% block body %}
+<section class="container section">
+  <div class="row spread wrap" style="margin-bottom:18px;">
+    <div>
+      <h1 style="margin-bottom:4px;">Notes</h1>
+      <p class="muted" style="margin:0;">Write sticky notes, colour-tag them, pin and search.</p>
+    </div>
+    <span class="badge dim" data-testid="notes-count">{{ total }} note{{ 's' if total != 1 }} · {{ pinned }} pinned</span>
+  </div>
+
+  <div class="grid" style="grid-template-columns:340px 1fr; align-items:start;">
+    <!-- Compose -->
+    <form class="card pad" method="post" action="{{ url_for('notes_add') }}"
+          data-testid="note-form" style="position:sticky; top:74px;">
+      <h3 style="margin-bottom:14px;">New note</h3>
+      <label class="field" style="margin-bottom:12px;">
+        <span class="field-label">Title</span>
+        <input class="input" name="title" placeholder="A short title"
+               data-testid="note-title" autocomplete="off" />
+      </label>
+      <label class="field" style="margin-bottom:12px;">
+        <span class="field-label">Body</span>
+        <textarea class="input" name="body" rows="4" placeholder="Write something…"
+                  data-testid="note-body"></textarea>
+      </label>
+
+      <span class="field-label">Colour</span>
+      <div class="swatches" data-testid="note-colors">
+        {% for c in colors %}
+        <label class="swatch swatch-{{ c }}" data-testid="swatch-{{ c }}" title="{{ c|capitalize }}">
+          <input type="radio" name="color" value="{{ c }}" {{ 'checked' if loop.first }} />
+          <span class="swatch-dot"></span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <button class="btn primary block" type="submit" data-testid="note-save"
+              style="margin-top:16px;">Save note</button>
+    </form>
+
+    <!-- Board -->
+    <div>
+      <form class="row" method="get" action="{{ url_for('notes') }}"
+            data-testid="note-search-form" style="margin-bottom:16px;">
+        <input class="input grow" name="q" value="{{ q }}" placeholder="Search notes…"
+               data-testid="note-search" autocomplete="off" />
+        <button class="btn" type="submit" data-testid="note-search-btn">Search</button>
+        {% if searched %}
+        <a class="btn ghost" href="{{ url_for('notes') }}" data-testid="note-search-clear">Clear</a>
+        {% endif %}
+      </form>
+
+      {% if notes %}
+      <div class="notes-grid" data-testid="notes-list">
+        {% for n in notes %}
+        <article class="note note-{{ n.color }} {{ 'pinned' if n.pinned }}" data-testid="note-{{ n.id }}">
+          <div class="note-head">
+            <h3 class="note-title" data-testid="title-{{ n.id }}">{{ n.title }}</h3>
+            <form method="post" action="{{ url_for('notes_pin') }}">
+              <input type="hidden" name="id" value="{{ n.id }}" />
+              <input type="hidden" name="q" value="{{ q }}" />
+              <button type="submit" class="pin-btn {{ 'on' if n.pinned }}"
+                      title="{{ 'Unpin' if n.pinned else 'Pin' }}"
+                      data-testid="pin-{{ n.id }}">📌</button>
+            </form>
+          </div>
+          {% if n.body %}
+          <p class="note-body" data-testid="body-{{ n.id }}">{{ n.body }}</p>
+          {% endif %}
+          <div class="note-foot">
+            <span class="note-tag">{{ n.color }}</span>
+            <form method="post" action="{{ url_for('notes_delete') }}">
+              <input type="hidden" name="id" value="{{ n.id }}" />
+              <input type="hidden" name="q" value="{{ q }}" />
+              <button type="submit" class="icon-btn sm" title="Delete"
+                      data-testid="delete-{{ n.id }}">🗑️</button>
+            </form>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty" data-testid="notes-empty">
+        <div style="font-size:32px;">🗒️</div>
+        <p>{{ 'No notes match “' ~ q ~ '”.' if searched else 'No notes yet — write your first one on the left.' }}</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block head %}
+<style>
+  /* Colour palette for the sticky notes (light + dark variants). */
+  .swatch-yellow { --note: #fff3bf; --note-bd: #f2e08a; --note-ink: #6b5b09; }
+  .swatch-blue   { --note: #d7e6ff; --note-bd: #a9c8f5; --note-ink: #1d3f72; }
+  .swatch-green  { --note: #d7f4e3; --note-bd: #a7e0c1; --note-ink: #19613f; }
+  .swatch-pink   { --note: #ffe0ec; --note-bd: #f7b8cf; --note-ink: #7a2348; }
+  .swatch-purple { --note: #e9e0ff; --note-bd: #c8b6f5; --note-ink: #45307d; }
+  .note-yellow { --note: #fff3bf; --note-bd: #f2e08a; --note-ink: #6b5b09; }
+  .note-blue   { --note: #d7e6ff; --note-bd: #a9c8f5; --note-ink: #1d3f72; }
+  .note-green  { --note: #d7f4e3; --note-bd: #a7e0c1; --note-ink: #19613f; }
+  .note-pink   { --note: #ffe0ec; --note-bd: #f7b8cf; --note-ink: #7a2348; }
+  .note-purple { --note: #e9e0ff; --note-bd: #c8b6f5; --note-ink: #45307d; }
+
+  .swatches { display:flex; gap:10px; margin-top:6px; }
+  .swatch { cursor:pointer; }
+  .swatch input { position:absolute; opacity:0; width:0; height:0; }
+  .swatch-dot {
+    display:block; width:26px; height:26px; border-radius:50%;
+    background:var(--note); border:1px solid var(--note-bd); transition:.12s;
+  }
+  .swatch:hover .swatch-dot { transform:scale(1.08); }
+  .swatch input:checked + .swatch-dot {
+    box-shadow:0 0 0 2px var(--surface), 0 0 0 4px var(--text-dim);
+  }
+
+  .notes-grid {
+    display:grid; gap:14px;
+    grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+  }
+  .note {
+    background:var(--note); border:1px solid var(--note-bd); color:var(--note-ink);
+    border-radius:var(--radius); padding:14px 14px 10px; box-shadow:var(--shadow-soft);
+    display:flex; flex-direction:column; gap:8px; min-height:120px;
+  }
+  :root[data-theme="dark"] .note { filter:saturate(.7) brightness(.92); }
+  .note.pinned { box-shadow:0 0 0 2px var(--note-bd), var(--shadow); }
+  .note-head { display:flex; align-items:flex-start; gap:8px; }
+  .note-title { font-size:1rem; margin:0; flex:1; color:var(--note-ink); }
+  .note-body { margin:0; color:var(--note-ink); opacity:.92; white-space:pre-wrap;
+    font-size:.9rem; flex:1; }
+  .pin-btn {
+    border:none; background:transparent; cursor:pointer; font-size:.95rem;
+    line-height:1; padding:2px; border-radius:6px; filter:grayscale(1); opacity:.5;
+    transition:.12s;
+  }
+  .pin-btn:hover { opacity:.9; }
+  .pin-btn.on { filter:none; opacity:1; transform:rotate(-8deg); }
+  .note-foot { display:flex; align-items:center; justify-content:space-between;
+    margin-top:auto; padding-top:6px; }
+  .note-tag {
+    font-size:.7rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    opacity:.6;
+  }
+  .icon-btn.sm { width:28px; height:28px; font-size:.85rem;
+    background:transparent; border-color:transparent; color:var(--note-ink); }
+  .icon-btn.sm:hover { background:rgba(0,0,0,.06); }
+  @media (max-width: 760px) {
+    .container .grid { grid-template-columns:1fr !important; }
+    form.card[data-testid="note-form"] { position:static !important; }
+  }
+</style>
+{% endblock %}

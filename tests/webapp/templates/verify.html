@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<!--
+  BotGate — a self-contained, UI-only clone of a bot challenge / bot-detection services
+  "verify you are human" interstitial. No real bot detection happens here; the
+  checkbox runs a scripted spinner → success animation so an automated browser
+  agent has something realistic to recognise and click through.
+  Deliberately does NOT extend base.html so it looks like a standalone gate.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Just a moment… · {{ site }}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>" />
+  <style>
+    :root {
+      --ink:    #1d1d1f;
+      --soft:   #5b5b5f;
+      --line:   #d9d9de;
+      --line-2: #e6e6ea;
+      --bg:     #ffffff;
+      --ok:     #2e9e5b;
+      --link:   #2f6fed;
+      --cloud:  #4aa3df;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .wrap { flex: 1; width: 100%; max-width: 1180px; margin: 0 auto; padding: 64px 48px; }
+    .site {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 34px;
+    }
+    .site .lock { font-size: 40px; line-height: 1; }
+    .site h1 { font-size: 44px; font-weight: 700; margin: 0; letter-spacing: -0.5px; }
+    .heading { font-size: 26px; font-weight: 700; margin: 0 0 14px; }
+    .blurb { font-size: 18px; line-height: 1.5; color: var(--ink); max-width: 880px; margin: 0; }
+
+    /* Challenge widget */
+    .widget {
+      margin-top: 36px;
+      width: 420px; max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #fafafa;
+      padding: 14px 16px;
+      display: flex; align-items: center; gap: 14px;
+      box-shadow: 0 0 2px rgba(0,0,0,.04);
+    }
+    .cb {
+      width: 28px; height: 28px; flex: none;
+      border: 2px solid #b9b9c0; border-radius: 4px;
+      background: #fff; cursor: pointer;
+      display: grid; place-items: center; position: relative;
+      transition: border-color .15s, background .15s;
+    }
+    .cb:hover { border-color: #8c8c95; }
+    .cb:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(47,111,237,.35); }
+    .cb .check { color: #fff; font-size: 17px; font-weight: 800; opacity: 0; transform: scale(.4); transition: .18s; }
+    .spinner {
+      width: 20px; height: 20px; border-radius: 50%;
+      border: 3px solid #c9c9d0; border-top-color: #7a7a85;
+      animation: spin .7s linear infinite; display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* States */
+    .widget.verifying .cb { display: none; }
+    .widget.verifying .spinner { display: block; }
+    .widget.done .cb { background: var(--ok); border-color: var(--ok); }
+    .widget.done .cb .check { opacity: 1; transform: scale(1); }
+
+    .label { flex: 1; font-size: 15px; color: var(--ink); user-select: none; white-space: nowrap; }
+    .brand { text-align: right; line-height: 1.2; }
+    .brand .logo { display: flex; align-items: center; justify-content: flex-end; gap: 5px;
+      font-size: 13px; font-weight: 800; letter-spacing: .3px; color: #46474b; }
+    .brand .logo .emoji { font-size: 18px; }
+    .brand .links { font-size: 10px; color: #8a8a90; margin-top: 2px; }
+    .brand .links a { color: #8a8a90; text-decoration: none; }
+    .brand .links a:hover { text-decoration: underline; }
+
+    /* Success panel — revealed after the check passes */
+    .success {
+      margin-top: 30px; display: none; align-items: center; gap: 14px;
+      animation: fade .25s ease;
+    }
+    .success.show { display: flex; }
+    .success .tick {
+      width: 34px; height: 34px; border-radius: 50%; flex: none;
+      background: var(--ok); color: #fff; display: grid; place-items: center;
+      font-size: 18px; font-weight: 800;
+    }
+    .success .msg { font-size: 17px; font-weight: 600; }
+    .success .go {
+      margin-left: 8px; padding: 9px 18px; border-radius: 6px;
+      background: var(--ink); color: #fff; text-decoration: none; font-size: 15px; font-weight: 600;
+    }
+    .success .go:hover { background: #000; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
+
+    footer {
+      border-top: 1px solid var(--line-2);
+      text-align: center; padding: 22px 16px; color: #76767c; font-size: 14px;
+    }
+    footer .ray { color: #46474b; }
+    footer .sep { margin: 0 8px; color: #c2c2c8; }
+    footer a { color: var(--link); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 620px) {
+      .wrap { padding: 40px 22px; }
+      .site h1 { font-size: 32px; }
+      .site .lock { font-size: 30px; }
+      .heading { font-size: 21px; }
+      .blurb { font-size: 16px; }
+    }
+  </style>
+</head>
+<body data-testid="BotGate">
+  <div class="wrap">
+    <div class="site">
+      <span class="lock" id="lock" aria-hidden="true">🔓</span>
+      <h1 data-testid="cf-site">{{ site }}</h1>
+    </div>
+
+    <h2 class="heading" id="heading" data-testid="cf-heading">Performing security verification</h2>
+    <p class="blurb" id="blurb" data-testid="cf-blurb">
+      This website uses a security service to protect against malicious bots.
+      This page is displayed while the website verifies you are not a bot.
+    </p>
+
+    <!-- The challenge widget -->
+    <div class="widget" id="widget" data-testid="cf-widget" data-state="idle">
+      <div class="cb" id="checkbox" role="checkbox" aria-checked="false" tabindex="0"
+           aria-label="Verify you are human" data-testid="cf-checkbox">
+        <span class="check">✓</span>
+      </div>
+      <div class="spinner" aria-hidden="true"></div>
+      <span class="label" id="label" data-testid="cf-label">Verify you are human</span>
+      <div class="brand">
+        <div class="logo"><span class="emoji">☁️</span> BotGate</div>
+        <div class="links">
+          <a href="#" onclick="return false;">Privacy</a> ·
+          <a href="#" onclick="return false;">Help</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Revealed once the check passes -->
+    <div class="success" id="success" data-testid="cf-success">
+      <span class="tick">✓</span>
+      <span class="msg">Verification successful — you're verified as human.</span>
+      <a class="go" href="{{ next_url }}" data-testid="cf-continue">Continue to site →</a>
+    </div>
+  </div>
+
+  <footer>
+    <div>Ray ID: <span class="ray" data-testid="cf-ray">{{ ray_id }}</span></div>
+    <div style="margin-top:4px;">
+      Performance &amp; Security by BotGate
+      <span class="sep">|</span>
+      <a href="#" onclick="return false;">Privacy</a>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var widget   = document.getElementById('widget');
+      var checkbox = document.getElementById('checkbox');
+      var label    = document.getElementById('label');
+      var heading  = document.getElementById('heading');
+      var blurb    = document.getElementById('blurb');
+      var lock     = document.getElementById('lock');
+      var success  = document.getElementById('success');
+      var cont     = document.querySelector('[data-testid=cf-continue]');
+
+      // Where to send the visitor once they pass. Primary source is the URL
+      // fragment — e.g. /verify#url=/notes — so the destination can be set
+      // client-side with no server round-trip (the hash never reaches Flask).
+      // Falls back to the server-provided next URL when no fragment is present.
+      var serverNext = {{ next_url|tojson }};
+      function destURL() {
+        try {
+          var u = new URLSearchParams((location.hash || '').replace(/^#/, '')).get('url');
+          if (u) return u;
+        } catch (e) {}
+        return serverNext;
+      }
+      if (cont) cont.setAttribute('href', destURL());
+
+      function verify() {
+        if (widget.dataset.state !== 'idle') return;
+
+        // Phase 1 — spinner.
+        widget.dataset.state = 'verifying';
+        widget.classList.add('verifying');
+        checkbox.setAttribute('aria-checked', 'mixed');
+        label.textContent = 'Verifying…';
+
+        setTimeout(function () {
+          // Phase 2 — success.
+          widget.classList.remove('verifying');
+          widget.classList.add('done');
+          widget.dataset.state = 'done';
+          checkbox.setAttribute('aria-checked', 'true');
+          label.textContent = 'Success!';
+          lock.textContent = '🔒';
+          heading.textContent = 'Verification successful';
+          var dest = destURL();
+          if (cont) cont.setAttribute('href', dest);
+          blurb.textContent = 'Thanks — you have been verified. Redirecting you now…';
+          success.classList.add('show');
+          // Auto-redirect to the destination, like a real bot challenge gate.
+          // The "Continue to site" button remains as a manual fallback.
+          setTimeout(function () { window.location.href = dest; }, 900);
+        }, 1600);
+      }
+
+      checkbox.addEventListener('click', verify);
+      checkbox.addEventListener('keydown', function (e) {
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); verify(); }
+      });
+    })();
+  </script>
+</body>
+</html>

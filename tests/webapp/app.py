@@ -47,9 +47,15 @@ SCENARIOS = [
     {"slug": "todos",    "icon": "✅", "title": "Task Manager",
      "desc": "Create tasks, toggle them complete, filter the list and clear what's done.",
      "endpoint": "todos", "tag": "Create / toggle / delete"},
+    {"slug": "notes",    "icon": "📝", "title": "Notes",
+     "desc": "Write sticky notes, colour-tag them, search and pin the ones that matter.",
+     "endpoint": "notes", "tag": "Create / search / pin"},
     {"slug": "data",     "icon": "📊", "title": "Data Grid",
      "desc": "Search, sort by any column and page through a directory of records.",
      "endpoint": "table", "tag": "Sort / filter / paginate"},
+    {"slug": "verify",   "icon": "☁️", "title": "Bot Check",
+     "desc": "A bot-check-style “verify you are human” interstitial — tick the box to pass.",
+     "endpoint": "verify", "tag": "CAPTCHA challenge"},
 ]
 
 
@@ -359,6 +365,110 @@ def todos_clear():
     session["todos"] = items
     flash("Cleared completed tasks.", "toast")
     return redirect(url_for("todos", filter=request.form.get("filter", "all")))
+
+
+# --------------------------------------------------------------------------- #
+# Notes                                                                        #
+# --------------------------------------------------------------------------- #
+
+NOTE_COLORS = ["yellow", "blue", "green", "pink", "purple"]
+
+DEFAULT_NOTES = [
+    {"id": 1, "title": "Welcome to Notes",
+     "body": "Jot anything down here. Pick a colour, pin the important ones and "
+             "use the search box to find a note fast.",
+     "color": "yellow", "pinned": True},
+    {"id": 2, "title": "Shopping list",
+     "body": "Oat milk\nCoffee beans\nA fresh notebook",
+     "color": "blue", "pinned": False},
+    {"id": 3, "title": "Agent test ideas",
+     "body": "Create a note, search for it, pin it, then delete it.",
+     "color": "green", "pinned": False},
+]
+
+
+def _get_notes():
+    if "notes" not in session:
+        session["notes"] = list(DEFAULT_NOTES)
+        session["note_seq"] = len(DEFAULT_NOTES)
+    return session["notes"]
+
+
+@app.route("/notes")
+def notes():
+    items = _get_notes()
+    q = request.args.get("q", "").strip()
+    if q:
+        ql = q.lower()
+        visible = [n for n in items
+                   if ql in n["title"].lower() or ql in n["body"].lower()]
+    else:
+        visible = list(items)
+    # Pinned first, otherwise keep insertion order.
+    visible.sort(key=lambda n: not n["pinned"])
+    pinned = sum(1 for n in items if n["pinned"])
+    return render_template(
+        "notes.html", notes=visible, q=q, colors=NOTE_COLORS,
+        total=len(items), pinned=pinned, searched=bool(q),
+    )
+
+
+@app.route("/notes/add", methods=["POST"])
+def notes_add():
+    title = request.form.get("title", "").strip()
+    body = request.form.get("body", "").strip()
+    color = request.form.get("color", "yellow")
+    if color not in NOTE_COLORS:
+        color = "yellow"
+    if title or body:
+        items = _get_notes()
+        seq = session.get("note_seq", len(items)) + 1
+        items.insert(0, {
+            "id": seq,
+            "title": title or "Untitled note",
+            "body": body,
+            "color": color,
+            "pinned": False,
+        })
+        session["notes"] = items
+        session["note_seq"] = seq
+        flash("Note saved.", "brand")
+    return redirect(url_for("notes"))
+
+
+@app.route("/notes/pin", methods=["POST"])
+def notes_pin():
+    nid = int(request.form.get("id", 0))
+    items = _get_notes()
+    for n in items:
+        if n["id"] == nid:
+            n["pinned"] = not n["pinned"]
+            break
+    session["notes"] = items
+    return redirect(url_for("notes", q=request.form.get("q", "")))
+
+
+@app.route("/notes/delete", methods=["POST"])
+def notes_delete():
+    nid = int(request.form.get("id", 0))
+    session["notes"] = [n for n in _get_notes() if n["id"] != nid]
+    flash("Note deleted.", "toast")
+    return redirect(url_for("notes", q=request.form.get("q", "")))
+
+
+# --------------------------------------------------------------------------- #
+# BotGate — a bot-check-style bot-check interstitial (UI only)            #
+# --------------------------------------------------------------------------- #
+
+@app.route("/verify")
+def verify():
+    # ``site`` is the host the interstitial pretends to protect; ``next`` is
+    # where the "Continue" button points once the user clears the check.
+    import secrets
+    site = request.args.get("site", "notes.bytetunnels.test")
+    nxt = request.args.get("next") or url_for("notes")
+    ray_id = secrets.token_hex(8)
+    return render_template("verify.html", site=site, next_url=nxt, ray_id=ray_id)
 
 
 # --------------------------------------------------------------------------- #
