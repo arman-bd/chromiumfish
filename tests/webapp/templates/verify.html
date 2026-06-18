@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <!--
-  BotGate — a self-contained, UI-only clone of a bot challenge / bot-detection services
+  CloudFluffer — a self-contained, UI-only clone of a bot challenge / bot-detection
   "verify you are human" interstitial. No real bot detection happens here; the
   checkbox runs a scripted spinner → success animation so an automated browser
   agent has something realistic to recognise and click through.
   Deliberately does NOT extend base.html so it looks like a standalone gate.
+  Plain, white, Cloudflare-style appearance.
 -->
 <html lang="en">
 <head>
@@ -21,7 +22,6 @@
       --bg:     #ffffff;
       --ok:     #2e9e5b;
       --link:   #2f6fed;
-      --cloud:  #4aa3df;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -35,9 +35,7 @@
       min-height: 100vh;
     }
     .wrap { flex: 1; width: 100%; max-width: 1180px; margin: 0 auto; padding: 64px 48px; }
-    .site {
-      display: flex; align-items: center; gap: 16px; margin-bottom: 34px;
-    }
+    .site { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
     .site .lock { font-size: 40px; line-height: 1; }
     .site h1 { font-size: 44px; font-weight: 700; margin: 0; letter-spacing: -0.5px; }
     .heading { font-size: 26px; font-weight: 700; margin: 0 0 14px; }
@@ -114,20 +112,52 @@
     footer a { color: var(--link); text-decoration: none; }
     footer a:hover { text-decoration: underline; }
 
+    /* The gatekeeper wizard — bobs while it blocks you, vanishes once verified. */
+    .wizard-guard { margin: 2px 0 30px; display: flex; align-items: center; gap: 16px; }
+    .wizard-guard .wizard {
+      font-size: 60px; line-height: 1;
+      filter: drop-shadow(0 2px 3px rgba(0,0,0,.18));
+      animation: wizard-bob 2.6s ease-in-out infinite;
+    }
+    @keyframes wizard-bob {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-6px); }
+    }
+    .wizard-guard .bubble {
+      position: relative; background: var(--ink); color: #fff;
+      font-weight: 800; font-size: 18px; letter-spacing: .3px;
+      padding: 12px 18px; border-radius: 12px;
+    }
+    .wizard-guard .bubble::before {
+      content: ''; position: absolute; left: -7px; top: 50%; transform: translateY(-50%);
+      border: 7px solid transparent; border-right-color: var(--ink);
+    }
+    /* Merlin now sits ABOVE the widget, so the forward-only "~" no longer reaches
+       him — use :has() (supported in Blink/ChromiumFish) to hide on success. */
+    .wrap:has(.widget.done) .wizard-guard { display: none; }   /* you passed — it stands down */
+
     @media (max-width: 620px) {
       .wrap { padding: 40px 22px; }
       .site h1 { font-size: 32px; }
       .site .lock { font-size: 30px; }
       .heading { font-size: 21px; }
       .blurb { font-size: 16px; }
+      .wizard-guard .wizard { font-size: 44px; }
+      .wizard-guard .bubble { font-size: 16px; }
     }
   </style>
 </head>
-<body data-testid="BotGate">
+<body data-testid="cloudfluffer">
   <div class="wrap">
     <div class="site">
       <span class="lock" id="lock" aria-hidden="true">🔓</span>
       <h1 data-testid="cf-site">{{ site }}</h1>
+    </div>
+
+    <!-- The gatekeeper — stands just below the site name -->
+    <div class="wizard-guard" id="wizard" data-testid="cf-wizard">
+      <span class="wizard" aria-hidden="true">🧙‍♂️</span>
+      <span class="bubble">YOU SHALL NOT PASS!</span>
     </div>
 
     <h2 class="heading" id="heading" data-testid="cf-heading">Performing security verification</h2>
@@ -145,7 +175,7 @@
       <div class="spinner" aria-hidden="true"></div>
       <span class="label" id="label" data-testid="cf-label">Verify you are human</span>
       <div class="brand">
-        <div class="logo"><span class="emoji">☁️</span> BotGate</div>
+        <div class="logo"><span class="emoji">☁️</span> CloudFluffer</div>
         <div class="links">
           <a href="#" onclick="return false;">Privacy</a> ·
           <a href="#" onclick="return false;">Help</a>
@@ -164,7 +194,7 @@
   <footer>
     <div>Ray ID: <span class="ray" data-testid="cf-ray">{{ ray_id }}</span></div>
     <div style="margin-top:4px;">
-      Performance &amp; Security by BotGate
+      Performance &amp; Security by CloudFluffer
       <span class="sep">|</span>
       <a href="#" onclick="return false;">Privacy</a>
     </div>
