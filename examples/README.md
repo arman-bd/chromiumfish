@@ -1,9 +1,10 @@
 # examples
 
-Small scripts showing how to drive ChromiumFish, in two flavors:
+Small scripts showing how to drive ChromiumFish. Python examples live here; the
+JavaScript ones are under [`js/`](js/). Two flavors:
 
-- **Native AI agent** (`run_agent.py`, `search_web.py`) — hand it a plain-language
-  task; it perceives + acts inside the browser process. Needs an LLM (`.env`).
+- **Native AI agent** (`run_agent.py`, `search_web.py`, `js/*.mjs`) — hand it a
+  plain-language task; it perceives + acts inside the browser process. Needs an LLM (`.env`).
 - **Plain Playwright** (`playwright_*.py`) — drive the stealth browser yourself
   with ordinary Playwright, under a per-seed persona. No LLM needed.
 
@@ -73,3 +74,21 @@ python3 examples/playwright_async.py        # AsyncChromiumfish: fetch several p
 
 These don't need an LLM or `.env`. Unlike the agent examples, the Playwright
 wrapper always uses the fetched/installed build (it doesn't read `CHROME_BIN`).
+
+## JavaScript (Node) — [`js/`](js/)
+
+The same agent in JS/TS. Install the SDK (`npm install chromiumfish`; on Node &lt;22 also
+`npm i ws`), use the same `.env`, then:
+
+```sh
+cd tests/webapp && python app.py        # serves :8000
+
+node examples/js/run_agent.mjs          # log in, report whose account you land on
+node examples/js/search_web.mjs         # one-line search via withAgent()
+node examples/js/typing_speed.mjs       # same task at human / fast / instant typing
+```
+
+`launchAgent({ … })` / `withAgent({ … }, fn)` take the same options as Python's
+`launch_agent`: `typing` (`"human"` default / `"fast"` / `"instant"` / a custom
+`[keyDown, keyUp, longMultiplier]` triple), plus `model`, `chrome`, and `extraArgs`. Point at
+a local build with `CHROME_BIN=…/ChromiumFish`.

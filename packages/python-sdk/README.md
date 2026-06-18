@@ -69,6 +69,27 @@ The DB auto-updates: it tracks the `latest` monthly build (cached, re-checked
 weekly), so you get fresh data without upgrading the SDK. Pin a fixed version
 with `CHROMIUMFISH_GEOIP_VERSION=2026.06` for reproducibility.
 
+## AI agent
+
+ChromiumFish ships a native in-browser agent (perceive → think → act, driven by an
+OpenAI-compatible LLM). `launch_agent` starts the browser with the agent layer and connects
+over CDP; `run_task` drives it from a plain-language goal.
+
+```python
+from chromiumfish import launch_agent
+
+# LLM config from a nearby .env: OPENAI_API_BASE / OPENAI_API_KEY / OPENAI_API_MODEL
+with launch_agent(typing="human") as agent:   # typing: "human" (default) / "fast" / "instant"
+    r = agent.run_task("Search DuckDuckGo for 'chromiumfish' and give me the first result's URL.")
+    print(r.final_text)
+```
+
+`run_task` returns an `AgentResult` (`success`, `final_text`, `steps`, `summary()`); pass a
+prior run's `steps` back as `plan=` to replay a flow deterministically. Install the agent
+extra (`pip install "chromiumfish[agent]"`) for the `websocket-client` dependency. Point at a
+local build with `CHROME_BIN=…/ChromiumFish`. Full guide:
+[chromiumfish.com/ai-agent](https://chromiumfish.com/ai-agent).
+
 ## CLI
 
 ```bash

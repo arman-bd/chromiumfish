@@ -50,6 +50,49 @@ lifecycle, so call `browser.close()` when done.
 {: .tip }
 > Set `timezone: "auto"` when you run behind a proxy so the browser's timezone matches the exit IP instead of the host machine.
 
+## AI agent
+
+The native in-browser agent (perceive → think → act). See the [AI Agent guide](../ai-agent)
+for the full picture; this is the API surface. Needs a WebSocket — Node 22+ has a global one;
+on Node &lt;22 add the optional `ws` package (`npm install ws`).
+
+### `launchAgent` / `withAgent`
+
+```ts
+import { withAgent } from "chromiumfish";
+
+// withAgent shuts the browser down for you (like Python's `with launch_agent()`)
+const whose = await withAgent({ typing: "human" }, (agent) =>
+  agent.runTask(
+    "Open http://127.0.0.1:8000/login, sign in with demo@bytetunnels.test / " +
+    "password123, and tell me whose account you land on."
+  ).then((r) => r.finalText));
+```
+
+`launchAgent(opts)` returns `{ agent, close }` if you want to manage the lifecycle yourself.
+LLM config is read from `OPENAI_API_BASE` / `OPENAI_API_KEY` / `OPENAI_API_MODEL` (a nearby
+`.env` is auto-loaded).
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `port` | `number` | `9222` | DevTools remote-debugging port. |
+| `chrome` | `string` | `CHROME_BIN` / cached build | Path to the ChromiumFish binary. |
+| `model` | `string` | `OPENAI_API_MODEL` | Model for this session. |
+| `typing` | `string \| [kd, ku, mult]` | `"human"` | `"human"` (~75 WPM), `"fast"`, `"instant"`, or a `[keyDown, keyUp, longMultiplier]` triple (numbers = ms). |
+| `loadDotenv` | `boolean` | `true` | Auto-load a nearby `.env`. |
+| `extraArgs` | `string[]` | — | Extra Chromium flags (e.g. pass `--agent-llm-url=…` directly). |
+
+### `AgentClient.runTask`
+
+```ts
+const r = await agent.runTask(goal, { url, maxSteps, model, plan });
+```
+
+`url` navigates there first; `maxSteps` (default 25) caps the loop; `plan` replays a resolved
+plan. Returns an **`AgentResult`** with `success`, `finalText`, `steps` (each tagged
+`recorded` / `replayed` / `healed`), and `summary()`. Pass a prior run's `steps` back as
+`{ plan }` to replay it deterministically (the LLM only heals drift).
+
 ## Timezone helpers
 
 The same ip2tz lookup used by `timezone: "auto"` is exposed directly. Both helpers return an IANA timezone string (or `null` if the IP can't be resolved). The DB downloads once and caches.

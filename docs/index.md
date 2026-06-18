@@ -43,6 +43,9 @@ fingerprinting logic of their own; they fetch, verify, and cache the binary, the
   from your egress IP, so it lines up with the proxy you're routing through.
 - **It's just Chromium.** Everything you know about Playwright applies; the SDK is a thin
   wrapper over `chromium.launch(executablePath=...)`.
+- **Native AI agent.** Beyond driving it yourself, hand the browser a plain-language task and
+  its built-in agent perceives the page and acts — click, type, read, navigate — in a loop,
+  driven by any OpenAI-compatible LLM. See [AI Agent](ai-agent).
 
 ## How distribution works
 
@@ -55,6 +58,7 @@ SDK resolves the version to the right platform asset, verifies its SHA-256, extr
 
 - [Installation](installation) — add ChromiumFish to a Python or Node project.
 - [Quickstart](quickstart) — launch a stealth browser in five lines.
+- [AI Agent](ai-agent) — hand the browser a plain-language task; its built-in agent perceives and acts.
 - [Personas](personas) — stable, rotatable identities via `persona_seed`.
 - [Canvas & WebGL bridge](canvas-bridge) — the optional render service for real-GPU pixels.
 - [Recipes](recipes) — copy-pasteable patterns: parallel personas, session reuse, proxies.

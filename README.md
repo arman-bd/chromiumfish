@@ -53,6 +53,18 @@ await page.goto("https://example.com");
 await browser.close();
 ```
 
+**🤖 AI agent** — beyond driving it yourself, hand the browser a plain-language task and its built-in agent perceives the page and acts (click, type, read, navigate) in a loop, driven by any OpenAI-compatible LLM:
+
+```python
+from chromiumfish import launch_agent   # JS: import { launchAgent } from "chromiumfish"
+
+with launch_agent() as agent:           # OPENAI_API_* read from a nearby .env
+    r = agent.run_task("Search for 'chromiumfish' and give me the first result's URL.")
+    print(r.final_text)
+```
+
+See the [AI Agent guide](https://chromiumfish.com/ai-agent) and runnable [examples](examples/).
+
 ## 🪤 Why I built this
 
 I scrape the web at scale, and some sites fight back hard. I worked through most of the open-source stealth browsers and a couple of paid ones, and they kept failing the same way: they run on a Linux server and try to look like they aren't, but they do it with JavaScript patches. That's a bad place to hide. A JS patch leaves tampering marks right where the "has this been messed with?" checks are looking, and the detectors I cared about caught them every time. So I moved the spoofing down into the C++ engine, where there's nothing for a tampering probe to find, and started using it to unblock my own scrapers. It has since gotten me through a few sites that had blocked everything else I tried.
@@ -63,6 +75,7 @@ I scrape the web at scale, and some sites fight back hard. I worked through most
 - 🎭 **One seed, one persona.** A single `persona_seed` (any stable string id) gives you a stable, internally-consistent identity. Change it for a fresh, unlinkable one; reuse it for continuity across sessions.
 - 🎨 **Canvas & WebGL through an optional bridge.** These are the hardest signals to fake from a headless Linux box, where SwiftShader gives you away. Point ChromiumFish at a small render bridge running on Windows and canvas/WebGL reads come back from a real machine instead. It's a separate, optional service, not bundled in the binary.
 - 🤝 **It's just Playwright.** Because it *is* Chromium, everything you already do in Playwright works unchanged. The SDK is a thin wrapper over `chromium.launch(executablePath=…)`.
+- 🤖 **Native AI agent.** A perceive → think → act agent built into the browser process (not a Playwright puppeteer script). Hand it a plain-language task and point it at any OpenAI-compatible LLM. See the [AI Agent guide](https://chromiumfish.com/ai-agent).
 - 📦 **Install in one line.** `pip install chromiumfish` or `npm i chromiumfish`; the binary downloads and caches itself the first time you run it.
 - 🖥️ **Happy headless.** Runs on GPU-less Linux via SwiftShader.
 
@@ -105,6 +118,7 @@ It comes down to three pieces, each doing one thing:
 The full docs live at **[chromiumfish.com](https://chromiumfish.com)** (built with [Just the Docs](https://just-the-docs.com) from [`docs/`](docs/)):
 - [Introduction](https://chromiumfish.com/)
 - [Installation](https://chromiumfish.com/installation) · [Quickstart](https://chromiumfish.com/quickstart) · [Personas](https://chromiumfish.com/personas)
+- [AI Agent](https://chromiumfish.com/ai-agent) — the native in-browser agent
 - [Recipes](https://chromiumfish.com/recipes) · [Canvas & WebGL bridge](https://chromiumfish.com/canvas-bridge) · [Troubleshooting](https://chromiumfish.com/troubleshooting)
 - [Python API](https://chromiumfish.com/api/python) · [JavaScript API](https://chromiumfish.com/api/javascript)
 

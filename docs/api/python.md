@@ -69,6 +69,63 @@ with Chromiumfish(
     page.goto("https://example.com")
 ```
 
+## AI agent
+
+The native in-browser agent (perceive → think → act). See the [AI Agent guide](../ai-agent)
+for the full picture; this is the API surface. Needs `websocket-client`:
+
+```bash
+pip install "chromiumfish[agent]"
+```
+
+### `launch_agent` (context manager)
+
+```python
+from chromiumfish import launch_agent
+
+with launch_agent(typing="human") as agent:           # launches the build + agent layer
+    r = agent.run_task("Open http://127.0.0.1:8000/login, sign in with "
+                       "demo@bytetunnels.test / password123, and tell me whose account you land on.")
+    print(r.success, r.final_text)
+```
+
+The browser is shut down and its temp profile removed on exit. LLM config is read from
+`OPENAI_API_BASE` / `OPENAI_API_KEY` / `OPENAI_API_MODEL` (a nearby `.env` is auto-loaded).
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `port` | `int` | `9222` | DevTools remote-debugging port. |
+| `chrome` | `str` | `CHROME_BIN` / cached build | Path to the ChromiumFish binary. |
+| `model` | `str` | `OPENAI_API_MODEL` | Model for this session. |
+| `typing` | `str \| tuple` | `"human"` | `"human"` (~75 WPM), `"fast"`, `"instant"`, or a `(key_down, key_up, long_multiplier)` triple (numbers = ms). |
+| `load_dotenv` | `bool` | `True` | Auto-load a nearby `.env`. |
+| `extra_args` | `list[str]` | none | Extra Chromium flags (e.g. pass `--agent-llm-url=…` directly). |
+
+### `AgentClient.run_task`
+
+```python
+r = agent.run_task(goal, *, url=None, max_steps=25, model="", plan=None)
+```
+
+`url` navigates there first (the agent can also navigate itself); `max_steps` caps the loop;
+`plan` replays a previously resolved plan. Returns an **`AgentResult`**:
+
+| Attribute | Description |
+|-----------|-------------|
+| `success` | Goal reported met. |
+| `final_text` | The agent's answer. |
+| `steps` | Resolved plan; each step tagged `recorded` / `replayed` / `healed`. |
+| `summary()` | One-line digest. |
+
+```python
+# Record once, then replay deterministically (LLM only heals drift):
+first = agent.run_task("search for 'automation' and open the first result",
+                       url="http://127.0.0.1:8000/search")
+again = agent.run_task("search for 'automation' and open the first result",
+                       url="http://127.0.0.1:8000/search", plan=first.steps)
+print(again.summary())   # ok | N steps (N replayed, 0 healed, 0 recorded)
+```
+
 ## Timezone helpers
 
 The same ip2tz lookup is available directly, so you can resolve a timezone without launching a browser.
