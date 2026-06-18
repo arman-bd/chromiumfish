@@ -1,5 +1,21 @@
 export { ChromiumFish, buildArgs, BASE_ARGS } from "./launcher.js";
 export type { ChromiumFishOptions } from "./launcher.js";
+export {
+  launchAgent,
+  withAgent,
+  AgentClient,
+  AgentResult,
+  typingFlag,
+  TYPING_PROFILES,
+  AGENT_SYSTEM_PROMPT,
+} from "./agent.js";
+export type {
+  LaunchAgentOptions,
+  AgentSession,
+  RunTaskOptions,
+  AgentStep,
+  TypingSpeed,
+} from "./agent.js";
 export { fetchBrowser, binaryPath, installDir, cacheRoot, platformSlug, findBinary } from "./fetch.js";
 export {
   Ip2TzDB,

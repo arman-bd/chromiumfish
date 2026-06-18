@@ -25,7 +25,7 @@ def assert_safe_version(version: str) -> str:
 
 # SDK package version. Single source of truth: pyproject.toml reads this via
 # [tool.hatch.version] (dynamic = ["version"]).
-__version__ = "0.1.4"
+__version__ = "0.2.0"
 
 # Default ChromiumFish browser build to fetch. Matches src/chrome/VERSION.
 DEFAULT_BROWSER_VERSION = "150.0.7844"

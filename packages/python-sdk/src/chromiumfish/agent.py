@@ -33,13 +33,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-# The agent's master/system prompt. Lives HERE in the library (not hardcoded in
-# the browser binary) so it can be tuned without a Chromium rebuild; it is sent
-# to the browser per task as ``Browser.agentRunTask``'s ``systemPrompt`` param,
-# which the agent layer uses in place of its built-in default.
-#
-# Key behaviour: the final ``done`` answer is ONLY the value the task asked for
-# — no prose, no labels — so callers get a clean result (e.g. just a URL).
+# The agent's master/system prompt, sent per task as ``Browser.agentRunTask``'s
+# ``systemPrompt`` param. NOTE: current shipped builds use the prompt baked into
+# the binary (C++ ``kSystemPrompt`` in chrome/browser/ai_agent/agent_controller.cc)
+# and ignore this param — so editing it here is a no-op against those builds; keep
+# it mirrored to the C++ prompt, and change behaviour there + rebuild to deploy.
+# It still declares the intended contract: the final ``done`` answer is ONLY the
+# value the task asked for — no prose, no labels — so callers get a clean result.
 AGENT_SYSTEM_PROMPT = (
     "You are an autonomous web-browsing agent operating directly inside the "
     "browser. Each turn you receive the interactive elements currently visible "
@@ -277,12 +277,53 @@ def _load_dotenv() -> None:
         return
 
 
+# Per-keystroke typing cadence for the agent's incremental typing, expressed as
+# (key-down, key-up, long-text-multiplier). The Actor framework's built-in
+# default is ~25ms/25ms/0.2 (~240 WPM — superhuman); "human" slows it to ~75 WPM
+# so the typing looks natural. "fast"/"instant" trade realism for speed.
+TYPING_PROFILES = {
+    "human":   ("45ms", "110ms", "0.7"),   # ~75 WPM — natural, the default
+    "fast":    ("10ms", "18ms",  "0.3"),   # brisk, still per-keystroke
+    "instant": ("0ms",  "0ms",   "0"),     # no inter-key delay (fastest)
+}
+
+
+def _typing_flag(typing) -> str:
+    """Build the GlicActorIncrementalTyping switch for a typing-speed setting.
+
+    ``typing`` is a profile name (``"human"``/``"fast"``/``"instant"``) or a
+    custom ``(key_down, key_up, long_multiplier)`` triple; bare numbers are
+    treated as milliseconds.
+    """
+    if isinstance(typing, str):
+        try:
+            kd, ku, mult = TYPING_PROFILES[typing]
+        except KeyError:
+            raise ValueError(
+                f"unknown typing speed {typing!r}; use one of "
+                f"{sorted(TYPING_PROFILES)} or a (key_down, key_up, multiplier) triple"
+            ) from None
+    else:
+        kd, ku, mult = typing
+
+    def _ms(v):
+        return v if isinstance(v, str) else f"{v}ms"
+
+    return (
+        "--enable-features=GlicActorIncrementalTyping:"
+        f"glic-actor-incremental-typing-key-down-duration/{_ms(kd)}/"
+        f"glic-actor-incremental-typing-key-up-duration/{_ms(ku)}/"
+        f"glic-actor-incremental-typing-long-multiplier/{mult}"
+    )
+
+
 @contextlib.contextmanager
 def launch_agent(
     *,
     port: int = 9222,
     chrome: Optional[os.PathLike | str] = None,
     model: str = "",
+    typing: "str | tuple" = "human",
     load_dotenv: bool = True,
     extra_args: Optional[list[str]] = None,
     timeout: float = 30.0,
@@ -300,6 +341,10 @@ def launch_agent(
     ``model=`` to set the model for this session in-script (overrides
     ``OPENAI_API_MODEL``); ``run_task(model=...)`` overrides it per task. The
     binary is ``chrome=`` / the ``CHROME_BIN`` env var / the published build.
+
+    ``typing`` sets how fast the agent types: ``"human"`` (default — ~75 WPM and
+    natural-looking), ``"fast"``, ``"instant"``, or a custom
+    ``(key_down, key_up, long_multiplier)`` triple (bare numbers = milliseconds).
     """
     if load_dotenv:
         _load_dotenv()
@@ -316,14 +361,9 @@ def launch_agent(
             "--remote-allow-origins=*",
             f"--user-data-dir={profile}",
             "--disable-actor-safety-checks",  # let the agent act unattended
-            # Type at a human cadence. The Actor framework's incremental-typing
-            # default is 25ms down + 25ms up per key (~240 WPM, superhuman) and
-            # a 0.2x speed-boost for long text. Slow it to ~75 WPM and keep long
-            # text from going superhuman so the agent's typing looks human.
-            "--enable-features=GlicActorIncrementalTyping:"
-            "glic-actor-incremental-typing-key-down-duration/45ms/"
-            "glic-actor-incremental-typing-key-up-duration/110ms/"
-            "glic-actor-incremental-typing-long-multiplier/0.7",
+            # Typing cadence (see TYPING_PROFILES). Default "human" ~75 WPM so the
+            # agent's keystrokes look natural; "fast"/"instant" go quicker.
+            _typing_flag(typing),
             "--no-first-run", "--no-default-browser-check",
             f"--agent-llm-url={os.environ.get('OPENAI_API_BASE', '')}",
             f"--agent-llm-key={os.environ.get('OPENAI_API_KEY', '')}",

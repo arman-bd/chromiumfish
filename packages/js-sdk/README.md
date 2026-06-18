@@ -53,6 +53,38 @@ The DB auto-updates: it tracks the `latest` monthly build (cached, re-checked
 weekly), so you get fresh data without upgrading the SDK. Pin a fixed version
 with `CHROMIUMFISH_GEOIP_VERSION=2026.06` for reproducibility.
 
+## AI agent
+
+ChromiumFish ships a native in-browser agent (perceive → think → act, driven by
+an OpenAI-compatible LLM). `launchAgent` starts the browser with the agent layer
+and connects over CDP; `runTask` drives it from a plain-language goal.
+
+```ts
+import { withAgent } from "chromiumfish";
+
+// LLM config from a nearby .env: OPENAI_API_BASE / OPENAI_API_KEY / OPENAI_API_MODEL
+const url = await withAgent({ typing: "human" }, (agent) =>
+  agent
+    .runTask("Search DuckDuckGo for 'chromiumfish' and give me the first result's URL.")
+    .then((r) => r.finalText),
+);
+console.log(url);
+```
+
+`withAgent` shuts the browser down for you; use `launchAgent` directly if you
+want to manage the lifecycle (`const { agent, close } = await launchAgent()`).
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `typing` | `"human"` | Typing speed: `"human"` (~75 WPM, natural), `"fast"`, `"instant"`, or a custom `[keyDown, keyUp, longMultiplier]` triple (numbers = ms). |
+| `model` | env | Model for the session (overrides `OPENAI_API_MODEL`); `runTask({ model })` overrides per task. |
+| `chrome` | `CHROME_BIN` / cached build | Path to the ChromiumFish binary. |
+| `port` | `9222` | DevTools remote-debugging port. |
+| `extraArgs` | — | Extra Chromium flags. |
+
+> Needs a WebSocket: the Node 22+ global `WebSocket` is used automatically; on
+> Node &lt;22 install the optional `ws` package (`npm install ws`).
+
 ## CLI
 
 ```bash
