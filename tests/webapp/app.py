@@ -433,6 +433,13 @@ def notes_add():
         session["notes"] = items
         session["note_seq"] = seq
         flash("Note saved.", "brand")
+        # Redirect to a URL that CHANGES on every successful save. After a normal
+        # save the form resets and the bare /notes URL + interactive-element list
+        # look unchanged, so an automated agent can't tell it worked and re-submits
+        # (creating duplicates). A monotonic ``saved`` id makes the URL differ each
+        # time — the same "navigated" signal that stops agents looping elsewhere —
+        # and ``total`` lets a reader answer "how many notes" straight from the URL.
+        return redirect(url_for("notes", saved=seq, total=len(items)))
     return redirect(url_for("notes"))
 
 
