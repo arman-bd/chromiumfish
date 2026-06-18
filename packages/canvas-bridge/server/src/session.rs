@@ -106,7 +106,7 @@ impl Session {
                                 code: ErrorCode::UnsupportedOp,
                                 message: e.to_string(),
                             });
-                            // Continue rest of batch — commercial fingerprintersbes
+                            // Continue rest of batch — the fingerprinter probes
                             // are tolerant of partial failure and
                             // we'd rather see errors per-op than
                             // halt the whole batch on the first.

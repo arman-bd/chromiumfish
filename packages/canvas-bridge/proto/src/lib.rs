@@ -103,7 +103,7 @@ pub enum ClientMsg {
     },
 
     /* ---------- Fonts ---------- */
-    /// Mirror of the the fingerprinter font-presence + font-metric probes. Returns
+    /// Mirror of the fingerprinter font-presence + font-metric probes. Returns
     /// the rendered text box size for each (family, size) pair using
     /// the server host's native text shaper (DirectWrite on Windows,
     /// CoreText on macOS, FontConfig+HarfBuzz on Linux).

@@ -26,7 +26,7 @@ a CanvasResourceProvider variant that pulls frames from the server.
  #include "third_party/blink/renderer/bindings/core/v8/v8_union_canvasgradient_canvaspattern_string.h"
  ...
 @@ -914,6 +916,15 @@ void BaseRenderingContext2D::fillText(const String& text, double x, double y) {
-   MaybeFlagthe fingerprinterProbeCanvas(text);
+   MaybeFlagProbeCanvas(text);
    CanvasRenderingContext2DState& state = GetState();
 +  if (uint32_t id = EnsureBridgeCanvas()) {
 +    auto* b = blink::canvas_bridge::CanvasBridgeClient::Get();
@@ -43,7 +43,7 @@ a CanvasResourceProvider variant that pulls frames from the server.
 @@ -924,6 +935,13 @@ void BaseRenderingContext2D::fillText(const String& text,
                                        double y,
                                        double max_width) {
-   MaybeFlagthe fingerprinterProbeCanvas(text);
+   MaybeFlagProbeCanvas(text);
 +  if (uint32_t id = EnsureBridgeCanvas()) {
 +    blink::canvas_bridge::CanvasBridgeClient::Get()->Send(
 +        blink::canvas_bridge::MsgBuilder::FillText(

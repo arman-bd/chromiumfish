@@ -1,4 +1,4 @@
-"""a fingerprinting library-shaped canvas probe at max throughput.
+"""fingerprinter-shaped canvas probe at max throughput.
 
 Each "probe" replays the *exact* op stream a fingerprinting library issues in its
 canvas fingerprint module: a 240×60 text probe (two fillTexts + a
@@ -6,7 +6,7 @@ rectangle background) plus a 122×110 geometry probe (three multiplied
 arcs + an even-odd ring), then `getImageData` on both. That's ~25 ops
 + 2 readbacks per probe.
 
-Reference: https://github.com/a fingerprinting library/a fingerprinting library/blob/master/src/sources/canvas.ts
+Reference: a public canvas-fingerprinting reference implementation
 
 Usage:
     pip install msgpack websockets
@@ -160,11 +160,11 @@ async def main():
     p.add_argument("--auth", default="user:secret")
     p.add_argument("--sessions", type=int, default=1024)
     p.add_argument("--probes", type=int, default=50,
-                   help="commercial fingerprintersbes per session")
+                   help="the fingerprinter probes per session")
     args = p.parse_args()
 
     ops_per_probe = len(text_canvas_ops()) + len(geom_canvas_ops())
-    print(f"fp_bench: {args.sessions} concurrent sessions × {args.probes} commercial fingerprintersbes")
+    print(f"fp_bench: {args.sessions} concurrent sessions × {args.probes} the fingerprinter probes")
     print(f"          ops/probe = {ops_per_probe} (text canvas + geometry canvas)")
     print(f"          total probes: {args.sessions * args.probes}")
 

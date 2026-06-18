@@ -216,7 +216,7 @@ index 0000000000000..0d349d6dc08aa
 +    // are deliberately NOT in this denylist. Blink's internal font
 +    // cascade on macOS requests them in code paths we haven't fully
 +    // mapped, and blocking them causes a renderer SIGSEGV on
-+    // real-world pages (a fingerprint test site/fingerprint reproducibly). Even
++    // real-world pages (a fingerprint test site reproducibly). Even
 +    // though the CoreText layer has Carlito/Caladea/etc. activated to
 +    // satisfy CSS lookups for "Calibri"/"Cambria", Blink's internal
 +    // path for the Mac defaults remains. Leaving them allowed means

@@ -38,7 +38,7 @@ build, connects, and cleans up on exit):
 ```python
 from chromiumfish import launch_agent
 
-TASK = "Search duckduckgo.com for 'apple' and give me the first result's URL."
+TASK = "Go to http://127.0.0.1:8000/search, search for 'automation', and give me the first result's URL."
 
 with launch_agent() as agent:
     print(agent.run_task(TASK).final_text)
@@ -59,7 +59,7 @@ from chromiumfish.sync_api import Chromiumfish
 
 with Chromiumfish(persona_seed="alpha-7") as browser:   # also: headless=, proxy=,
     page = browser.new_page()                            # window_size=, timezone="auto"
-    page.goto("https://www.wikipedia.org/")
+    page.goto("https://example.com/")
     print(page.title())
 ```
 
@@ -67,7 +67,7 @@ with Chromiumfish(persona_seed="alpha-7") as browser:   # also: headless=, proxy
 pip install chromiumfish        # pulls Playwright; the published build is fetched on first run
 python3 examples/playwright_basic.py        # open a page, print its title
 python3 examples/playwright_fingerprint.py  # what a page sees: a Windows persona; per-seed entropy
-python3 examples/playwright_screenshot.py   # full-page PNG of a real site -> hn.png
+python3 examples/playwright_screenshot.py   # full-page PNG -> screenshot.png
 python3 examples/playwright_async.py        # AsyncChromiumfish: fetch several pages concurrently
 ```
 

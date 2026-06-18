@@ -42,7 +42,7 @@ index 0000000000000..6b7084d558386
 +constexpr char kPersonaSeedSwitch[] = "persona-seed";
 +// --persona-os=mac | win  (default: win). Selects which OS family the
 +// persona claims. Mac for sites that gate Windows users more strictly
-+// (e.g. tracker where real Mac Chrome bypasses the the bot detector managed challenge
++// (e.g. sites where real Mac Chrome bypasses a managed bot challenge
 +// that real Win Chrome has to solve). Win for everything else.
 +constexpr char kPersonaOsSwitch[] = "persona-os";
 +
@@ -253,7 +253,7 @@ index 0000000000000..6b7084d558386
 +  p.brand = "Google Chrome";
 +
 +  // OS variant. `--persona-os=mac` claims macOS Chrome (which the bot detector treats
-+  // more leniently on some managed-challenge sites, e.g. tracker — captured
++  // more leniently on some managed-challenge sites — captured
 +  // 2026-05-24 from real Chrome 148 HARs: Mac UA gets 200 directly, Win
 +  // UA gets the 307 → 403 → challenge loop). Default is Windows.
 +  std::string os_pref = "win";
@@ -313,7 +313,7 @@ index 0000000000000..6b7084d558386
 +  // every persona to HC=8/mem=16 to ride the "modal Win 11 desktop"
 +  // ML cluster (VM ML floor of ~0.65). Empirically (3 different
 +  // --persona-seed values via commercial fingerprinters) this also pinned every
-+  // persona to the same the fingerprinter visitor_id, defeating the per-seed
++  // persona to the same fingerprinter visitor_id, defeating the per-seed
 +  // cross-session-anonymity goal. The Steam-Hardware-Survey-weighted
 +  // kHwTiers pool above already constrains HC/mem to combos that
 +  // actually exist on real desktops, so unlocking is safe vs the
@@ -378,7 +378,7 @@ index 0000000000000..6b7084d558386
 +  // AND navigator.gpu.requestAdapter() returns a real GPUAdapter with
 +  // info { vendor, architecture, ... }. Previous design left the surface
 +  // present but had requestAdapter() return null, which bot-detection services
-+  // bot challenge flags as "anti-detect surface fakery". Re-enabling the
++  // the bot detector flags as "anti-detect surface fakery". Re-enabling the
 +  // WebGPU service lets requestAdapter return the host's actual adapter
 +  // — which on the Mac host exposes Apple/metal-3, contradicting the
 +  // Win persona. The remaining work (out of scope of this fix) is to

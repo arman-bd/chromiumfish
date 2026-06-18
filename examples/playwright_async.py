@@ -6,8 +6,8 @@ from chromiumfish.async_api import AsyncChromiumfish
 
 URLS = [
     "https://example.com",
-    "https://www.wikipedia.org/",
-    "https://news.ycombinator.com/",
+    "https://example.org",
+    "https://example.net",
 ]
 
 

@@ -156,13 +156,13 @@ from chromiumfish.sync_api import Chromiumfish
 
 with Chromiumfish(persona_seed="alpha-7") as browser:
     page = browser.new_page()
-    page.goto("https://news.ycombinator.com", wait_until="domcontentloaded")
+    page.goto("https://example.com", wait_until="domcontentloaded")
 
-    title = page.inner_text(".titleline a")
-    link = page.get_attribute(".titleline a", "href")
+    title = page.inner_text("h1")
+    link = page.get_attribute("a", "href")
     print(title, link)
 
-    page.screenshot(path="hn.png", full_page=True)
+    page.screenshot(path="screenshot.png", full_page=True)
 ```
 
 ### Node
@@ -172,13 +172,13 @@ import { ChromiumFish } from "chromiumfish";
 
 const browser = await ChromiumFish({ personaSeed: "alpha-7" });
 const page = await browser.newPage();
-await page.goto("https://news.ycombinator.com", { waitUntil: "domcontentloaded" });
+await page.goto("https://example.com", { waitUntil: "domcontentloaded" });
 
-const title = await page.innerText(".titleline a");
-const link = await page.getAttribute(".titleline a", "href");
+const title = await page.innerText("h1");
+const link = await page.getAttribute("a", "href");
 console.log(title, link);
 
-await page.screenshot({ path: "hn.png", fullPage: true });
+await page.screenshot({ path: "screenshot.png", fullPage: true });
 await browser.close();
 ```
 

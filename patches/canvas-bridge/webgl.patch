@@ -406,7 +406,7 @@ index 172759394d7e0..91d91afabe393 100644
 +  // every (shader, precision_type) tuple. Real values come from the
 +  // host's GL driver and vary slightly across Intel/NVIDIA/AMD even
 +  // though the underlying spec only allows a few values. bot-detection services
-+  // bot challenge calls this 13× per scan to detect the GPU.
++  // the bot detector calls this 13× per scan to detect the GPU.
 +  // INT precisions return precision=0 / range=[31,30] in the canonical
 +  // ANGLE/D3D11 build; FLOAT precisions return precision=23 (mantissa
 +  // bits of single-precision IEEE 754) with range=[127,127] (exponent

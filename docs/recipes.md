@@ -411,7 +411,7 @@ with Chromiumfish(persona_seed="alpha-7") as browser:
     page.goto("https://example.com")
     page.wait_for_timeout(4000)            # let the probes finish
     print(page.evaluate("navigator.webdriver"))  # -> False
-    page.screenshot(path="a fingerprinting test page.png", full_page=True)
+    page.screenshot(path="fingerprint-test.png", full_page=True)
 ```
 
 ### Node
@@ -424,7 +424,7 @@ const page = await browser.newPage();
 await page.goto("https://example.com");
 await page.waitForTimeout(4000);                 // let the probes finish
 console.log(await page.evaluate("navigator.webdriver")); // -> false
-await page.screenshot({ path: "a fingerprinting test page.png", fullPage: true });
+await page.screenshot({ path: "fingerprint-test.png", fullPage: true });
 await browser.close();
 ```
 

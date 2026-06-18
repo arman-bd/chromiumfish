@@ -139,7 +139,7 @@ with Chromiumfish(persona_seed="alpha-7") as browser:
     page = browser.new_page()
     page.goto("https://example.com")
     page.wait_for_timeout(4000)
-    page.screenshot(path="a fingerprinting test page.png", full_page=True)
+    page.screenshot(path="fingerprint-test.png", full_page=True)
 ```
 
 `navigator.webdriver` should be `false` even under CDP, and there should be no

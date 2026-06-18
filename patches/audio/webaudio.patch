@@ -114,7 +114,7 @@ index a63cffefb5522..0bc2761475924 100644
 +    // known probe shapes are corrected to the Win target sum.
 +    // the commercial fingerprinter's OfflineAudioContext shape: 1 channel, 5000 samples at
 +    // 44100 Hz (renders ~113ms of audio; sums |buffer[4500..4999]|).
-+    const bool is_the fingerprinter_audio_probe =
++    const bool is_known_audio_probe =
 +        rendered_buffer->numberOfChannels() == 1 &&
 +        rendered_buffer->length() == 5000 &&
 +        std::abs(rendered_buffer->sampleRate() - 44100.0f) < 0.5f;
@@ -125,7 +125,7 @@ index a63cffefb5522..0bc2761475924 100644
 +        rendered_buffer->length() == 44100 &&
 +        std::abs(rendered_buffer->sampleRate() - 44100.0f) < 0.5f;
 +
-+    if (is_the fingerprinter_audio_probe) {
++    if (is_known_audio_probe) {
 +      constexpr double kWinAudioSum = 124.04347527516074;
 +      NotShared<DOMFloat32Array> data = rendered_buffer->getChannelData(0);
 +      if (data.Get()) {
@@ -196,7 +196,7 @@ index a63cffefb5522..0bc2761475924 100644
 +      //   sum_{i=0..44099}   |buf[i]| = 10748.96479334074
 +      // Mac CoreAudio produces 124.04348155876505 / 10748.964802771976,
 +      // 6e-6 above the Win target on each. Absorb that delta into mid-
-+      // range samples (same ULP-aware approach as the commercial fingerprinters path).
++      // range samples (same ULP-aware approach as the commercial-fingerprinter path).
 +      constexpr double kCfWinSum4500_5000 = 124.04347527516074;
 +      NotShared<DOMFloat32Array> data = rendered_buffer->getChannelData(0);
 +      if (data.Get()) {
@@ -245,7 +245,7 @@ index a63cffefb5522..0bc2761475924 100644
 +        }
 +      }
 +    } else {
-+      // Generic OfflineAudioContext path (shapes other than the commercial fingerprinters
++      // Generic OfflineAudioContext path (shapes other than the commercial-fingerprinter
 +      // 5000-sample and bot-detection services 44100-sample probes we hard-target
 +      // above). No per-persona mantissa salt: the bottom-4-bit XOR we
 +      // used to apply produced audio output that differed from real

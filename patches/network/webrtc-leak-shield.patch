@@ -88,7 +88,7 @@ index 14232136193ff..491c85a56a9cc 100644
 +    // its constructors. Without these flags Chromium gates on adapter
 +    // availability and SwiftShader doesn't provide one, so
 +    // navigator.gpu ends up undefined — commercial fingerprinters / bot-detection services
-+    // bot challenge flag this absence as anti-detect.
++    // both flag this absence as anti-detect.
 +    if (!mutable_cmd_line->HasSwitch("enable-unsafe-webgpu")) {
 +      mutable_cmd_line->AppendSwitch("enable-unsafe-webgpu");
 +    }

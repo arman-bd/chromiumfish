@@ -41,7 +41,7 @@ void IsolateAudioSamples(base::span<float> samples,
   // stayed at the SwiftShader-deterministic 124.04347527516074 no
   // matter what persona seed we used, and the fingerprinter re-identified every
   // persona as the same visitor_id. (Measured empirically: 5 different
-  // --persona-seed values all produced the same the fingerprinter.audio value.)
+  // --persona-seed values all produced the same audio fingerprint value.)
   //
   // New design: combine a per-seed CONSTANT multiplicative bias with
   // the per-sample noise. The bias is a single float derived purely

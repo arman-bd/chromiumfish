@@ -11,7 +11,7 @@ index 98b21d5fad16d..0905678103038 100644
 +// signature algorithms (0x904-0x906) to the TLS verify_sigalgs extension.
 +// Real Chrome 148 only advertises the 8 classical sigalgs. bot-detection services /
 +// commercial fingerprinters flag "UA says 148 but TLS sigalgs are 149+" as inconsistent and
-+// escalate to interactive bot challenge. Keeping this off routes us through
++// escalate to an interactive challenge. Keeping this off routes us through
 +// the kVerifyPrefs branch in ssl_client_socket_impl.cc:777, matching
 +// Chrome 148 byte-exactly. (Operators wanting upstream behavior can pass
 +// --enable-features=TlsMldsaSignatures.)

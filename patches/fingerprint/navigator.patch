@@ -180,7 +180,7 @@ index 608bea5cb3864..cd3a44bc25f95 100644
 +  // Persona-mode: use the claimed full version, not the real build
 +  // version. version_info::GetVersionNumber() returns the actual fork
 +  // build (e.g. 150.0.7844.0) and leaks via Sec-CH-UA-Full-Version on
-+  // Accept-CH opt-in requests — directly observable to the bot detector managed
++  // Accept-CH opt-in requests — directly observable to managed bot
 +  // challenges. Pin to the persona's claimed full version so the high-
 +  // entropy hint matches what the low-entropy sec-ch-ua already claims.
 +  metadata.full_version = blink::fingerprinting::Current().chrome_full_version;
@@ -329,8 +329,8 @@ index 29bf3ba733039..2befeece45c4b 100644
      [RaisesException, MeasureAs=ElementAttachShadow] ShadowRoot attachShadow(ShadowRootInit shadowRootInitDict);
 +    // Restored to upstream: element.shadowRoot returns only OPEN shadow
 +    // roots. Earlier we bound it to AuthorShadowRoot for inspection
-+    // convenience, but that exposed closed-mode trees to JS — a the bot detector
-+    // bot challenge check that calls attachShadow({mode:'closed'}) then
++    // convenience, but that exposed closed-mode trees to JS — a bot
++    // detector's check that calls attachShadow({mode:'closed'}) then
 +    // reads .shadowRoot can detect the difference (real Chrome returns
 +    // null, fork returned the root). Restoration is OS-neutral.
      [PerWorldBindings, ImplementedAs=OpenShadowRoot] readonly attribute ShadowRoot? shadowRoot;
