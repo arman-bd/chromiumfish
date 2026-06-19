@@ -66,7 +66,7 @@ with launch_agent() as agent:           # OPENAI_API_* read from a nearby .env
 See the [AI Agent guide](https://chromiumfish.com/ai-agent) and runnable [examples](examples/).
 
 <div align="center">
-  <img src="docs/assets/agent-demo.gif" alt="ChromiumFish's native AI agent working through a CloudFluffer bot-check and completing a multi-step checkout on its own, from a single plain-language task." width="560"/>
+  <img src="docs/assets/agent-demo.gif" alt="ChromiumFish's native AI agent working through a CloudFluffer bot-check and completing a multi-step checkout on its own, from a single plain-language task." width="720"/>
   <br/>
   <sub>The native agent clearing a bot-check and completing a four-step checkout from one plain-language task (4× speed).</sub>
 </div>
