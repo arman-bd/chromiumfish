@@ -13,7 +13,8 @@
 
 [Docs](https://chromiumfish.com) · [Python SDK](packages/python-sdk) · [JS SDK](packages/js-sdk) · [Releases](https://github.com/arman-bd/chromiumfish/releases) · [The name 🐟](NAMING.md)
 
-Need help getting through a tough site? Reach out — **Arman Hossain** on [LinkedIn](https://www.linkedin.com/in/armanhossain) or at [arman@bytetunnels.com](mailto:arman@bytetunnels.com)
+Need help getting through a tough site?<br/>
+Reach out — **Arman Hossain** on [LinkedIn](https://www.linkedin.com/in/armanhossain) or at [arman@bytetunnels.com](mailto:arman@bytetunnels.com)
 
 </div>
 
