@@ -54,7 +54,26 @@ await page.goto("https://example.com");
 await browser.close();
 ```
 
-**🤖 AI agent** — beyond driving it yourself, hand the browser a plain-language task and its built-in agent perceives the page and acts (click, type, read, navigate) in a loop, driven by any OpenAI-compatible LLM:
+## 🤖 AI agent
+
+Beyond driving it yourself, hand the browser a plain-language task — its built-in agent perceives the page and acts (click, type, read, navigate) in a loop, driven by any OpenAI-compatible LLM.
+
+<div align="center">
+  <img src="docs/assets/agent-demo.gif" alt="ChromiumFish's native AI agent working through a CloudFluffer bot-check and completing a multi-step checkout on its own, from a single plain-language task." width="720"/>
+  <br/>
+  <sub>The native agent clearing a bot-check and completing a four-step checkout from one plain-language task (4× speed).</sub>
+</div>
+
+That clip is a single `run_task`. The actual prompt behind it:
+
+> Complete this shopping flow on the site, in order:
+> 1. This is a "verify you are human" bot-check. Tick the checkbox and wait until it lets you through to the shop.
+> 2. On the shop, open the first product and add it to the cart.
+> 3. Go to `/login` and sign in with email `demo@bytetunnels.test` and password `password123`.
+> 4. Go to `/cart`, check out, and fill the form (name "Demo User", address "1 Test Street", …). Place the order.
+> 5. Report the order confirmation number.
+
+Running the agent is one call — hand it a task and an OpenAI-compatible model:
 
 ```python
 from chromiumfish import launch_agent   # JS: import { launchAgent } from "chromiumfish"
@@ -65,12 +84,6 @@ with launch_agent() as agent:           # OPENAI_API_* read from a nearby .env
 ```
 
 See the [AI Agent guide](https://chromiumfish.com/ai-agent) and runnable [examples](examples/).
-
-<div align="center">
-  <img src="docs/assets/agent-demo.gif" alt="ChromiumFish's native AI agent working through a CloudFluffer bot-check and completing a multi-step checkout on its own, from a single plain-language task." width="720"/>
-  <br/>
-  <sub>The native agent clearing a bot-check and completing a four-step checkout from one plain-language task (4× speed).</sub>
-</div>
 
 ## 🪤 Why I built this
 
