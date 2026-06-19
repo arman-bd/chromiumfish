@@ -371,6 +371,10 @@ export interface LaunchAgentOptions {
   port?: number;
   /** Path to the ChromiumFish binary; defaults to CHROME_BIN env or the cached build. */
   chrome?: string;
+  /** LLM API key (overrides OPENAI_API_KEY). */
+  apiKey?: string;
+  /** LLM base URL (overrides OPENAI_API_BASE). */
+  apiBase?: string;
   /** Model for this session (overrides OPENAI_API_MODEL). */
   model?: string;
   /** Typing cadence: "human" (default), "fast", "instant", or a [keyDown, keyUp, multiplier] triple. */
@@ -393,12 +397,13 @@ export interface AgentSession {
 /**
  * Launch a local ChromiumFish with the AI agent layer and connect to it.
  *
- * LLM config is read from OPENAI_API_BASE / OPENAI_API_KEY / OPENAI_API_MODEL
- * (a nearby .env is loaded automatically). Prefer {@link withAgent} for
- * automatic cleanup, or remember to call the returned `close()`.
+ * LLM config can be passed in-script (`apiKey` / `apiBase` / `model`) or left to
+ * OPENAI_API_KEY / OPENAI_API_BASE / OPENAI_API_MODEL (a nearby .env is loaded
+ * automatically); an explicit option wins over the env var. Prefer {@link withAgent}
+ * for automatic cleanup, or remember to call the returned `close()`.
  */
 export async function launchAgent(opts: LaunchAgentOptions = {}): Promise<AgentSession> {
-  const { port = 9222, model = "", typing = "human", loadDotenv: doDotenv = true, extraArgs = [], timeoutMs = 30_000 } = opts;
+  const { port = 9222, apiKey = "", apiBase = "", model = "", typing = "human", loadDotenv: doDotenv = true, extraArgs = [], timeoutMs = 30_000 } = opts;
   if (doDotenv) loadDotenv();
   let chrome = opts.chrome ?? process.env.CHROME_BIN;
   if (!chrome) chrome = await binaryPath();
@@ -414,8 +419,8 @@ export async function launchAgent(opts: LaunchAgentOptions = {}): Promise<AgentS
     typingFlag(typing),
     "--no-first-run",
     "--no-default-browser-check",
-    `--agent-llm-url=${process.env.OPENAI_API_BASE ?? ""}`,
-    `--agent-llm-key=${process.env.OPENAI_API_KEY ?? ""}`,
+    `--agent-llm-url=${apiBase || (process.env.OPENAI_API_BASE ?? "")}`,
+    `--agent-llm-key=${apiKey || (process.env.OPENAI_API_KEY ?? "")}`,
     `--agent-model=${model || (process.env.OPENAI_API_MODEL ?? "")}`,
     ...extraArgs,
   ];

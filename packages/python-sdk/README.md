@@ -78,7 +78,7 @@ over CDP; `run_task` drives it from a plain-language goal.
 ```python
 from chromiumfish import launch_agent
 
-# LLM config from a nearby .env: OPENAI_API_BASE / OPENAI_API_KEY / OPENAI_API_MODEL
+# LLM config: a nearby .env (OPENAI_API_*), or pass api_key=/api_base=/model= to launch_agent
 with launch_agent(typing="human") as agent:   # typing: "human" (default) / "fast" / "instant"
     r = agent.run_task("Search DuckDuckGo for 'chromiumfish' and give me the first result's URL.")
     print(r.final_text)

@@ -322,6 +322,8 @@ def launch_agent(
     *,
     port: int = 9222,
     chrome: Optional[os.PathLike | str] = None,
+    api_key: str = "",
+    api_base: str = "",
     model: str = "",
     typing: "str | tuple" = "human",
     load_dotenv: bool = True,
@@ -336,11 +338,12 @@ def launch_agent(
         with launch_agent() as agent:
             print(agent.run_task("...").final_text)
 
-    LLM config is read from ``OPENAI_API_BASE`` / ``OPENAI_API_KEY`` /
-    ``OPENAI_API_MODEL`` (a nearby ``.env`` is loaded automatically). Pass
-    ``model=`` to set the model for this session in-script (overrides
-    ``OPENAI_API_MODEL``); ``run_task(model=...)`` overrides it per task. The
-    binary is ``chrome=`` / the ``CHROME_BIN`` env var / the published build.
+    LLM config can be passed in-script — ``api_key=`` / ``api_base=`` / ``model=`` —
+    or left to the ``OPENAI_API_KEY`` / ``OPENAI_API_BASE`` / ``OPENAI_API_MODEL``
+    environment variables (a nearby ``.env`` is loaded automatically). An explicit
+    argument wins over the matching env var. ``run_task(model=...)`` overrides the
+    model per task. The binary is ``chrome=`` / the ``CHROME_BIN`` env var / the
+    published build.
 
     ``typing`` sets how fast the agent types: ``"human"`` (default — ~75 WPM and
     natural-looking), ``"fast"``, ``"instant"``, or a custom
@@ -365,8 +368,8 @@ def launch_agent(
             # agent's keystrokes look natural; "fast"/"instant" go quicker.
             _typing_flag(typing),
             "--no-first-run", "--no-default-browser-check",
-            f"--agent-llm-url={os.environ.get('OPENAI_API_BASE', '')}",
-            f"--agent-llm-key={os.environ.get('OPENAI_API_KEY', '')}",
+            f"--agent-llm-url={api_base or os.environ.get('OPENAI_API_BASE', '')}",
+            f"--agent-llm-key={api_key or os.environ.get('OPENAI_API_KEY', '')}",
             f"--agent-model={model or os.environ.get('OPENAI_API_MODEL', '')}",
             *(extra_args or []),
         ],

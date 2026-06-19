@@ -62,13 +62,11 @@ and connects over CDP; `runTask` drives it from a plain-language goal.
 ```ts
 import { withAgent } from "chromiumfish";
 
-// LLM config from a nearby .env: OPENAI_API_BASE / OPENAI_API_KEY / OPENAI_API_MODEL
-const url = await withAgent({ typing: "human" }, (agent) =>
-  agent
-    .runTask("Search DuckDuckGo for 'chromiumfish' and give me the first result's URL.")
-    .then((r) => r.finalText),
+// LLM config: a nearby .env (OPENAI_API_*), or pass apiKey/apiBase/model here.
+const result = await withAgent({ typing: "human" }, (agent) =>
+  agent.runTask("Search DuckDuckGo for 'chromiumfish' and give me the first result's URL."),
 );
-console.log(url);
+console.log(result.finalText);
 ```
 
 `withAgent` shuts the browser down for you; use `launchAgent` directly if you
@@ -78,6 +76,7 @@ want to manage the lifecycle (`const { agent, close } = await launchAgent()`).
 |--------|---------|-------------|
 | `typing` | `"human"` | Typing speed: `"human"` (~75 WPM, natural), `"fast"`, `"instant"`, or a custom `[keyDown, keyUp, longMultiplier]` triple (numbers = ms). |
 | `model` | env | Model for the session (overrides `OPENAI_API_MODEL`); `runTask({ model })` overrides per task. |
+| `apiKey` / `apiBase` | env | LLM key / base URL (override `OPENAI_API_KEY` / `OPENAI_API_BASE`). |
 | `chrome` | `CHROME_BIN` / cached build | Path to the ChromiumFish binary. |
 | `port` | `9222` | DevTools remote-debugging port. |
 | `extraArgs` | — | Extra Chromium flags. |

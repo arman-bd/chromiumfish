@@ -62,11 +62,10 @@ on Node &lt;22 add the optional `ws` package (`npm install ws`).
 import { withAgent } from "chromiumfish";
 
 // withAgent shuts the browser down for you (like Python's `with launch_agent()`)
-const whose = await withAgent({ typing: "human" }, (agent) =>
-  agent.runTask(
-    "Open http://127.0.0.1:8000/login, sign in with demo@bytetunnels.test / " +
-    "password123, and tell me whose account you land on."
-  ).then((r) => r.finalText));
+const result = await withAgent({ typing: "human" }, (agent) =>
+  agent.runTask("Open http://127.0.0.1:8000/login, sign in with demo@bytetunnels.test / password123, and tell me whose account you land on."),
+);
+console.log(result.finalText);
 ```
 
 `launchAgent(opts)` returns `{ agent, close }` if you want to manage the lifecycle yourself.
@@ -77,6 +76,8 @@ LLM config is read from `OPENAI_API_BASE` / `OPENAI_API_KEY` / `OPENAI_API_MODEL
 |--------|------|---------|-------------|
 | `port` | `number` | `9222` | DevTools remote-debugging port. |
 | `chrome` | `string` | `CHROME_BIN` / cached build | Path to the ChromiumFish binary. |
+| `apiKey` | `string` | `OPENAI_API_KEY` | LLM API key. |
+| `apiBase` | `string` | `OPENAI_API_BASE` | LLM base URL (OpenAI, OpenRouter, a local proxy…). |
 | `model` | `string` | `OPENAI_API_MODEL` | Model for this session. |
 | `typing` | `string \| [kd, ku, mult]` | `"human"` | `"human"` (~75 WPM), `"fast"`, `"instant"`, or a `[keyDown, keyUp, longMultiplier]` triple (numbers = ms). |
 | `loadDotenv` | `boolean` | `true` | Auto-load a nearby `.env`. |

@@ -27,10 +27,10 @@ with launch_agent() as agent:
 ```ts
 import { withAgent } from "chromiumfish";
 
-const url = await withAgent({}, (agent) =>
-  agent.runTask("Search DuckDuckGo for 'chromiumfish' and give me the first result's URL.")
-       .then((r) => r.finalText));
-console.log(url);
+const result = await withAgent({}, (agent) =>
+  agent.runTask("Search DuckDuckGo for 'chromiumfish' and give me the first result's URL."),
+);
+console.log(result.finalText);
 ```
 
 ## What it does
@@ -104,9 +104,21 @@ OPENAI_API_KEY=sk-...
 OPENAI_API_MODEL=qwen/qwen3.5-flash-02-23
 ```
 
-The SDK forwards these to the browser as `--agent-llm-url` / `--agent-llm-key` /
-`--agent-model`. Override precedence for the model: `run_task(model=…)` (per task) →
-`launch_agent(model=…)` (per session) → `OPENAI_API_MODEL`.
+Or pass the credentials **in code** — handy for rotating keys or choosing a provider per run.
+An explicit argument wins over the matching env var:
+
+```python
+with launch_agent(api_key="sk-...", api_base="https://openrouter.ai/api/v1/", model="gpt-4o") as agent:
+    ...
+```
+```ts
+await withAgent({ apiKey: "sk-...", apiBase: "https://openrouter.ai/api/v1/", model: "gpt-4o" },
+  (agent) => agent.runTask("..."));
+```
+
+Either way the SDK forwards them to the browser as `--agent-llm-url` / `--agent-llm-key` /
+`--agent-model`. Precedence: an explicit `launch_agent`/`launchAgent` argument → the matching
+`OPENAI_*` env var; `run_task(model=…)` overrides the model per task.
 
 {: .warning }
 > With **no key configured**, the browser still launches, but `run_task` fails with

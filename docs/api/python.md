@@ -96,6 +96,8 @@ The browser is shut down and its temp profile removed on exit. LLM config is rea
 |-----------|------|---------|-------------|
 | `port` | `int` | `9222` | DevTools remote-debugging port. |
 | `chrome` | `str` | `CHROME_BIN` / cached build | Path to the ChromiumFish binary. |
+| `api_key` | `str` | `OPENAI_API_KEY` | LLM API key. |
+| `api_base` | `str` | `OPENAI_API_BASE` | LLM base URL (OpenAI, OpenRouter, a local proxy…). |
 | `model` | `str` | `OPENAI_API_MODEL` | Model for this session. |
 | `typing` | `str \| tuple` | `"human"` | `"human"` (~75 WPM), `"fast"`, `"instant"`, or a `(key_down, key_up, long_multiplier)` triple (numbers = ms). |
 | `load_dotenv` | `bool` | `True` | Auto-load a nearby `.env`. |
