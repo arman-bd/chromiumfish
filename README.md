@@ -65,6 +65,12 @@ with launch_agent() as agent:           # OPENAI_API_* read from a nearby .env
 
 See the [AI Agent guide](https://chromiumfish.com/ai-agent) and runnable [examples](examples/).
 
+<div align="center">
+  <img src="docs/assets/agent-demo.gif" alt="ChromiumFish's native AI agent working through a CloudFluffer bot-check and completing a multi-step checkout on its own, from a single plain-language task." width="560"/>
+  <br/>
+  <sub>The native agent clearing a bot-check and completing a four-step checkout from one plain-language task (4× speed).</sub>
+</div>
+
 ## 🪤 Why I built this
 
 I scrape the web at scale, and some sites fight back hard. I worked through most of the open-source stealth browsers and a couple of paid ones, and they kept failing the same way: they run on a Linux server and try to look like they aren't, but they do it with JavaScript patches. That's a bad place to hide. A JS patch leaves tampering marks right where the "has this been messed with?" checks are looking, and the detectors I cared about caught them every time. So I moved the spoofing down into the C++ engine, where there's nothing for a tampering probe to find, and started using it to unblock my own scrapers. It has since gotten me through a few sites that had blocked everything else I tried.
