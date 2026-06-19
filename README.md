@@ -64,23 +64,20 @@ Beyond driving it yourself, hand the browser a plain-language task — its built
   <sub>The native agent clearing a bot-check and completing a four-step checkout from one plain-language task (4× speed).</sub>
 </div>
 
-That clip is a single `run_task`. The actual prompt behind it:
-
-> Complete this shopping flow on the site, in order:
-> 1. This is a "verify you are human" bot-check. Tick the checkbox and wait until it lets you through to the shop.
-> 2. On the shop, open the first product and add it to the cart.
-> 3. Go to `/login` and sign in with email `demo@bytetunnels.test` and password `password123`.
-> 4. Go to `/cart`, check out, and fill the form (name "Demo User", address "1 Test Street", …). Place the order.
-> 5. Report the order confirmation number.
-
-Running the agent is one call — hand it a task and an OpenAI-compatible model:
-
 ```python
 from chromiumfish import launch_agent   # JS: import { launchAgent } from "chromiumfish"
 
+# the exact task behind the clip above
+TASK = """Complete this shopping flow on the site, in order:
+1. This is a "verify you are human" bot-check. Tick the checkbox and wait until it lets you through to the shop.
+2. On the shop, open the first product and add it to the cart.
+3. Go to /login and sign in with email demo@bytetunnels.test and password password123.
+4. Go to /cart, check out, and fill the form (name "Demo User", address "1 Test Street", city "Testville"). Place the order.
+5. Report the order confirmation number."""
+
 with launch_agent() as agent:           # OPENAI_API_* read from a nearby .env
-    r = agent.run_task("Search for 'chromiumfish' and give me the first result's URL.")
-    print(r.final_text)
+    result = agent.run_task(TASK, url="http://127.0.0.1:8000/verify#url=/shop")
+    print(result.final_text)
 ```
 
 See the [AI Agent guide](https://chromiumfish.com/ai-agent) and runnable [examples](examples/).
