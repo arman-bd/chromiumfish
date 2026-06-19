@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Save a full-page screenshot of a page through a seeded persona."""
+"""Save a full-page screenshot under a seeded persona."""
 from chromiumfish.sync_api import Chromiumfish
 
 with Chromiumfish(persona_seed="charlie-9", window_size=(1280, 900)) as browser:

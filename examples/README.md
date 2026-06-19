@@ -1,94 +1,50 @@
-# examples
+# Examples
 
-Small scripts showing how to drive ChromiumFish. Python examples live here; the
-JavaScript ones are under [`js/`](js/). Two flavors:
+Small scripts that drive ChromiumFish. Two kinds:
 
-- **Native AI agent** (`run_agent.py`, `search_web.py`, `js/*.mjs`) — hand it a
-  plain-language task; it perceives + acts inside the browser process. Needs an LLM (`.env`).
-- **Plain Playwright** (`playwright_*.py`) — drive the stealth browser yourself
-  with ordinary Playwright, under a per-seed persona. No LLM needed.
+- **AI agent** (`agent_*`) — hand the in-browser agent a plain-language task. Needs an
+  OpenAI-compatible LLM, via a nearby `.env` (`OPENAI_API_KEY` / `OPENAI_API_BASE` /
+  `OPENAI_API_MODEL`) or passed to `launch_agent(...)` / `launchAgent(...)` directly.
+- **Playwright** (`playwright_*`) — drive the stealth browser yourself under a persona. No LLM.
 
-## `run_agent.py` — native AI agent
-
-Launches a ChromiumFish build with the agent layer, hands the agent a
-plain-language task (the agent navigates to the URL named *in the task* itself),
-prints the outcome, and kills the browser on exit. As it works it draws its
-action overlay — a cyan box around the element + a red dot at the click point —
-**inside the page**, so keep the window visible to watch.
+Most agent examples visit the bundled demo app, so start it first:
 
 ```sh
-# 1. the demo webapp the task visits
-cd tests/webapp && .venv/bin/python app.py        # serves :8000
-
-# 2. install the SDK, then run the example
-pip install -e packages/python-sdk                # or: PYTHONPATH=packages/python-sdk/src
-python3 examples/run_agent.py
+cd tests/webapp && python app.py     # serves http://127.0.0.1:8000
 ```
 
-LLM config (`OPENAI_API_BASE` / `OPENAI_API_KEY` / `OPENAI_API_MODEL`) is read
-from `.env` at the repo root. The example fetches the published build by default;
-point it at a local build with `CHROME_BIN=src/out/Release/ChromiumFish.app/Contents/MacOS/ChromiumFish`.
+## Python
 
-Edit the `TASK` string to send the agent anywhere.
-
-## `search_web.py` — one-line web search
-
-The whole demo, using the `launch_agent()` context manager (it launches the
-build, connects, and cleans up on exit):
-
-```python
-from chromiumfish import launch_agent
-
-TASK = "Go to http://127.0.0.1:8000/search, search for 'automation', and give me the first result's URL."
-
-with launch_agent() as agent:
-    print(agent.run_task(TASK).final_text)
-```
+| File | What it does |
+|------|--------------|
+| `agent_login.py` | Agent logs in and reports whose account it landed on. |
+| `agent_search.py` | Agent searches and returns the first result's URL. |
+| `agent_chained_tasks.py` | Two tasks in one session — the second uses the first's answer. |
+| `agent_llm_config.py` | Pass the LLM key / base URL / model in code instead of a `.env`. |
+| `playwright_open_page.py` | Open a page under a seeded persona, print its title. |
+| `playwright_concurrent_pages.py` | Fetch several pages at once (async API). |
+| `playwright_fingerprint.py` | Print what a page sees for two seeds. |
+| `playwright_screenshot.py` | Save a full-page screenshot. |
 
 ```sh
-python3 examples/search_web.py
+python examples/agent_login.py
+python examples/playwright_open_page.py
 ```
 
-## `playwright_*.py` — plain Playwright (the stealth browser)
+The `playwright_*` scripts need no LLM or `.env`. Point the agent examples at a local build
+with `CHROME_BIN=…/ChromiumFish`.
 
-`Chromiumfish` / `AsyncChromiumfish` wrap `playwright.chromium.launch` at the
-ChromiumFish build and apply a `persona_seed`; they hand back a normal Playwright
-`Browser`, so all of Playwright works as usual.
+## JavaScript (`js/`)
 
-```python
-from chromiumfish.sync_api import Chromiumfish
+`npm install chromiumfish` (on Node &lt;22 also `npm i ws`), same `.env`, then:
 
-with Chromiumfish(persona_seed="alpha-7") as browser:   # also: headless=, proxy=,
-    page = browser.new_page()                            # window_size=, timezone="auto"
-    page.goto("https://example.com/")
-    print(page.title())
-```
+| File | What it does |
+|------|--------------|
+| `js/agent_login.mjs` | Agent logs in and reports the account. |
+| `js/agent_search.mjs` | One-line search via `withAgent()`. |
+| `js/agent_typing_speed.mjs` | Same task at human / fast / instant typing. |
+| `js/agent_llm_config.mjs` | Pass the LLM key / base URL / model in code instead of a `.env`. |
 
 ```sh
-pip install chromiumfish        # pulls Playwright; the published build is fetched on first run
-python3 examples/playwright_basic.py        # open a page, print its title
-python3 examples/playwright_fingerprint.py  # what a page sees: a Windows persona; per-seed entropy
-python3 examples/playwright_screenshot.py   # full-page PNG -> screenshot.png
-python3 examples/playwright_async.py        # AsyncChromiumfish: fetch several pages concurrently
+node examples/js/agent_login.mjs
 ```
-
-These don't need an LLM or `.env`. Unlike the agent examples, the Playwright
-wrapper always uses the fetched/installed build (it doesn't read `CHROME_BIN`).
-
-## JavaScript (Node) — [`js/`](js/)
-
-The same agent in JS/TS. Install the SDK (`npm install chromiumfish`; on Node &lt;22 also
-`npm i ws`), use the same `.env`, then:
-
-```sh
-cd tests/webapp && python app.py        # serves :8000
-
-node examples/js/run_agent.mjs          # log in, report whose account you land on
-node examples/js/search_web.mjs         # one-line search via withAgent()
-node examples/js/typing_speed.mjs       # same task at human / fast / instant typing
-```
-
-`launchAgent({ … })` / `withAgent({ … }, fn)` take the same options as Python's
-`launch_agent`: `typing` (`"human"` default / `"fast"` / `"instant"` / a custom
-`[keyDown, keyUp, longMultiplier]` triple), plus `model`, `chrome`, and `extraArgs`. Point at
-a local build with `CHROME_BIN=…/ChromiumFish`.

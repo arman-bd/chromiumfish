@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Playwright quickstart: open a page through a seeded ChromiumFish persona."""
+"""Open a page under a seeded persona and print its title."""
 from chromiumfish.sync_api import Chromiumfish
 
 with Chromiumfish(persona_seed="alpha-7") as browser:
