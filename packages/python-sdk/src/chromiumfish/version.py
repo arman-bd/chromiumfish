@@ -17,7 +17,7 @@ def assert_safe_version(version: str) -> str:
 
     Versions are interpolated into filesystem cache paths and release URLs, so
     a crafted value like ``../../../etc`` would escape the cache dir (path
-    traversal). Real tags are digits, dots, and hyphens (e.g. "150.0.7844",
+    traversal). Real tags are digits, dots, and hyphens (e.g. "149.0.7827.115",
     "2026.06", "latest")."""
     if version in (".", "..") or not _VERSION_RE.match(version):
         raise ValueError(f"invalid version string: {version!r}")
@@ -25,10 +25,10 @@ def assert_safe_version(version: str) -> str:
 
 # SDK package version. Single source of truth: pyproject.toml reads this via
 # [tool.hatch.version] (dynamic = ["version"]).
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # Default ChromiumFish browser build to fetch. Matches src/chrome/VERSION.
-DEFAULT_BROWSER_VERSION = "150.0.7844"
+DEFAULT_BROWSER_VERSION = "149.0.7827.115"
 
 # GitHub repo that hosts the release assets (public; binary built from the
 # private chromiumfish-browser repo).
