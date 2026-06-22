@@ -1,6 +1,6 @@
 ---
 title: Canvas & WebGL bridge
-nav_order: 5
+nav_order: 7
 ---
 
 # Canvas & WebGL bridge

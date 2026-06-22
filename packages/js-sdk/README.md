@@ -84,11 +84,27 @@ want to manage the lifecycle (`const { agent, close } = await launchAgent()`).
 > Needs a WebSocket: the Node 22+ global `WebSocket` is used automatically; on
 > Node &lt;22 install the optional `ws` package (`npm install ws`).
 
+## External agents
+
+Prefer a third-party framework (Hermes, OpenClaw, browser-use, Playwright, …)? `chromiumfish
+serve` exposes a plain CDP endpoint — with your persona/proxy/timezone active — for any of them
+to attach to:
+
+```bash
+npx chromiumfish serve --persona-seed alice        # -> http://127.0.0.1:9222
+# e.g. Hermes ~/.hermes/config.yaml: browser: { cdp_url: "http://127.0.0.1:9222" }
+```
+
+Full guide: [chromiumfish.com/agents](https://chromiumfish.com/agents).
+
 ## CLI
 
 ```bash
 npx chromiumfish fetch [--browser-version X] [--force]   # download + cache
 npx chromiumfish path                                     # print binary path
+npx chromiumfish serve [--port 9222] [--persona-seed S]  # CDP endpoint for external agents
+                       [--proxy URL] [--window-size WxH] [--timezone Z] [--headless]
+                       [--browser-version X] [--extra-args ARGS] [--timeout S]
 npx chromiumfish clear                                    # wipe the cache
 npx chromiumfish --version
 ```

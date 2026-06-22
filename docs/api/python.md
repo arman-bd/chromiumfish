@@ -169,6 +169,12 @@ export CHROMIUMFISH_GEOIP_VERSION=2026.06
 ```bash
 chromiumfish fetch [--browser-version X] [--force]   # download + cache
 chromiumfish path                                     # print binary path
+chromiumfish serve [--port 9222] [--persona-seed S]  # CDP endpoint for external agents
+                   [--proxy URL] [--window-size WxH] [--timezone Z] [--headless]
+                   [--browser-version X] [--extra-args ARGS] [--timeout S]
 chromiumfish clear                                    # wipe the cache
 chromiumfish --version
 ```
+
+`serve` launches a plain CDP endpoint for third-party agent frameworks to attach to — see
+[External Agents](../agents).

@@ -135,6 +135,12 @@ console.log(own);
 ```bash
 npx chromiumfish fetch [--browser-version X] [--force]   # download + cache
 npx chromiumfish path                                     # print binary path
+npx chromiumfish serve [--port 9222] [--persona-seed S]  # CDP endpoint for external agents
+                       [--proxy URL] [--window-size WxH] [--timezone Z] [--headless]
+                       [--browser-version X] [--extra-args ARGS] [--timeout S]
 npx chromiumfish clear                                    # wipe the cache
 npx chromiumfish --version
 ```
+
+`serve` launches a plain CDP endpoint for third-party agent frameworks to attach to — see
+[External Agents](../agents).

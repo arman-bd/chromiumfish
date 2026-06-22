@@ -16,6 +16,9 @@ drives the page itself — perceive → think → act, in a loop — until the g
 agent lives **inside the C++ browser process** (it is *not* a Playwright script puppeteering
 the page from outside), and it's driven by any **OpenAI-compatible** LLM you point it at.
 
+> Want to use an **external** framework instead (Hermes, OpenClaw, browser-use, …)? See
+> [External Agents](agents) — `chromiumfish serve` exposes a CDP endpoint any of them can attach to.
+
 ```python
 from chromiumfish import launch_agent
 

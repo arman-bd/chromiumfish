@@ -82,6 +82,19 @@ with launch_agent() as agent:           # OPENAI_API_* read from a nearby .env
 
 See the [AI Agent guide](https://chromiumfish.com/ai-agent) and runnable [examples](examples/).
 
+### Or bring your own agent
+
+Prefer an external framework? Because it *is* Chromium, ChromiumFish speaks the same CDP every browser-agent already drives. Expose an endpoint with one command and point [Hermes](https://github.com/NousResearch/hermes-agent), [OpenClaw](https://docs.openclaw.ai), [browser-use](https://github.com/browser-use/browser-use), Playwright, or Puppeteer at it — the agent inherits the persona/proxy/timezone you launched with, no special build required.
+
+```console
+$ chromiumfish serve --persona-seed alice
+ChromiumFish Chrome/149.0.7827.115 ready — CDP endpoint for external agents
+  HTTP : http://127.0.0.1:9222
+# Hermes: ~/.hermes/config.yaml -> browser: { cdp_url: "http://127.0.0.1:9222" }
+```
+
+See the [External Agents guide](https://chromiumfish.com/agents).
+
 ## 🪤 Why I built this
 
 I scrape the web at scale, and some sites fight back hard. I worked through most of the open-source stealth browsers and a couple of paid ones, and they kept failing the same way: they run on a Linux server and try to look like they aren't, but they do it with JavaScript patches. That's a bad place to hide. A JS patch leaves tampering marks right where the "has this been messed with?" checks are looking, and the detectors I cared about caught them every time. So I moved the spoofing down into the C++ engine, where there's nothing for a tampering probe to find, and started using it to unblock my own scrapers. It has since gotten me through a few sites that had blocked everything else I tried.
@@ -135,7 +148,7 @@ It comes down to three pieces, each doing one thing:
 The full docs live at **[chromiumfish.com](https://chromiumfish.com)** (built with [Just the Docs](https://just-the-docs.com) from [`docs/`](docs/)):
 - [Introduction](https://chromiumfish.com/)
 - [Installation](https://chromiumfish.com/installation) · [Quickstart](https://chromiumfish.com/quickstart) · [Personas](https://chromiumfish.com/personas)
-- [AI Agent](https://chromiumfish.com/ai-agent) — the native in-browser agent
+- [AI Agent](https://chromiumfish.com/ai-agent) — the native in-browser agent · [External Agents](https://chromiumfish.com/agents) — drive it from Hermes, OpenClaw, browser-use, …
 - [Recipes](https://chromiumfish.com/recipes) · [Canvas & WebGL bridge](https://chromiumfish.com/canvas-bridge) · [Troubleshooting](https://chromiumfish.com/troubleshooting)
 - [Python API](https://chromiumfish.com/api/python) · [JavaScript API](https://chromiumfish.com/api/javascript)
 

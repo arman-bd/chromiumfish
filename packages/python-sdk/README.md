@@ -90,11 +90,27 @@ extra (`pip install "chromiumfish[agent]"`) for the `websocket-client` dependenc
 local build with `CHROME_BIN=…/ChromiumFish`. Full guide:
 [chromiumfish.com/ai-agent](https://chromiumfish.com/ai-agent).
 
+## External agents
+
+Prefer a third-party framework (Hermes, OpenClaw, browser-use, Playwright, …)? `chromiumfish
+serve` exposes a plain CDP endpoint — with your persona/proxy/timezone active — for any of them
+to attach to:
+
+```bash
+chromiumfish serve --persona-seed alice            # -> http://127.0.0.1:9222
+# e.g. Hermes ~/.hermes/config.yaml: browser: { cdp_url: "http://127.0.0.1:9222" }
+```
+
+Full guide: [chromiumfish.com/agents](https://chromiumfish.com/agents).
+
 ## CLI
 
 ```bash
 chromiumfish fetch [--browser-version X] [--force]   # download + cache
 chromiumfish path                                     # print binary path
+chromiumfish serve [--port 9222] [--persona-seed S]  # CDP endpoint for external agents
+                   [--proxy URL] [--window-size WxH] [--timezone Z] [--headless]
+                   [--browser-version X] [--extra-args ARGS] [--timeout S]
 chromiumfish clear                                    # wipe the cache
 chromiumfish --version
 ```
