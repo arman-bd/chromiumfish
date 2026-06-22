@@ -175,6 +175,21 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--extra-args", default=None, help="comma-separated extra Chromium flags")
     sv.add_argument("--timeout", type=float, default=30.0, help="seconds to wait for the endpoint")
 
+    # Run an MCP server exposing the browser to MCP clients (Claude, Cursor, ...).
+    mc = sub.add_parser(
+        "mcp",
+        help="run an MCP server exposing the browser to MCP clients (Claude, Cursor, ...)",
+    )
+    mc.add_argument("--persona-seed", default=None, help="stable fingerprint persona seed")
+    mc.add_argument("--headed", action="store_true", help="show the browser window (default: headless)")
+    mc.add_argument("--window-size", default="1920x1080", help="WIDTHxHEIGHT (default 1920x1080)")
+    mc.add_argument("--proxy", default=None, help="proxy URL: scheme://[user:pass@]host:port")
+    mc.add_argument("--port", type=int, default=9222, help="CDP port the server drives (default 9222)")
+    mc.add_argument("--typing", default="human", help="agent typing speed: human|fast|instant")
+    mc.add_argument("--llm-key", default=None, help="OpenAI-compatible key for run_task (else OPENAI_API_KEY)")
+    mc.add_argument("--llm-base", default=None, help="LLM base URL for run_task (else OPENAI_API_BASE)")
+    mc.add_argument("--llm-model", default=None, help="LLM model for run_task (else OPENAI_API_MODEL)")
+
     # AI agent flow record/replay cache (talks to a running ChromiumFish CDP).
     flow_p = sub.add_parser("flow", help="record/replay cached AI agent flows")
     flow_sub = flow_p.add_subparsers(dest="flow_cmd")
@@ -212,6 +227,26 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "serve":
         return _serve(args)
+    if args.cmd == "mcp":
+        try:
+            w, h = (int(x) for x in args.window_size.lower().split("x", 1))
+        except Exception:
+            print(f"invalid --window-size {args.window_size!r}; expected WIDTHxHEIGHT, e.g. 1920x1080",
+                  file=sys.stderr)
+            return 1
+        from .mcp import run_server
+        run_server(
+            persona_seed=args.persona_seed,
+            headless=not args.headed,
+            window_size=(w, h),
+            proxy=args.proxy,
+            port=args.port,
+            typing=args.typing,
+            api_key=args.llm_key or "",
+            api_base=args.llm_base or "",
+            model=args.llm_model or "",
+        )
+        return 0
     if args.cmd == "flow":
         from .flow import Flow, default_flow_dir
         if args.flow_cmd == "run":

@@ -28,6 +28,9 @@ dependencies = [
 # The native AI agent client (chromiumfish.agent / chromiumfish.flow) drives the
 # fork's Browser.agentRunTask over raw CDP and needs a WebSocket client.
 agent = ["websocket-client>=1.6"]
+# The MCP server (`chromiumfish mcp` / chromiumfish.mcp) exposes the browser to
+# MCP clients (Claude, Cursor, …). The `mcp` SDK requires Python >=3.10.
+mcp = ["mcp>=1.2", "websocket-client>=1.6"]
 
 [project.urls]
 Homepage = "https://chromiumfish.com"

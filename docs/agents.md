@@ -58,6 +58,45 @@ It blocks until you press <kbd>Ctrl-C</kbd> (or it receives `SIGTERM`), then shu
 
 Prefer attaching to a `serve` endpoint over having the agent launch the binary: it's the mode where your persona, proxy, and timezone are guaranteed to be active.
 
+## Use it as an MCP server
+
+For MCP clients (Claude Code, Claude Desktop, Cursor, Windsurf, …), ChromiumFish ships a first-party **MCP server** that exposes the stealth browser as tools — no glue code. It lives in the Python package's `mcp` extra (needs Python ≥3.10):
+
+```bash
+pip install "chromiumfish[mcp]"
+chromiumfish mcp --persona-seed alice        # speaks MCP over stdio
+```
+
+Tools: `navigate`, `snapshot` (visible interactive elements as `[i] <role> "label" <css-selector>`), `get_text`, `screenshot`, `click(selector)`, `type_text(selector, text, submit)`, `eval_js(expression)`, and `run_task(goal)`. The granular tools need **no server-side LLM** — your MCP client is the brain; `run_task` delegates a whole plain-language goal to the fork's native in-browser agent and needs an OpenAI-compatible LLM (`OPENAI_API_*` or `--llm-*`). The browser launches on first use with the persona/proxy/timezone you pass, and is torn down when the client disconnects.
+
+Wire it into a client — e.g. Claude Desktop (`claude_desktop_config.json`) or Claude Code (`.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "chromiumfish": {
+      "command": "chromiumfish",
+      "args": ["mcp", "--persona-seed", "alice"]
+    }
+  }
+}
+```
+
+No global install? `uvx` runs it without one:
+
+```json
+{
+  "mcpServers": {
+    "chromiumfish": {
+      "command": "uvx",
+      "args": ["--from", "chromiumfish[mcp]", "chromiumfish", "mcp"]
+    }
+  }
+}
+```
+
+Flags mirror `serve` (`--persona-seed`, `--proxy`, `--window-size`, `--port`, `--typing`) plus `--headed` to show the window and `--llm-key/--llm-base/--llm-model` for `run_task`.
+
 ## Hermes Agent
 
 [Hermes](https://github.com/NousResearch/hermes-agent) (Nous Research, MIT) connects to a local Chromium-family browser over raw CDP. Point it at a `serve` endpoint:

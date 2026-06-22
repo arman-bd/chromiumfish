@@ -93,6 +93,8 @@ ChromiumFish Chrome/149.0.7827.115 ready — CDP endpoint for external agents
 # Hermes: ~/.hermes/config.yaml -> browser: { cdp_url: "http://127.0.0.1:9222" }
 ```
 
+Or run it as an **MCP server** — `chromiumfish mcp` exposes the browser as tools to Claude Code/Desktop, Cursor, and any MCP client (`pip install "chromiumfish[mcp]"`).
+
 See the [External Agents guide](https://chromiumfish.com/agents).
 
 ## 🪤 Why I built this
