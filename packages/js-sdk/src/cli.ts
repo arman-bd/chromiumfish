@@ -147,6 +147,42 @@ async function serve(argv: string[]): Promise<number> {
   }
 }
 
+/**
+ * Run the MCP server exposing the browser to MCP clients (Claude, Cursor, …).
+ * Stdio is the JSON-RPC channel, so this path must never write to stdout.
+ */
+async function runMcp(argv: string[]): Promise<number> {
+  const ws = (flag(argv, "--window-size") ?? "1920x1080").toLowerCase().split("x").map(Number);
+  if (!ws[0] || !ws[1]) {
+    console.error(`invalid --window-size; expected WIDTHxHEIGHT, e.g. 1920x1080`);
+    return 1;
+  }
+  const port = Number(flag(argv, "--port") ?? 9222);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`invalid --port; expected an integer 1-65535`);
+    return 1;
+  }
+  let mod: typeof import("./mcp.js");
+  try {
+    mod = await import("./mcp.js");
+  } catch {
+    console.error("the MCP server needs @modelcontextprotocol/sdk + zod; run `npm i @modelcontextprotocol/sdk zod`");
+    return 1;
+  }
+  await mod.runServer({
+    personaSeed: flag(argv, "--persona-seed"),
+    headless: !argv.includes("--headed"),
+    windowSize: [ws[0], ws[1]],
+    proxy: flag(argv, "--proxy"),
+    port,
+    typing: flag(argv, "--typing") ?? "human",
+    apiKey: flag(argv, "--llm-key") ?? "",
+    apiBase: flag(argv, "--llm-base") ?? "",
+    model: flag(argv, "--llm-model") ?? "",
+  });
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const cmd = argv[2];
   switch (cmd) {
@@ -172,6 +208,8 @@ async function main(argv: string[]): Promise<number> {
     }
     case "serve":
       return await serve(argv);
+    case "mcp":
+      return await runMcp(argv);
     case "--version":
     case "-V":
       console.log(`chromiumfish ${SDK_VERSION} (browser ${browserVersion()})`);
@@ -187,6 +225,8 @@ async function main(argv: string[]): Promise<number> {
           "  chromiumfish serve [--port 9222] [--persona-seed S]  CDP endpoint for agents",
           "       [--proxy URL] [--window-size WxH] [--timezone Z] [--headless]",
           "       [--browser-version X] [--extra-args ARGS] [--timeout S]",
+          "  chromiumfish mcp   [--persona-seed S] [--headed]      MCP server (Claude, Cursor, ...)",
+          "       [--proxy URL] [--window-size WxH] [--port N] [--typing T] [--llm-key K]",
           "  chromiumfish clear                                   wipe the cache",
           "  chromiumfish --version",
         ].join("\n"),

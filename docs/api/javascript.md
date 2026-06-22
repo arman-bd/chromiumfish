@@ -138,9 +138,12 @@ npx chromiumfish path                                     # print binary path
 npx chromiumfish serve [--port 9222] [--persona-seed S]  # CDP endpoint for external agents
                        [--proxy URL] [--window-size WxH] [--timezone Z] [--headless]
                        [--browser-version X] [--extra-args ARGS] [--timeout S]
+npx chromiumfish mcp   [--persona-seed S] [--headed]      # MCP server (Claude, Cursor, ...)
+                       [--proxy URL] [--window-size WxH] [--port N] [--typing T] [--llm-key K]
 npx chromiumfish clear                                    # wipe the cache
 npx chromiumfish --version
 ```
 
-`serve` launches a plain CDP endpoint for third-party agent frameworks to attach to — see
+`serve` launches a plain CDP endpoint for third-party agent frameworks to attach to; `mcp`
+runs an MCP server exposing the browser to MCP clients (Claude, Cursor, …). See
 [External Agents](../agents).

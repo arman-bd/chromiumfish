@@ -1,6 +1,6 @@
 {
   "name": "chromiumfish",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Stealth Chromium build with a drop-in Playwright harness — fetches and launches the ChromiumFish browser.",
   "type": "module",
   "main": "./dist/index.js",
@@ -56,5 +56,9 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
   }
 }

@@ -183,7 +183,7 @@ async function getWebSocketCtor(): Promise<any> {
 }
 
 /** Minimal CDP-over-WebSocket client. */
-class CDP {
+export class CDP {
   private id = 0;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: any) => void }>();
   private waiters: Array<{ method: string; resolve: () => void; timer: ReturnType<typeof setTimeout> }> = [];
@@ -293,7 +293,7 @@ export class AgentClient {
   }
 
   /** Return {targetId, wsUrl}, reusing a real page or opening one. */
-  private async pickPage(): Promise<{ targetId: string; wsUrl: string }> {
+  async pickPage(): Promise<{ targetId: string; wsUrl: string }> {
     const targets: any[] = await this.httpGet("/json");
     const pages = targets.filter(
       (t) => t.type === "page" && !String(t.url ?? "").startsWith("chrome://") && t.webSocketDebuggerUrl,

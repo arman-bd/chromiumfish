@@ -95,6 +95,12 @@ npx chromiumfish serve --persona-seed alice        # -> http://127.0.0.1:9222
 # e.g. Hermes ~/.hermes/config.yaml: browser: { cdp_url: "http://127.0.0.1:9222" }
 ```
 
+Or run it as an **MCP server** for Claude Code/Desktop, Cursor, etc.:
+
+```bash
+npx chromiumfish mcp --persona-seed alice          # exposes browser tools over MCP (stdio)
+```
+
 Full guide: [chromiumfish.com/agents](https://chromiumfish.com/agents).
 
 ## CLI
@@ -105,6 +111,8 @@ npx chromiumfish path                                     # print binary path
 npx chromiumfish serve [--port 9222] [--persona-seed S]  # CDP endpoint for external agents
                        [--proxy URL] [--window-size WxH] [--timezone Z] [--headless]
                        [--browser-version X] [--extra-args ARGS] [--timeout S]
+npx chromiumfish mcp   [--persona-seed S] [--headed]      # MCP server (Claude, Cursor, ...)
+                       [--proxy URL] [--window-size WxH] [--port N] [--typing T] [--llm-key K]
 npx chromiumfish clear                                    # wipe the cache
 npx chromiumfish --version
 ```

@@ -60,10 +60,12 @@ Prefer attaching to a `serve` endpoint over having the agent launch the binary: 
 
 ## Use it as an MCP server
 
-For MCP clients (Claude Code, Claude Desktop, Cursor, Windsurf, …), ChromiumFish ships a first-party **MCP server** that exposes the stealth browser as tools — no glue code. It lives in the Python package's `mcp` extra (needs Python ≥3.10):
+For MCP clients (Claude Code, Claude Desktop, Cursor, Windsurf, …), ChromiumFish ships a first-party **MCP server** that exposes the stealth browser as tools — no glue code. It's in **both** SDKs:
+
+- **Node**: `chromiumfish mcp` (or zero-install `npx chromiumfish mcp`)
+- **Python** (≥3.10): `pip install "chromiumfish[mcp]"`, then `chromiumfish mcp`
 
 ```bash
-pip install "chromiumfish[mcp]"
 chromiumfish mcp --persona-seed alice        # speaks MCP over stdio
 ```
 
@@ -82,17 +84,14 @@ Wire it into a client — e.g. Claude Desktop (`claude_desktop_config.json`) or 
 }
 ```
 
-No global install? `uvx` runs it without one:
+Zero-install runners work too — `npx` (Node) or `uvx` (Python):
 
 ```json
-{
-  "mcpServers": {
-    "chromiumfish": {
-      "command": "uvx",
-      "args": ["--from", "chromiumfish[mcp]", "chromiumfish", "mcp"]
-    }
-  }
-}
+{ "mcpServers": { "chromiumfish": { "command": "npx", "args": ["-y", "chromiumfish", "mcp"] } } }
+```
+
+```json
+{ "mcpServers": { "chromiumfish": { "command": "uvx", "args": ["--from", "chromiumfish[mcp]", "chromiumfish", "mcp"] } } }
 ```
 
 Flags mirror `serve` (`--persona-seed`, `--proxy`, `--window-size`, `--port`, `--typing`) plus `--headed` to show the window and `--llm-key/--llm-base/--llm-model` for `run_task`.
