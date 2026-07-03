@@ -62,10 +62,10 @@ index 33e1c7a975623..4d920941c3d0f 100644
      "frame/frame_ad_evidence_mojom_traits.cc",
 diff --git a/third_party/blink/common/fingerprinting/fingerprint_profile.cc b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
 new file mode 100644
-index 0000000000000..9bf618e186cb6
+index 0000000000000..53aabb85c54ce
 --- /dev/null
 +++ b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
-@@ -0,0 +1,536 @@
+@@ -0,0 +1,548 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -186,15 +186,17 @@ index 0000000000000..9bf618e186cb6
 +  int screen_w, screen_h;    // CSS px (physical / dpr)
 +  double dpr;                // devicePixelRatio
 +  int max_touch;             // navigator.maxTouchPoints
++  int hc;                    // navigator.hardwareConcurrency (Tensor SoC = 8)
++  double mem_gb;             // navigator.deviceMemory (spec-capped at 8)
 +  const char* gl_vendor;     // UNMASKED_VENDOR_WEBGL, "ARM"
 +  const char* gl_renderer;   // UNMASKED_RENDERER_WEBGL, "Mali-G78"
 +};
 +constexpr std::array<WeightedEntry<AndroidDevice>, 5> kAndroidDevices = {{
-+    {{"Pixel 6", "15.0.0", 412, 915, 2.625, 5, "ARM", "Mali-G78"}, 0.30},
-+    {{"Pixel 6a", "15.0.0", 412, 915, 2.625, 5, "ARM", "Mali-G78"}, 0.15},
-+    {{"Pixel 7", "15.0.0", 412, 915, 2.625, 5, "ARM", "Mali-G710"}, 0.25},
-+    {{"Pixel 7a", "15.0.0", 412, 915, 2.625, 5, "ARM", "Mali-G710"}, 0.15},
-+    {{"Pixel 8", "15.0.0", 412, 916, 2.625, 5, "ARM", "Mali-G715"}, 0.15},
++    {{"Pixel 6", "15.0.0", 412, 915, 2.625, 5, 8, 8.0, "ARM", "Mali-G78"}, 0.30},
++    {{"Pixel 6a", "15.0.0", 412, 915, 2.625, 5, 8, 8.0, "ARM", "Mali-G78"}, 0.15},
++    {{"Pixel 7", "15.0.0", 412, 915, 2.625, 5, 8, 8.0, "ARM", "Mali-G710"}, 0.25},
++    {{"Pixel 7a", "15.0.0", 412, 915, 2.625, 5, 8, 8.0, "ARM", "Mali-G710"}, 0.15},
++    {{"Pixel 8", "15.0.0", 412, 916, 2.625, 5, 8, 8.0, "ARM", "Mali-G715"}, 0.15},
 +}};
 +
 +constexpr std::array<WeightedEntry<ScreenSize>, 9> kScreens = {{
@@ -411,6 +413,16 @@ index 0000000000000..9bf618e186cb6
 +  const HwTier& tier = kHwTiers[tier_idx].value;
 +  p.hardware_concurrency = WeightedPick(rng, tier.hc);
 +  p.device_memory_gb = WeightedPick(rng, tier.mem);
++  if (android) {
++    // Coherence: a phone's hc/mem are fixed by its SoC, not the desktop tier
++    // pool. Pixel Tensor = 8 cores; navigator.deviceMemory is spec-capped at 8.
++    // Without this a Pixel-6 persona could report hc=4 / deviceMemory=16, which
++    // fpjs cross-checks against the model and flags. (The desktop tier draw
++    // above still runs so the rng sequence — and existing desktop seeds — are
++    // unchanged.)
++    p.hardware_concurrency = android->hc;
++    p.device_memory_gb = android->mem_gb;
++  }
 +  // 2026-06-01 cluster routing UNLOCKED. The previous override pinned
 +  // every persona to HC=8/mem=16 to ride the "modal Win 11 desktop"
 +  // ML cluster (VM ML floor of ~0.65). Empirically (3 different
