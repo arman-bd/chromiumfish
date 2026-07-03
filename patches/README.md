@@ -36,6 +36,7 @@ while read p; do git apply "patches/$p"; done < patches/series
 | `audio/webaudio.patch` | WebAudio rendering/destination handling for stable audio fingerprints. |
 | `network/webrtc-leak-shield.patch` | Forces WebRTC off public UDP, RTCPeerConnection + mediaDevices hardening. |
 | `network/tls-fingerprint.patch` | ClientHello shaping (drops the Chromium-150 Trust Anchor IDs extension) + net feature flags. |
+| `network/request-header-integrity.patch` | Emits Chrome's `X-Browser-Channel/Year/Validation/Copyright` request-integrity headers to Google-associated domains; validation digest is `base64(SHA1(persona-platform API key + persona UA))`. |
 | `devtools/humanized-input.patch` | Non-CDP humanized cursor/input over the custom DevTools protocol surface. |
 | `ui/chrome-ui.patch` | Browser UI customizations (menus, toolbar, location bar, blank NTP, WebUI configs). |
 | `ui/search-engines.patch` | Removes the default search provider / starter-pack engines. |

@@ -1,0 +1,166 @@
+diff --git a/chrome/common/request_header_integrity/buildflags.gni b/chrome/common/request_header_integrity/buildflags.gni
+index 8fa0839680262..4ee28fe0f690d 100644
+--- a/chrome/common/request_header_integrity/buildflags.gni
++++ b/chrome/common/request_header_integrity/buildflags.gni
+@@ -9,7 +9,10 @@
+ import("//build/config/chrome_build.gni")
+ 
+ declare_args() {
+-  enable_request_header_integrity = is_chrome_branded
++  # ChromiumFish: force-on so the (unbranded) persona build emits the real
++  # X-Browser-Channel/Year/Validation/Copyright headers to Google-associated
++  # domains, matching Google Chrome. Upstream default is is_chrome_branded.
++  enable_request_header_integrity = true
+ 
+   channel_name_header_name = ""
+   copyright_header_name = ""
+diff --git a/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc b/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
+index 4d4a6d5d12adf..4033109656852 100644
+--- a/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
++++ b/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
+@@ -16,7 +16,6 @@
+ #include "chrome/common/channel_info.h"
+ #include "components/embedder_support/user_agent_utils.h"
+ #include "components/google/core/common/google_util.h"
+-#include "google_apis/google_api_keys.h"
+ #include "net/url_request/redirect_info.h"
+ #include "services/network/public/cpp/resource_request.h"
+ #include "services/network/public/mojom/network_context.mojom.h"
+@@ -27,28 +26,33 @@
+ #include "chrome/common/request_header_integrity/internal/integrity_seed_internal.h"
+ #endif
+ 
++// ChromiumFish: emit the real X-Browser-* request-integrity headers that
++// Google Chrome sends to Google-associated domains, instead of the upstream
++// unbranded "X-Placeholder-N" names. These fall back to the real names only
++// when the (absent) branded internal header has not already defined them.
+ #if !defined(CHANNEL_NAME_HEADER_NAME)
+-#define CHANNEL_NAME_HEADER_NAME "X-Placeholder-1"
++#define CHANNEL_NAME_HEADER_NAME "X-Browser-Channel"
+ #endif
+ 
+ #if !defined(LASTCHANGE_YEAR_HEADER_NAME)
+-#define LASTCHANGE_YEAR_HEADER_NAME "X-Placeholder-2"
++#define LASTCHANGE_YEAR_HEADER_NAME "X-Browser-Year"
+ #endif
+ 
+ #if !defined(VALIDATE_HEADER_NAME)
+-#define VALIDATE_HEADER_NAME "X-Placeholder-3"
++#define VALIDATE_HEADER_NAME "X-Browser-Validation"
+ #endif
+ 
+ #if !defined(COPYRIGHT_HEADER_NAME)
+-#define COPYRIGHT_HEADER_NAME "X-Placeholder-4"
++#define COPYRIGHT_HEADER_NAME "X-Browser-Copyright"
+ #endif
+ 
+ #if !defined(CHROME_COPYRIGHT)
+-#define CHROME_COPYRIGHT "X-COPYRIGHT"
++#define CHROME_COPYRIGHT "Copyright 2026 Google LLC. All Rights Reserved."
+ #endif
+ 
++// Keep in sync with the persona's Chrome release year (Chrome 149 -> 2026).
+ #if !defined(LASTCHANGE_YEAR)
+-#define LASTCHANGE_YEAR "1969"
++#define LASTCHANGE_YEAR "2026"
+ #endif
+ 
+ namespace request_header_integrity {
+@@ -57,36 +61,80 @@ namespace {
+ 
+ BASE_FEATURE(kRequestHeaderIntegrity, base::FEATURE_ENABLED_BY_DEFAULT);
+ 
+-#if !BUILDFLAG(GOOGLE_CHROME_BRANDING)
+-// Seed for header integrity (empty for unbranded builds).
+-constexpr char kIntegritySeed[] = "";
+-#endif
+-
+ // Returns extended, stable, beta, dev, or canary if a channel is available,
+ // otherwise the empty string.
+ std::string GetChannelName() {
+   std::string channel_name =
+       chrome::GetChannelName(chrome::WithExtendedStable(true));
+ 
+-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+-  if (channel_name.empty()) {
+-    // For branded builds, stable is represented as the empty string.
+-    channel_name = "stable";
++  // ChromiumFish presents a stable-channel persona. Unbranded builds report an
++  // empty or "unknown" channel, which would omit the X-Browser-Channel header
++  // that real Chrome always sends; normalize both to "stable".
++  if (channel_name.empty() || base::ToLowerASCII(channel_name) == "unknown") {
++    return "stable";
+   }
+-#endif
+ 
+-  if (base::ToLowerASCII(channel_name) == "unknown") {
+-    return "";
++  return channel_name;
++}
++
++// Official per-platform Google API keys that Chrome concatenates with the
++// User-Agent to derive the X-Browser-Validation integrity digest, i.e.
++// base64(SHA1(api_key + user_agent)). The key is chosen from the spoofed
++// User-Agent that is actually sent, so the digest stays consistent with the
++// persona's platform rather than the host this binary runs on. (google_apis::
++// GetAPIKey() is unusable here: it returns the "dummytoken" in unbranded builds
++// and, even when official keys are compiled in, only ever the single
++// host-platform key baked at build time -- never the spoofed Windows key.)
++const char* SelectPlatformApiKey(const std::string& user_agent) {
++  if (user_agent.find("Windows") != std::string::npos) {
++    return "AIzaSyA2KlwBX3mkFo30om9LUFYQhpqLoa_BNhE";
++  }
++  if (user_agent.find("Macintosh") != std::string::npos ||
++      user_agent.find("Mac OS X") != std::string::npos) {
++    return "AIzaSyDr2UxVnv_U85AbhhY8XSHSIavUW0DC-sY";
+   }
++  // X11/Linux and any other Unix persona.
++  return "AIzaSyBqJZh-7pA44blAaAkH6490hUFOwX0KCYM";
++}
+ 
+-  return channel_name;
++// Per-milestone integrity seed (Chrome's private kIntegritySeed), extracted
++// from the "<seed>\0RequestHeaderIntegrity" constant baked into the official
++// Google Chrome Framework binary. Google rotates this seed each milestone; the
++// digest is base64(SHA1(seed + api_key + user_agent)). Verified byte-exact
++// against real Chrome captures (149: TZ9ccKRHo5n5OZA8D5qL5MeuUqE= for macOS,
++// zyMeDuba02HE8LHzcfWdkJ+F6HE= for Windows). The seed is keyed by the persona's
++// Chrome major version (parsed from the reduced UA "Chrome/<major>.0.0.0"), so
++// the value stays correct when the persona version is bumped. To add a new
++// milestone: grep the framework binary for the 16-hex string preceding
++// "\0RequestHeaderIntegrity".
++const char* SelectIntegritySeed(const std::string& user_agent) {
++  int major = 0;
++  static constexpr char kMarker[] = "Chrome/";
++  size_t p = user_agent.find(kMarker);
++  if (p != std::string::npos) {
++    for (p += sizeof(kMarker) - 1;
++         p < user_agent.size() && user_agent[p] >= '0' && user_agent[p] <= '9';
++         ++p) {
++      major = major * 10 + (user_agent[p] - '0');
++    }
++  }
++  switch (major) {
++    case 149:
++      return "4bcb2b700636796d";
++    case 150:
++      return "52a4ca3646b0641a";
++    default:
++      // Unknown milestone: fall back to an empty seed (best effort). Add the
++      // real value above when bumping the persona to a new Chrome version.
++      return "";
++  }
+ }
+ 
+ void AddRequestIntegrityHeaders(net::HttpRequestHeaders* headers) {
+-  const std::string digest =
+-      base::Base64Encode(base::SHA1Hash(base::as_byte_span(
+-          std::string(kIntegritySeed) + google_apis::GetAPIKey() +
+-          embedder_support::GetUserAgent())));
++  const std::string user_agent = embedder_support::GetUserAgent();
++  const std::string digest = base::Base64Encode(base::SHA1Hash(
++      base::as_byte_span(std::string(SelectIntegritySeed(user_agent)) +
++                         SelectPlatformApiKey(user_agent) + user_agent)));
+   const std::string channel_name = GetChannelName();
+   if (!channel_name.empty()) {
+     headers->SetHeader(CHANNEL_NAME_HEADER_NAME, channel_name);
