@@ -15,7 +15,7 @@ index 8fa0839680262..4ee28fe0f690d 100644
    channel_name_header_name = ""
    copyright_header_name = ""
 diff --git a/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc b/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
-index 4d4a6d5d12adf..4033109656852 100644
+index 4d4a6d5d12adf..1fb88079f0db9 100644
 --- a/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
 +++ b/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
 @@ -16,7 +16,6 @@
@@ -66,7 +66,7 @@ index 4d4a6d5d12adf..4033109656852 100644
  #endif
  
  namespace request_header_integrity {
-@@ -57,36 +61,80 @@ namespace {
+@@ -57,36 +61,88 @@ namespace {
  
  BASE_FEATURE(kRequestHeaderIntegrity, base::FEATURE_ENABLED_BY_DEFAULT);
  
@@ -114,8 +114,10 @@ index 4d4a6d5d12adf..4033109656852 100644
 +      user_agent.find("Mac OS X") != std::string::npos) {
 +    return "AIzaSyDr2UxVnv_U85AbhhY8XSHSIavUW0DC-sY";
    }
-+  // X11/Linux and any other Unix persona.
-+  return "AIzaSyBqJZh-7pA44blAaAkH6490hUFOwX0KCYM";
++  // Android AND Linux/X11 share the same baked GOOGLE_API_KEY. Verified against
++  // a live Pixel 6 / Chrome 149 Android capture (x-browser-validation
++  // 50zh7+3sV3Q0N1RI1xKsWF5cbms=). (This supersedes the stale dsekz Linux key.)
++  return "AIzaSyDlUur5xXJ0gBeLFW_D2PtjduqOFQMsqEY";
 +}
  
 -  return channel_name;
@@ -140,9 +142,15 @@ index 4d4a6d5d12adf..4033109656852 100644
 +      major = major * 10 + (user_agent[p] - '0');
 +    }
 +  }
++  // The seed is per-PLATFORM as well as per-major: desktop and Android builds
++  // ship different seeds for the same Chrome milestone. Verified byte-exact:
++  // desktop 149 -> TZ9c.../zyMe... (macOS/Windows); Android 149 -> 50zh...
++  // (live Pixel 6 capture). Extract new values via strings on the framework/
++  // libmonochrome.so preceding "\0RequestHeaderIntegrity".
++  const bool is_android = user_agent.find("Android") != std::string::npos;
 +  switch (major) {
 +    case 149:
-+      return "4bcb2b700636796d";
++      return is_android ? "699497c72b2fa8d1" : "4bcb2b700636796d";
 +    case 150:
 +      return "52a4ca3646b0641a";
 +    default:

@@ -1,8 +1,16 @@
 diff --git a/third_party/blink/renderer/core/css/media_values.cc b/third_party/blink/renderer/core/css/media_values.cc
-index 0d60244742506..4dfc4636dad74 100644
+index 0d60244742506..62a02f8b0c7d7 100644
 --- a/third_party/blink/renderer/core/css/media_values.cc
 +++ b/third_party/blink/renderer/core/css/media_values.cc
-@@ -353,20 +353,32 @@ mojom::blink::PointerType MediaValues::CalculatePrimaryPointerType(
+@@ -28,6 +28,7 @@
+ #include "third_party/blink/renderer/platform/graphics/color_space_gamut.h"
+ #include "third_party/blink/renderer/platform/network/network_state_notifier.h"
+ #include "third_party/blink/renderer/platform/widget/frame_widget.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "ui/base/mojom/window_show_state.mojom-blink.h"
+ #include "ui/display/screen_info.h"
+ 
+@@ -353,20 +354,45 @@ mojom::blink::PointerType MediaValues::CalculatePrimaryPointerType(
      LocalFrame* frame) {
    DCHECK(frame);
    DCHECK(frame->GetSettings());
@@ -11,9 +19,14 @@ index 0d60244742506..4dfc4636dad74 100644
 +  // so report kPointerFineType. Without this, headless Ozone (no real input
 +  // device) reports kPointerNone, and CSS @media (pointer: fine) evaluates
 +  // false even though navigator.userAgent says "Windows NT 10.0; Win64".
-+  // Bot detectors (a fingerprinting test page, the fingerprinter) cross-check: UA=desktop + pointer=none =>
++  // Bot detectors (CreepJS, fpjs) cross-check: UA=desktop + pointer=none =>
 +  // headless/automated. Override at the MediaValues layer so all four
 +  // (any-pointer, pointer, any-hover, hover) match real Win Chrome.
++  // ChromiumFish: a mobile persona is a touchscreen phone => coarse pointer,
++  // matching Sec-CH-UA-Mobile:?1 and maxTouchPoints>0.
++  if (blink::fingerprinting::Current().ua_metadata_mobile) {
++    return mojom::blink::PointerType::kPointerCoarseType;
++  }
 +  return mojom::blink::PointerType::kPointerFineType;
  }
  
@@ -24,6 +37,10 @@ index 0d60244742506..4dfc4636dad74 100644
 +  // Match primary: Win desktop reports only the fine pointer (kPointerFineType
 +  // bit set). A Surface / convertible would additionally OR in kPointerCoarse,
 +  // but our persona is a non-touch desktop, so single-bit is correct.
++  // ChromiumFish: mobile persona => coarse only.
++  if (blink::fingerprinting::Current().ua_metadata_mobile) {
++    return static_cast<int>(mojom::blink::PointerType::kPointerCoarseType);
++  }
 +  return static_cast<int>(mojom::blink::PointerType::kPointerFineType);
  }
  
@@ -34,16 +51,24 @@ index 0d60244742506..4dfc4636dad74 100644
 -  return frame->GetSettings()->GetPrimaryHoverType();
 +  // 2026-05-30: Persona override — Win desktop with mouse hovers. See
 +  // CalculatePrimaryPointerType above for the rationale; both must agree.
++  // ChromiumFish: a touchscreen phone cannot hover => hover:none.
++  if (blink::fingerprinting::Current().ua_metadata_mobile) {
++    return mojom::blink::HoverType::kHoverNone;
++  }
 +  return mojom::blink::HoverType::kHoverHoverType;
  }
  
  mojom::blink::OutputDeviceUpdateAbilityType
-@@ -379,7 +391,8 @@ MediaValues::CalculateOutputDeviceUpdateAbilityType(LocalFrame* frame) {
+@@ -379,7 +405,12 @@ MediaValues::CalculateOutputDeviceUpdateAbilityType(LocalFrame* frame) {
  int MediaValues::CalculateAvailableHoverTypes(LocalFrame* frame) {
    DCHECK(frame);
    DCHECK(frame->GetSettings());
 -  return frame->GetSettings()->GetAvailableHoverTypes();
 +  // Match primary: Win desktop with mouse reports kHoverHoverType only.
++  // ChromiumFish: mobile persona => hover:none.
++  if (blink::fingerprinting::Current().ua_metadata_mobile) {
++    return static_cast<int>(mojom::blink::HoverType::kHoverNone);
++  }
 +  return static_cast<int>(mojom::blink::HoverType::kHoverHoverType);
  }
  
@@ -336,7 +361,7 @@ index 8f88c4c102d62..843920c65cb16 100644
 +  // Persona-mode: force classic-style scrollbars even on macOS so that
 +  // div.offsetWidth > div.clientWidth for overflow:scroll elements (i.e.
 +  // scrollbars take layout width like they do on Windows/Linux). Defeats
-+  // the commercial fingerprinters signal s204 (rt()) that creates a hidden
++  // the FingerprintJS Pro signal s204 (rt()) that creates a hidden
 +  // overflow:scroll div and infers Mac vs Win from offsetWidth ===
 +  // clientWidth. The fork's persona claims Windows; this was the single
 +  // biggest "platform != UA" inconsistency at the layout layer.
