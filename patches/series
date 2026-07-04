@@ -12,6 +12,7 @@ fonts/font-substitution.patch
 canvas-bridge/component.patch
 canvas-bridge/canvas2d.patch
 canvas-bridge/webgl.patch
+audio/fingerprint-audio-isolation.patch
 audio/webaudio.patch
 network/webrtc-leak-shield.patch
 network/tls-fingerprint.patch
