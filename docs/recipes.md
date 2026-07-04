@@ -261,7 +261,7 @@ browser and the same timezone data on any machine.
 ```python
 from chromiumfish.sync_api import Chromiumfish
 
-with Chromiumfish(persona_seed="alpha-7", version="150.0.7844") as browser:
+with Chromiumfish(persona_seed="alpha-7", version="149.0.7827.115") as browser:
     page = browser.new_page()
     page.goto("https://example.com")
 ```
@@ -271,7 +271,7 @@ with Chromiumfish(persona_seed="alpha-7", version="150.0.7844") as browser:
 ```javascript
 import { ChromiumFish } from "chromiumfish";
 
-const browser = await ChromiumFish({ personaSeed: "alpha-7", version: "150.0.7844" });
+const browser = await ChromiumFish({ personaSeed: "alpha-7", version: "149.0.7827.115" });
 const page = await browser.newPage();
 await page.goto("https://example.com");
 await browser.close();

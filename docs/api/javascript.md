@@ -41,7 +41,7 @@ lifecycle, so call `browser.close()` when done.
 | `headless` | `boolean` | `true` | Run headless (SwiftShader). |
 | `proxy` | `object` | — | Playwright proxy object: `{ server, username, password }`. |
 | `windowSize` | `[number, number] \| null` | `[1920, 1080]` | Window dimensions. Pass `null` to omit the flag. |
-| `version` | `string` | `150.0.7844` | Override the pinned browser build version. |
+| `version` | `string` | `149.0.7827.115` | Override the pinned browser build version. |
 | `download` | `boolean` | `true` | Download the build automatically if it isn't cached. |
 | `timezone` | `string` | — | `"auto"` resolves the egress IP's IANA timezone via the ip2tz DB and sets the browser TZ. An IANA string like `"Europe/Berlin"` is used verbatim. Omit to disable timezone handling. |
 | `args` | `string[]` | — | Extra Chromium command-line flags. |

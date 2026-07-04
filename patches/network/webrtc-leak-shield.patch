@@ -230,7 +230,7 @@ index 1d85fe3c79b61..6cd79827cd003 100644
 +  // 2026-05-31: Persona-mode IP leak shield. With
 +  // --force-webrtc-ip-handling-policy=disable_non_proxied_udp set, the
 +  // upstream code sets port_config.enable_nonproxied_udp=false — yet
-+  // empirically Chromium 150 still emits srflx and prflx UDP candidates
++  // empirically Chromium 149 still emits srflx and prflx UDP candidates
 +  // whose IP is the raw host public address (verified 2026-05-31 on the
 +  // Linux VPS — srflx address=203.0.113.7 with raddr=0.0.0.0). This is
 +  // the classic a fingerprinting test page / the fingerprinter / a WebRTC leak test WebRTC leak: page reads

@@ -55,7 +55,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
 -                               std::string(version_info::GetVersionNumber()),
 +  // Lightweight-fork: use persona's claimed Chrome version, NOT the real
 +  // fork build's version. Otherwise Sec-CH-UA would advertise the real
-+  // build (e.g. 150) while the User-Agent string claims the persona
++  // build (e.g. 149) while the User-Agent string claims the persona
 +  // (e.g. 148), an immediate consistency-mismatch fingerprint tell.
 +  const auto& p = blink::fingerprinting::Current();
 +  return GetUserAgentBrandList(base::NumberToString(p.chrome_major_version),
@@ -122,8 +122,8 @@ index 66cf6ce5f5237..87888b81dcea3 100644
 -             : std::string(
 -                   version_info::GetProductNameAndVersionForUserAgent());
 +  // Lightweight-fork: report the PERSONA's Chrome major version, not the
-+  // built binary's. The built binary may be e.g. 150 while the persona
-+  // claims 148; this keeps the User-Agent header consistent with the
++  // built binary's. The built binary's major may differ from the persona's
++  // claimed major; this keeps the User-Agent header consistent with the
 +  // Sec-CH-UA brand version (which is also derived from the persona).
 +  // Reduced-UA format ("Chrome/<major>.0.0.0") is hard-coded since
 +  // kReduceUserAgentMinorVersion is the default for years.
@@ -179,7 +179,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
 -  metadata.full_version = std::string(version_info::GetVersionNumber());
 +  // Persona-mode: use the claimed full version, not the real build
 +  // version. version_info::GetVersionNumber() returns the actual fork
-+  // build (e.g. 150.0.7844.0) and leaks via Sec-CH-UA-Full-Version on
++  // build (e.g. 149.0.7827.115) and leaks via Sec-CH-UA-Full-Version on
 +  // Accept-CH opt-in requests — directly observable to CF managed
 +  // challenges. Pin to the persona's claimed full version so the high-
 +  // entropy hint matches what the low-entropy sec-ch-ua already claims.
@@ -266,7 +266,7 @@ index a3f5649de4219..38437864c7d0a 100644
    InstallConditionalFeatures();
  
 +  // Persona prototype trim: REMOVE only the properties that are genuinely
-+  // in our build (Chromium 150 source) but NOT in real Chrome 148. The
++  // in our build (Chromium 149 source) but NOT in real Chrome 148. The
 +  // previous revision of this patch trimmed 47 Navigator.prototype
 +  // properties (bluetooth, clipboard, credentials, gpu, hid, serial,
 +  // serviceWorker, deviceMemory, etc.) based on the false claim that
@@ -277,7 +277,7 @@ index a3f5649de4219..38437864c7d0a 100644
 +  // our fork advertise a stripped Navigator that didn't match ANY real
 +  // Chrome version — instant anti-detect tell for Cloudflare Turnstile.
 +  //
-+  // Verified actual diff (Chromium 150 source − Chrome 148 stable):
++  // Verified actual diff (Chromium 149 source − Chrome 148 stable):
 +  //   * Element.prototype:        'pseudo'
 +  //   * HTMLElement.prototype:    'pseudo', 'focusGroup', 'focusGroupStart'
 +  //   * Navigator.prototype:      'modelContext'
@@ -367,7 +367,7 @@ index 24e54a9c02041..357af2da5b6e7 100644
      [ImplementedAs=dispatchEventForBindings, RaisesException, RuntimeCallStatsCounter=EventTargetDispatchEvent] boolean dispatchEvent(Event event);
 -    [MeasureAs=EventTargetOnObservable] Observable when(DOMString type, optional ObservableEventListenerOptions options = {});
 +    // Persona-mode: EventTarget.when() is the recently-added Observable
-+    // API entry point (Chrome 150+). Real Chrome 148 doesn't expose it,
++    // API entry point (Chrome 149+). Real Chrome 148 doesn't expose it,
 +    // so PermissionStatus.prototype.when (and every other EventTarget
 +    // subclass's .when) shows up only on the post-148 source we build
 +    // against. FingerprintJS Pro signal s211 counts EventTarget-derived
