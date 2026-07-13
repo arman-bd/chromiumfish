@@ -842,3 +842,35 @@ index 1b59fe994a8b1..03df9ac8a3c05 100644
      },
      {
        name: "NetInfoDownlinkMax",
+diff --git a/content/child/runtime_features.cc b/content/child/runtime_features.cc
+index d70602574e6a7..a4c8c7bd10129 100644
+--- a/content/child/runtime_features.cc
++++ b/content/child/runtime_features.cc
+@@ -39,6 +39,7 @@
+ #include "services/webnn/public/mojom/features.mojom-features.h"
+ #include "third_party/blink/public/common/buildflags.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/public/common/features_generated.h"
+ #include "third_party/blink/public/common/loader/referrer_utils.h"
+ #include "third_party/blink/public/common/switches.h"
+@@ -713,6 +714,19 @@ void SetRuntimeFeaturesDefaultsAndUpdateFromArgs(
+     WebRuntimeFeatures::EnableXSLT(value == "true");
+   }
+ 
++  // Lightweight-fork: the Shape Detection BarcodeDetector has a built-in
++  // platform backend only on macOS / Android / ChromeOS, so real Windows Chrome
++  // exposes no window.BarcodeDetector. Gate it to the PERSONA's OS rather than
++  // the build host's — otherwise a Windows persona built on a Mac (where the
++  // feature ships "stable") leaks the barcode API, a direct platform tell.
++  {
++    const auto& fp = blink::fingerprinting::Current();
++    const bool persona_has_barcode = fp.ua_metadata_platform == "macOS" ||
++                                     fp.ua_metadata_platform == "Android";
++    WebRuntimeFeatures::EnableFeatureFromString("BarcodeDetector",
++                                                persona_has_barcode);
++  }
++
+   ResolveInvalidConfigurations();
+ }
+ 
