@@ -526,7 +526,7 @@ index 976a3c8c36dbf..404c2fa849d40 100644
  
  void NetworkInformation::ConnectionChange(
 diff --git a/third_party/blink/renderer/modules/speech/speech_synthesis.cc b/third_party/blink/renderer/modules/speech/speech_synthesis.cc
-index a631d4f2b1c25..957729193205c 100644
+index a631d4f2b1c25..bfe767263cbc3 100644
 --- a/third_party/blink/renderer/modules/speech/speech_synthesis.cc
 +++ b/third_party/blink/renderer/modules/speech/speech_synthesis.cc
 @@ -25,9 +25,11 @@
@@ -541,7 +541,7 @@ index a631d4f2b1c25..957729193205c 100644
  #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
  #include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
  #include "third_party/blink/public/platform/platform.h"
-@@ -93,8 +95,43 @@ void SpeechSynthesis::OnSetVoiceList(
+@@ -93,8 +95,65 @@ void SpeechSynthesis::OnSetVoiceList(
  }
  
  const HeapVector<Member<SpeechSynthesisVoice>>& SpeechSynthesis::getVoices() {
@@ -560,25 +560,47 @@ index a631d4f2b1c25..957729193205c 100644
 +  voice_list_.clear();
 +
 +  struct StubVoice {
-+    const char* voice_uri;
-+    const char* name;
++    const char* name;  // voice_uri == name for these
 +    const char* lang;
++    bool local;        // is_local_service (SAPI = true, remote = false)
 +  };
-+  static constexpr std::array<StubVoice, 3> kWinStubVoices = {{
-+      {"Microsoft David - English (United States)",
-+       "Microsoft David - English (United States)", "en-US"},
-+      {"Microsoft Zira - English (United States)",
-+       "Microsoft Zira - English (United States)", "en-US"},
-+      {"Microsoft Mark - English (United States)",
-+       "Microsoft Mark - English (United States)", "en-US"},
++  // Canonical Windows getVoices() shape: the local SAPI voices followed by the
++  // bundled remote voices (is_local_service=false). Host voices are replaced
++  // wholesale so per-host voice entropy stays 0 (OS-neutral: mac/linux fork
++  // builds emit this same Windows-shaped list when the persona claims Windows).
++  // Non-ASCII names are stored via String::FromUtf8 (WTF::String(const char*)
++  // would mangle them).
++  static constexpr std::array<StubVoice, 22> kWinStubVoices = {{
++      {"Microsoft David - English (United States)", "en-US", true},
++      {"Microsoft Zira - English (United States)", "en-US", true},
++      {"Microsoft Mark - English (United States)", "en-US", true},
++      {"Google Deutsch", "de-DE", false},
++      {"Google US English", "en-US", false},
++      {"Google UK English Female", "en-GB", false},
++      {"Google UK English Male", "en-GB", false},
++      {"Google español", "es-ES", false},
++      {"Google español de Estados Unidos", "es-US", false},
++      {"Google français", "fr-FR", false},
++      {"Google हिन्दी", "hi-IN", false},
++      {"Google Bahasa Indonesia", "id-ID", false},
++      {"Google italiano", "it-IT", false},
++      {"Google 日本語", "ja-JP", false},
++      {"Google 한국의", "ko-KR", false},
++      {"Google Nederlands", "nl-NL", false},
++      {"Google polski", "pl-PL", false},
++      {"Google português do Brasil", "pt-BR", false},
++      {"Google русский", "ru-RU", false},
++      {"Google 普通话（中国大陆）", "zh-CN", false},
++      {"Google 粤語（香港）", "zh-HK", false},
++      {"Google 國語（臺灣）", "zh-TW", false},
 +  }};
 +  bool is_first = true;
 +  for (const StubVoice& v : kWinStubVoices) {
 +    auto mojom_voice = mojom::blink::SpeechSynthesisVoice::New();
-+    mojom_voice->voice_uri = String(v.voice_uri);
-+    mojom_voice->name = String(v.name);
++    mojom_voice->voice_uri = String::FromUtf8(v.name);
++    mojom_voice->name = String::FromUtf8(v.name);
 +    mojom_voice->lang = String(v.lang);
-+    mojom_voice->is_local_service = true;
++    mojom_voice->is_local_service = v.local;
 +    mojom_voice->is_default = is_first;
 +    is_first = false;
 +    voice_list_.push_back(
@@ -632,3 +654,38 @@ index 9d155705c1350..57c0f90549119 100644
  }
  
  const String& GPUAdapterInfo::device() const {
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+index 4e4ca8dcb4feb..cde5c1afbe06c 100644
+--- a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+@@ -14,6 +14,7 @@
+ #include "third_party/blink/renderer/core/inspector/console_message.h"
+ #include "third_party/blink/renderer/modules/webgpu/dawn_enum_conversions.h"
+ #include "third_party/blink/renderer/modules/webgpu/gpu.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/renderer/modules/webgpu/gpu_adapter_info.h"
+ #include "third_party/blink/renderer/modules/webgpu/gpu_device.h"
+ #include "third_party/blink/renderer/modules/webgpu/gpu_device_lost_info.h"
+@@ -39,7 +40,22 @@ GPUSupportedFeatures* MakeFeatureNameSet(wgpu::Adapter adapter) {
+   // SAFETY: Required from caller
+   const auto features_span = UNSAFE_BUFFERS(base::span<const wgpu::FeatureName>(
+       supported_features.features, supported_features.featureCount));
++  // Lightweight-fork: the WebGPU vendor/architecture is spoofed to Intel
++  // (gpu_adapter_info.cc), but the feature list here comes straight from the
++  // host backend. On an Apple/Metal host that exposes ASTC + ETC2 texture
++  // compression — formats a real Intel/NVIDIA/AMD desktop GPU on D3D12 does
++  // NOT support (they expose BC/DXT only). Leaving them in contradicts the
++  // Intel claim ("intel vendor + ASTC support" is internally inconsistent).
++  // Drop the mobile-only compression formats for a desktop persona; keep for
++  // the Android (Mali) persona, whose real GPU does support ASTC/ETC2.
++  const bool desktop_persona = !fingerprinting::Current().ua_metadata_mobile;
+   for (const auto& f : features_span) {
++    if (desktop_persona &&
++        (f == wgpu::FeatureName::TextureCompressionASTC ||
++         f == wgpu::FeatureName::TextureCompressionASTCSliced3D ||
++         f == wgpu::FeatureName::TextureCompressionETC2)) {
++      continue;
++    }
+     auto feature_name_enum_optional =
+         GPUSupportedFeatures::ToV8FeatureNameEnum(f);
+     if (feature_name_enum_optional) {

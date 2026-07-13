@@ -295,10 +295,10 @@ index 0000000000000..0d349d6dc08aa
 +
 +#endif  // THIRD_PARTY_BLINK_PUBLIC_COMMON_FINGERPRINTING_FONT_ALLOWLIST_H_
 diff --git a/third_party/blink/renderer/platform/fonts/alternate_font_family.h b/third_party/blink/renderer/platform/fonts/alternate_font_family.h
-index ab909958f63e2..33910187b0cbb 100644
+index ab909958f63e2..374604cdfac3b 100644
 --- a/third_party/blink/renderer/platform/fonts/alternate_font_family.h
 +++ b/third_party/blink/renderer/platform/fonts/alternate_font_family.h
-@@ -101,6 +101,91 @@ inline const AtomicString& AlternateFamilyName(
+@@ -101,6 +101,106 @@ inline const AtomicString& AlternateFamilyName(
      return font_family_names::kArial;
    }
  
@@ -344,6 +344,13 @@ index ab909958f63e2..33910187b0cbb 100644
 +      EqualIgnoringAsciiCase(family_name, "Comic Sans MS") ||
 +      EqualIgnoringAsciiCase(family_name, "Leelawadee") ||
 +      EqualIgnoringAsciiCase(family_name, "Leelawadee UI") ||
++      // Additional Win11 sans/UI system fonts to resolve as present:
++      EqualIgnoringAsciiCase(family_name, "Ebrima") ||
++      EqualIgnoringAsciiCase(family_name, "Gadugi") ||
++      EqualIgnoringAsciiCase(family_name, "Nirmala UI") ||
++      EqualIgnoringAsciiCase(family_name, "Javanese Text") ||
++      EqualIgnoringAsciiCase(family_name, "Myanmar Text") ||
++      EqualIgnoringAsciiCase(family_name, "Microsoft Himalaya") ||
 +      EqualIgnoringAsciiCase(family_name, "MS UI Gothic") ||
 +      EqualIgnoringAsciiCase(family_name, "MS Gothic") ||
 +      EqualIgnoringAsciiCase(family_name, "MS PGothic") ||
@@ -374,7 +381,10 @@ index ab909958f63e2..33910187b0cbb 100644
 +      EqualIgnoringAsciiCase(family_name, "Lucida Bright") ||
 +      EqualIgnoringAsciiCase(family_name, "Bookman Old Style") ||
 +      EqualIgnoringAsciiCase(family_name, "Garamond") ||
-+      EqualIgnoringAsciiCase(family_name, "Book Antiqua")) {
++      EqualIgnoringAsciiCase(family_name, "Book Antiqua") ||
++      // Additional Win11 serif system fonts:
++      EqualIgnoringAsciiCase(family_name, "MingLiU") ||
++      EqualIgnoringAsciiCase(family_name, "Sylfaen")) {
 +    return font_family_names::kTimesNewRoman;
 +  }
 +  // Cursive/script Win fonts → Times New Roman as approximation
@@ -382,7 +392,12 @@ index ab909958f63e2..33910187b0cbb 100644
 +      EqualIgnoringAsciiCase(family_name, "Pristina") ||
 +      EqualIgnoringAsciiCase(family_name, "Lucida Calligraphy") ||
 +      EqualIgnoringAsciiCase(family_name, "Lucida Handwriting") ||
-+      EqualIgnoringAsciiCase(family_name, "Edwardian Script ITC")) {
++      EqualIgnoringAsciiCase(family_name, "Edwardian Script ITC") ||
++      // Additional Win11 handwriting/print system fonts:
++      EqualIgnoringAsciiCase(family_name, "Gabriola") ||
++      EqualIgnoringAsciiCase(family_name, "Ink Free") ||
++      EqualIgnoringAsciiCase(family_name, "MV Boli") ||
++      EqualIgnoringAsciiCase(family_name, "Segoe Print")) {
 +    return font_family_names::kTimesNewRoman;
 +  }
 +#endif

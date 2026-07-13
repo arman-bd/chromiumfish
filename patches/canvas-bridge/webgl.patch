@@ -715,3 +715,91 @@ index aaee965c67969..ad5a589cf1579 100644
    bool IsPaintable() const final { return GetDrawingBuffer(); }
  
    void HoldReferenceToDrawingBuffer(DrawingBuffer*);
+diff --git a/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
+index 1569afaa6af4f..ff559533bb159 100644
+--- a/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
+@@ -20,6 +20,7 @@
+ #include "third_party/blink/renderer/core/html/html_image_element.h"
+ #include "third_party/blink/renderer/core/html/media/html_video_element.h"
+ #include "third_party/blink/renderer/core/imagebitmap/image_bitmap.h"
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
+ #include "third_party/blink/renderer/modules/webgl/webgl_active_info.h"
+ #include "third_party/blink/renderer/modules/webgl/webgl_buffer.h"
+ #include "third_party/blink/renderer/modules/webgl/webgl_fence_sync.h"
+@@ -4796,14 +4797,23 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+       return WebGLAny(script_state, framebuffer_binding_.Get());
+     case GL_FRAGMENT_SHADER_DERIVATIVE_HINT:
+       return GetUnsignedIntParameter(script_state, pname);
++    // Lightweight-fork: WebGL2-specific limits leak the real (SwiftShader)
++    // backend's values, contradicting the persona's Intel UHD 770 claim that
++    // WebGL1 already reports. Return the canonical Intel/D3D11 values from the
++    // persona so the WebGL2 limit surface stays coherent with the renderer
++    // string (a probe reading e.g. MAX_DRAW_BUFFERS otherwise saw 6 vs Intel's
++    // 8). Values calibrated in fingerprint_profile.cc.
+     case GL_MAX_3D_TEXTURE_SIZE:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_3d_max_texture_size);
+     case GL_MAX_ARRAY_TEXTURE_LAYERS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_array_texture_layers);
+     case GC3D_MAX_CLIENT_WAIT_TIMEOUT_WEBGL:
+       return WebGLAny(script_state, kMaxClientWaitTimeout);
+     case GL_MAX_COLOR_ATTACHMENTS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_color_attachments);
+     case GL_MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS:
+       return GetInt64Parameter(script_state, pname);
+     case GL_MAX_COMBINED_UNIFORM_BLOCKS:
+@@ -4811,7 +4821,8 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+     case GL_MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS:
+       return GetInt64Parameter(script_state, pname);
+     case GL_MAX_DRAW_BUFFERS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_draw_buffers);
+     case GL_MAX_ELEMENT_INDEX:
+       return GetInt64Parameter(script_state, pname);
+     case GL_MAX_ELEMENTS_INDICES:
+@@ -4821,13 +4832,15 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+     case GL_MAX_FRAGMENT_INPUT_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_FRAGMENT_UNIFORM_BLOCKS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_fragment_uniform_blocks);
+     case GL_MAX_FRAGMENT_UNIFORM_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_PROGRAM_TEXEL_OFFSET:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_SAMPLES:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_samples);
+     case GL_MAX_SERVER_WAIT_TIMEOUT:
+       return GetInt64Parameter(script_state, pname);
+     case GL_MAX_TEXTURE_LOD_BIAS:
+@@ -4839,7 +4852,9 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+     case GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_UNIFORM_BLOCK_SIZE:
+-      return GetInt64Parameter(script_state, pname);
++      return WebGLAny(
++          script_state,
++          static_cast<int64_t>(fingerprinting::Current().webgl_max_uniform_block_size));
+     case GL_MAX_UNIFORM_BUFFER_BINDINGS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_VARYING_COMPONENTS:
+@@ -4847,7 +4862,8 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+     case GL_MAX_VERTEX_OUTPUT_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_VERTEX_UNIFORM_BLOCKS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state,
++                      fingerprinting::Current().webgl_max_vertex_uniform_blocks);
+     case GL_MAX_VERTEX_UNIFORM_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MIN_PROGRAM_TEXEL_OFFSET:
