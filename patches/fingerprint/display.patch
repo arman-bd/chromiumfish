@@ -390,7 +390,7 @@ index 490cda360093f..2da2b3b011855 100644
  
  bool ScreenDetailed::isPrimary() const {
 diff --git a/third_party/blink/renderer/core/loader/frame_fetch_context.cc b/third_party/blink/renderer/core/loader/frame_fetch_context.cc
-index a459abf8bb66b..029bc24affdc1 100644
+index a459abf8bb66b..1f1148ca33da4 100644
 --- a/third_party/blink/renderer/core/loader/frame_fetch_context.cc
 +++ b/third_party/blink/renderer/core/loader/frame_fetch_context.cc
 @@ -52,6 +52,7 @@
@@ -401,7 +401,31 @@ index a459abf8bb66b..029bc24affdc1 100644
  #include "third_party/blink/public/common/permissions_policy/document_policy_features.h"
  #include "third_party/blink/public/common/switches.h"
  #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
-@@ -1359,10 +1360,14 @@ String FrameFetchContext::GetReducedAcceptLanguage() const {
+@@ -666,7 +667,7 @@ void FrameFetchContext::AddClientHintsIfNecessary(
+     request.SetHttpHeaderField(
+         http_names::kDeviceMemory_DEPRECATED,
+         AtomicString(String::Number(
+-            ApproximatedDeviceMemory::GetApproximatedDeviceMemory())));
++            fingerprinting::Current().device_memory_gb)));
+   }
+ 
+   if (ShouldSendClientHint(*policy, resource_origin, is_1p_origin,
+@@ -674,8 +675,13 @@ void FrameFetchContext::AddClientHintsIfNecessary(
+                            hints_preferences)) {
+     request.SetHttpHeaderField(
+         http_names::kDeviceMemory,
++        // Lightweight-fork: the Device-Memory hint must come from the persona
++        // (same field navigator.deviceMemory reads), not the host's real RAM via
++        // ApproximatedDeviceMemory — otherwise the hint leaks host memory and can
++        // disagree with the JS value (a coherence tell). Persona value is already
++        // a legal power-of-two GiB clamped to the 32 ceiling.
+         AtomicString(String::Number(
+-            ApproximatedDeviceMemory::GetApproximatedDeviceMemory())));
++            fingerprinting::Current().device_memory_gb)));
+   }
+ 
+   if (ShouldSendClientHint(*policy, resource_origin, is_1p_origin,
+@@ -1359,10 +1365,14 @@ String FrameFetchContext::GetReducedAcceptLanguage() const {
  }
  
  float FrameFetchContext::GetDevicePixelRatio() const {

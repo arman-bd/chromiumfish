@@ -65,7 +65,7 @@ new file mode 100644
 index 0000000000000..53aabb85c54ce
 --- /dev/null
 +++ b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
-@@ -0,0 +1,548 @@
+@@ -0,0 +1,557 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -422,6 +422,15 @@ index 0000000000000..53aabb85c54ce
 +    // unchanged.)
 +    p.hardware_concurrency = android->hc;
 +    p.device_memory_gb = android->mem_gb;
++  }
++  // navigator.deviceMemory / the Device-Memory hint are power-of-two GiB clamped
++  // to a real ceiling. Chrome's kUpdatedDeviceMemoryLimitsFor2026 (enabled by
++  // default) raised the desktop cap to 32; the Tier-4 pool can draw 64, which no
++  // real Chrome ever reports. Clip so the exposed value stays a legal
++  // deviceMemory. Both the JS getter and the client hint read this same field
++  // (see frame_fetch_context) so they can never disagree.
++  if (p.device_memory_gb > 32.0f) {
++    p.device_memory_gb = 32.0f;
 +  }
 +  // 2026-06-01 cluster routing UNLOCKED. The previous override pinned
 +  // every persona to HC=8/mem=16 to ride the "modal Win 11 desktop"
