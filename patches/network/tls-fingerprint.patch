@@ -1,27 +1,32 @@
 diff --git a/net/base/features.cc b/net/base/features.cc
-index 249c0a431fbca..05278d5ab02c8 100644
+index 249c0a431fbca..20b449a18d673 100644
 --- a/net/base/features.cc
 +++ b/net/base/features.cc
-@@ -603,6 +603,14 @@ BASE_FEATURE(kRestrictAbusePortsOnLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
+@@ -603,6 +603,19 @@ BASE_FEATURE(kRestrictAbusePortsOnLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
  
  BASE_FEATURE(kTLSTrustAnchorIDs, base::FEATURE_DISABLED_BY_DEFAULT);
  
-+// ChromiumFish: default DISABLED. Chrome 149+ added 3 ML-DSA (post-quantum)
-+// signature algorithms (0x904-0x906) to the TLS verify_sigalgs extension.
-+// Real Chrome 148 only advertises the 8 classical sigalgs. Cloudflare /
-+// fpjs Pro flag "UA says 148 but TLS sigalgs are 149+" as inconsistent and
-+// escalate to interactive Turnstile. Keeping this off routes us through
-+// the kVerifyPrefs branch in ssl_client_socket_impl.cc:777, matching
-+// Chrome 148 byte-exactly. (Operators wanting upstream behavior can pass
-+// --enable-features=TlsMldsaSignatures.)
++// ChromiumFish persona = Chrome 149; leave DISABLED to match stock Chrome 149
++// STABLE, which also defaults this off (this is the upstream default, not an
++// override). ML-DSA (post-quantum) verify_sigalgs SSL_SIGN_ML_DSA_44/65/87
++// (0x0904-0x0906) only ride the wire when this is enabled, and they do not
++// become the stable default until Chrome 150. With it off we advertise the 8
++// classical sigalgs (kVerifyPrefs branch in ssl_client_socket_impl.cc), i.e. a
++// verify_sigalgs extension identical to stock 149 -> no "UA(149) vs TLS-sigalgs"
++// contradiction for Cloudflare/fpjs JA4 classifiers.
++// MIGRATION: when the persona UA moves to 150, ENABLE this (or drop the
++// override) so we advertise ML-DSA like stock 150. Before then, confirm against
++// a captured real Chrome 149 ClientHello whether Google Finch-enabled ML-DSA in
++// stable 149; if so, match that population. Force upstream behavior with
++// --enable-features=TlsMldsaSignatures.
  BASE_FEATURE(kTlsMldsaSignatures, base::FEATURE_DISABLED_BY_DEFAULT);
  
  #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
 diff --git a/net/socket/ssl_client_socket_impl.cc b/net/socket/ssl_client_socket_impl.cc
-index 538458447dcbd..39840ed868e96 100644
+index 538458447dcbd..f2625788e15b5 100644
 --- a/net/socket/ssl_client_socket_impl.cc
 +++ b/net/socket/ssl_client_socket_impl.cc
-@@ -865,20 +865,15 @@ int SSLClientSocketImpl::Init() {
+@@ -865,20 +865,17 @@ int SSLClientSocketImpl::Init() {
  
    SSL_set_permute_extensions(ssl_.get(), 1);
  
@@ -39,15 +44,17 @@ index 538458447dcbd..39840ed868e96 100644
 -              *ssl_config_.trust_anchor_ids)));
 -    });
 -  }
-+  // Lightweight-fork: NEVER send the Trust Anchor IDs (TLS extension
-+  // 0xCA34 / TLSEXT_TYPE_trust_anchors). This is a Chromium-149
-+  // experimental draft addition (TrustAnchor advertising) that Chrome
-+  // 148 did not ship. Its presence in our ClientHello is a 1-bit
-+  // fingerprint that immediately identifies us as a non-Chrome-148
-+  // Chromium build — fpjs Pro's server-side JA3/JA4 classifier picks
-+  // this up. Skipping it makes our ClientHello extension SET match
-+  // Chrome 148's exactly (order is randomized by SSL_set_permute_extensions
-+  // already, so order is non-distinguishing).
++  // ChromiumFish: do NOT send Trust Anchor IDs (TLS extension 0xCA34 /
++  // TLSEXT_TYPE_trust_anchors). kTLSTrustAnchorIDs is DISABLED by default in
++  // stock Chrome 149 stable, so real 149 never populates trust_anchor_ids and
++  // never emits this extension. Skipping it here keeps our ClientHello
++  // extension SET identical to stock 149 (SSL_set_permute_extensions already
++  // randomizes order, so order is non-distinguishing). In the default config
++  // this is a no-op vs stock; it only holds the extension back if an operator
++  // manually enables the experimental feature.
++  // MIGRATION: if a persona milestone ships kTLSTrustAnchorIDs on by default,
++  // restore the gated send below so we don't suppress an extension that stock
++  // Chrome emits. Re-verify against a real captured ClientHello on each UA bump.
  
    // The compliance policy must be the last thing configured in order to have
    // defined behavior.
