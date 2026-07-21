@@ -56,3 +56,6 @@ venv/
 # Local edit backups + bake build scratch
 *.prebake
 bake_build.sh
+
+# Local SERP benchmark harness (replica of serp-experiment; regenerable, holds proxy creds)
+_benchmark/
