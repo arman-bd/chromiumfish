@@ -2,6 +2,7 @@ branding/branding.patch
 branding/icons.patch
 persona/persona-seed.patch
 persona/fingerprint-profile.patch
+persona/geolocation-persona.patch
 privacy/disable-intrusive-apis.patch
 fingerprint/navigator.patch
 fingerprint/display.patch
