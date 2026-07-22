@@ -1,6 +1,6 @@
 diff --git a/third_party/blink/common/fingerprinting/fingerprint_audio_isolation.cc b/third_party/blink/common/fingerprinting/fingerprint_audio_isolation.cc
 new file mode 100644
-index 0000000000000..ee962e782f01e
+index 0000000000000..0efce40d962a9
 --- /dev/null
 +++ b/third_party/blink/common/fingerprinting/fingerprint_audio_isolation.cc
 @@ -0,0 +1,104 @@
@@ -41,13 +41,13 @@ index 0000000000000..ee962e782f01e
 +      static_cast<uint32_t>(persona_seed >> 32);
 +
 +  // 2026-06-01 redesign. The original code added zero-mean noise
-+  // [-amplitude, +amplitude] independently per sample. fpjs's audio
++  // [-amplitude, +amplitude] independently per sample. the fingerprinter's audio
 +  // fingerprint probe sums Math.abs(sample[i]) over a long window —
 +  // zero-mean noise integrates to ~0 over that window, so the sum
 +  // stayed at the SwiftShader-deterministic 124.04347527516074 no
-+  // matter what persona seed we used, and fpjs re-identified every
++  // matter what persona seed we used, and the fingerprinter re-identified every
 +  // persona as the same visitor_id. (Measured empirically: 5 different
-+  // --persona-seed values all produced the same fpjs.audio value.)
++  // --persona-seed values all produced the same audio fingerprint value.)
 +  //
 +  // New design: combine a per-seed CONSTANT multiplicative bias with
 +  // the per-sample noise. The bias is a single float derived purely
@@ -61,7 +61,7 @@ index 0000000000000..ee962e782f01e
 +  //   kBiasAmplitude  = 1e-5  — ≈ -100 dB, below DAC dither, below
 +  //                              human perception even on headphones.
 +  //                              Sum-effect on a 124-magnitude integral
-+  //                              is ~6e-4 — comfortably above fpjs's
++  //                              is ~6e-4 — comfortably above the fingerprinter's
 +  //                              hash quantization.
 +  //   kNoiseAmplitude = 1e-7  — per-sample tremor; doesn't drive the
 +  //                              fingerprint divergence (because it
@@ -110,7 +110,7 @@ index 0000000000000..ee962e782f01e
 +}  // namespace blink::fingerprinting
 diff --git a/third_party/blink/public/common/fingerprinting/fingerprint_audio_isolation.h b/third_party/blink/public/common/fingerprinting/fingerprint_audio_isolation.h
 new file mode 100644
-index 0000000000000..a62138eea24a2
+index 0000000000000..2bedd58b194f2
 --- /dev/null
 +++ b/third_party/blink/public/common/fingerprinting/fingerprint_audio_isolation.h
 @@ -0,0 +1,50 @@
@@ -135,7 +135,7 @@ index 0000000000000..a62138eea24a2
 +// and below most DSP processing noise floors, but large enough that the
 +// IEEE-754 byte representation of every sample changes.
 +//
-+// Why: fpjs Pro and CreepJS both probe AudioContext / OfflineAudioContext
++// Why: commercial fingerprinters and a fingerprinting test page both probe AudioContext / OfflineAudioContext
 +// by rendering a fixed signal (triangle wave through a DynamicsCompressor)
 +// and summing the absolute values of the result. Stock Chrome with
 +// SwiftShader (every headless cloud Chrome on a GPU-less Linux VPS) emits
@@ -155,7 +155,7 @@ index 0000000000000..a62138eea24a2
 +// running per-channel sample count through so the noise key never
 +// resets between quanta. If it does, the per-quantum noise pattern
 +// repeats every quantum-size samples and the integrated sum that
-+// fpjs Pro measures cancels out to the original value (the bug we
++// commercial fingerprinters measures cancels out to the original value (the bug we
 +// fix here — empirically observed on the first integration attempt).
 +BLINK_COMMON_EXPORT void IsolateAudioSamples(base::span<float> samples,
 +                                             uint64_t sample_offset,

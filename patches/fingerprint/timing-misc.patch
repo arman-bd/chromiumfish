@@ -1,5 +1,5 @@
 diff --git a/third_party/blink/renderer/core/timing/time_clamper.h b/third_party/blink/renderer/core/timing/time_clamper.h
-index a8b7d042e37e1..73f948e0aff6c 100644
+index a8b7d042e37e1..005b24b031d51 100644
 --- a/third_party/blink/renderer/core/timing/time_clamper.h
 +++ b/third_party/blink/renderer/core/timing/time_clamper.h
 @@ -20,8 +20,15 @@ class CORE_EXPORT TimeClamper {
@@ -21,7 +21,7 @@ index a8b7d042e37e1..73f948e0aff6c 100644
    TimeClamper();
    TimeClamper(const TimeClamper&) = delete;
 diff --git a/third_party/blink/renderer/core/url/dom_url.cc b/third_party/blink/renderer/core/url/dom_url.cc
-index 7e7e800ffca8a..670e1577fe1b6 100644
+index 7e7e800ffca8a..a97befc5e4b53 100644
 --- a/third_party/blink/renderer/core/url/dom_url.cc
 +++ b/third_party/blink/renderer/core/url/dom_url.cc
 @@ -57,11 +57,36 @@ DOMURL* DOMURL::Create(const String& url,

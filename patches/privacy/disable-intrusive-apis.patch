@@ -1,8 +1,8 @@
 diff --git a/content/public/common/content_features.cc b/content/public/common/content_features.cc
-index dd7b9aa06b988..0359b4b2d6811 100644
+index 060453a715069..e421e4883a6da 100644
 --- a/content/public/common/content_features.cc
 +++ b/content/public/common/content_features.cc
-@@ -1277,7 +1277,7 @@ BASE_FEATURE(kWebUIInProcessResourceLoadingV2,
+@@ -1294,7 +1294,7 @@ BASE_FEATURE(kWebUIInProcessResourceLoadingV2,
  
  // Controls whether the WebUSB API is enabled:
  // https://wicg.github.io/webusb
@@ -12,10 +12,10 @@ index dd7b9aa06b988..0359b4b2d6811 100644
  // Apply `PrefetchPriority::kHighest` for Webview Prefetch API.
  BASE_FEATURE(kWebViewPrefetchHighestPrefetchPriority,
 diff --git a/third_party/blink/common/features.cc b/third_party/blink/common/features.cc
-index 594cd59a601c2..3ad9dd4c20499 100644
+index d210598dfddeb..8ba861e45f5ea 100644
 --- a/third_party/blink/common/features.cc
 +++ b/third_party/blink/common/features.cc
-@@ -233,11 +233,11 @@ BASE_FEATURE(kBrowsingTopicsBypassIPIsPubliclyRoutableCheck,
+@@ -242,11 +242,11 @@ BASE_FEATURE(kBrowsingTopicsBypassIPIsPubliclyRoutableCheck,
  // feature has to be enabled first (i.e. `kBrowsingTopics` is enabled, and,
  // either a valid Origin Trial token exists or `kPrivacySandboxAdsAPIsOverride`
  // is enabled.)
@@ -29,7 +29,7 @@ index 594cd59a601c2..3ad9dd4c20499 100644
  // The periodic topics calculation interval.
  BASE_FEATURE_PARAM(base::TimeDelta,
                     kBrowsingTopicsTimePeriodPerEpoch,
-@@ -833,11 +833,12 @@ BASE_FEATURE_PARAM(std::string,
+@@ -855,11 +855,12 @@ BASE_FEATURE_PARAM(std::string,
  
  // See https://github.com/WICG/turtledove/blob/main/FLEDGE.md
  // Enables FLEDGE implementation. See https://crbug.com/1186444.
@@ -44,7 +44,7 @@ index 594cd59a601c2..3ad9dd4c20499 100644
  BASE_FEATURE_PARAM(std::string,
                     kFledgeBiddingAndAuctionKeyURL,
                     &kFledgeBiddingAndAuctionServer,
-@@ -850,7 +851,7 @@ BASE_FEATURE_PARAM(std::string,
+@@ -872,7 +873,7 @@ BASE_FEATURE_PARAM(std::string,
                     "");
  
  // See https://github.com/WICG/turtledove/issues/1334
@@ -53,7 +53,7 @@ index 594cd59a601c2..3ad9dd4c20499 100644
  BASE_FEATURE_PARAM(std::string,
                     kFledgeOriginScopedKeyConfig,
                     &kFledgeOriginScopedKeys,
-@@ -878,7 +879,8 @@ BASE_FEATURE_PARAM(int,
+@@ -900,7 +901,8 @@ BASE_FEATURE_PARAM(int,
                     "SelectableBuyerAndSellerReportingIdsHardLimit",
                     -1);
  
@@ -63,7 +63,7 @@ index 594cd59a601c2..3ad9dd4c20499 100644
  BASE_FEATURE_PARAM(base::TimeDelta,
                     kFledgeMaxGroupLifetime,
                     &kFledgeMaxGroupLifetimeFeature,
-@@ -893,7 +895,7 @@ BASE_FEATURE_PARAM(base::TimeDelta,
+@@ -915,7 +917,7 @@ BASE_FEATURE_PARAM(base::TimeDelta,
  BASE_FEATURE(kFledgeEnableSampleDebugReportOnCookieSetting,
               base::FEATURE_DISABLED_BY_DEFAULT);
  
@@ -72,7 +72,7 @@ index 594cd59a601c2..3ad9dd4c20499 100644
  BASE_FEATURE_PARAM(base::TimeDelta,
                     kFledgeDebugReportLockout,
                     &kFledgeSampleDebugReports,
-@@ -2127,7 +2129,7 @@ BASE_FEATURE(kPrerender2EarlyDocumentLifecycleUpdate,
+@@ -2152,7 +2154,7 @@ BASE_FEATURE(kPrerender2EarlyDocumentLifecycleUpdate,
               base::FEATURE_DISABLED_BY_DEFAULT);
  
  // Enables the Private Aggregation API.
@@ -81,7 +81,7 @@ index 594cd59a601c2..3ad9dd4c20499 100644
  
  // Selectively allows the JavaScript API to be disabled in just one of the
  // contexts. The Protected Audience param's name has not been updated (from
-@@ -2156,7 +2158,7 @@ BASE_FEATURE_PARAM(bool,
+@@ -2181,7 +2183,7 @@ BASE_FEATURE_PARAM(bool,
  // to things enabled by
  // kPrivateAggregationApiEnabledInProtectedAudience.
  BASE_FEATURE(kPrivateAggregationApiProtectedAudienceAdditionalExtensions,
@@ -90,7 +90,7 @@ index 594cd59a601c2..3ad9dd4c20499 100644
  
  BASE_FEATURE(kProcessHtmlDataImmediately, base::FEATURE_DISABLED_BY_DEFAULT);
  
-@@ -2334,13 +2336,13 @@ BASE_FEATURE(kSharedStorageWorkletSharedBackingThreadImplementation,
+@@ -2355,13 +2357,13 @@ BASE_FEATURE(kSharedStorageWorkletSharedBackingThreadImplementation,
               base::FEATURE_DISABLED_BY_DEFAULT);
  
  BASE_FEATURE(kSharedStorageCreateWorkletCustomDataOrigin,

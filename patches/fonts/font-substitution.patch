@@ -1,6 +1,6 @@
 diff --git a/third_party/blink/public/common/fingerprinting/font_allowlist.h b/third_party/blink/public/common/fingerprinting/font_allowlist.h
 new file mode 100644
-index 0000000000000..0d349d6dc08aa
+index 0000000000000..5d103848c209b
 --- /dev/null
 +++ b/third_party/blink/public/common/fingerprinting/font_allowlist.h
 @@ -0,0 +1,290 @@
@@ -295,7 +295,7 @@ index 0000000000000..0d349d6dc08aa
 +
 +#endif  // THIRD_PARTY_BLINK_PUBLIC_COMMON_FINGERPRINTING_FONT_ALLOWLIST_H_
 diff --git a/third_party/blink/renderer/platform/fonts/alternate_font_family.h b/third_party/blink/renderer/platform/fonts/alternate_font_family.h
-index ab909958f63e2..33910187b0cbb 100644
+index ab909958f63e2..b6fe82a811e1c 100644
 --- a/third_party/blink/renderer/platform/fonts/alternate_font_family.h
 +++ b/third_party/blink/renderer/platform/fonts/alternate_font_family.h
 @@ -101,6 +101,91 @@ inline const AtomicString& AlternateFamilyName(
@@ -391,10 +391,10 @@ index ab909958f63e2..33910187b0cbb 100644
  }
  
 diff --git a/third_party/blink/renderer/platform/fonts/font_cache.cc b/third_party/blink/renderer/platform/fonts/font_cache.cc
-index 75cc0b764f8c4..00ad27fcc43e0 100644
+index 506b181809a84..406fc17b43705 100644
 --- a/third_party/blink/renderer/platform/fonts/font_cache.cc
 +++ b/third_party/blink/renderer/platform/fonts/font_cache.cc
-@@ -43,6 +43,8 @@
+@@ -45,6 +45,8 @@
  #include "build/build_config.h"
  #include "skia/ext/font_utils.h"
  #include "third_party/blink/public/common/features.h"
@@ -403,7 +403,7 @@ index 75cc0b764f8c4..00ad27fcc43e0 100644
  #include "third_party/blink/public/platform/platform.h"
  #include "third_party/blink/renderer/platform/font_family_names.h"
  #include "third_party/blink/renderer/platform/fonts/alternate_font_family.h"
-@@ -141,6 +143,57 @@ const FontPlatformData* FontCache::GetFontPlatformData(
+@@ -138,6 +140,57 @@ const FontPlatformData* FontCache::GetFontPlatformData(
    }
  #endif
  
@@ -462,7 +462,7 @@ index 75cc0b764f8c4..00ad27fcc43e0 100644
        this, font_description, creation_params, alternate_font_name);
  }
 diff --git a/third_party/blink/renderer/platform/fonts/font_fallback_list.cc b/third_party/blink/renderer/platform/fonts/font_fallback_list.cc
-index c38cf414f9e09..865c42c6b3a09 100644
+index c38cf414f9e09..cf38374cbc545 100644
 --- a/third_party/blink/renderer/platform/fonts/font_fallback_list.cc
 +++ b/third_party/blink/renderer/platform/fonts/font_fallback_list.cc
 @@ -29,6 +29,7 @@
@@ -496,10 +496,10 @@ index c38cf414f9e09..865c42c6b3a09 100644
        // Don't query system fonts for empty font family name.
        if (!curr_family->FamilyName().empty()) {
 diff --git a/third_party/blink/renderer/platform/fonts/mac/font_cache_mac.mm b/third_party/blink/renderer/platform/fonts/mac/font_cache_mac.mm
-index ec06f7decbacf..c962cd6dfa3f9 100644
+index 88ee05ca71597..e26264c3e479d 100644
 --- a/third_party/blink/renderer/platform/fonts/mac/font_cache_mac.mm
 +++ b/third_party/blink/renderer/platform/fonts/mac/font_cache_mac.mm
-@@ -132,7 +132,11 @@ bool IsLastResortFont(CTFontRef font) {
+@@ -132,7 +132,11 @@ ScopedCFTypeRef<CTFontRef> GetSubstituteFont(CTFontRef ct_font,
      // `chrome/app/resources/locale_settings_mac.grd` as the font to substitute
      // from in `CTFontCreateForString`.
      ScopedCFTypeRef<CTFontRef> font_to_substitute(

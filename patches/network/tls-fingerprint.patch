@@ -1,32 +1,23 @@
 diff --git a/net/base/features.cc b/net/base/features.cc
-index 249c0a431fbca..20b449a18d673 100644
+index fbd9f26e13924..45e222882df1d 100644
 --- a/net/base/features.cc
 +++ b/net/base/features.cc
-@@ -603,6 +603,19 @@ BASE_FEATURE(kRestrictAbusePortsOnLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
+@@ -624,6 +624,10 @@ BASE_FEATURE(kRestrictAbusePortsOnLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
  
  BASE_FEATURE(kTLSTrustAnchorIDs, base::FEATURE_DISABLED_BY_DEFAULT);
  
-+// ChromiumFish persona = Chrome 149; leave DISABLED to match stock Chrome 149
-+// STABLE, which also defaults this off (this is the upstream default, not an
-+// override). ML-DSA (post-quantum) verify_sigalgs SSL_SIGN_ML_DSA_44/65/87
-+// (0x0904-0x0906) only ride the wire when this is enabled, and they do not
-+// become the stable default until Chrome 150. With it off we advertise the 8
-+// classical sigalgs (kVerifyPrefs branch in ssl_client_socket_impl.cc), i.e. a
-+// verify_sigalgs extension identical to stock 149 -> no "UA(149) vs TLS-sigalgs"
-+// contradiction for Cloudflare/fpjs JA4 classifiers.
-+// MIGRATION: when the persona UA moves to 150, ENABLE this (or drop the
-+// override) so we advertise ML-DSA like stock 150. Before then, confirm against
-+// a captured real Chrome 149 ClientHello whether Google Finch-enabled ML-DSA in
-+// stable 149; if so, match that population. Force upstream behavior with
-+// --enable-features=TlsMldsaSignatures.
- BASE_FEATURE(kTlsMldsaSignatures, base::FEATURE_DISABLED_BY_DEFAULT);
++// ChromiumFish: persona is now Chrome 150, where stock ships ML-DSA
++// (post-quantum) verify_sigalgs enabled by default -- so we keep the upstream
++// 150 default and no longer override it (this was forced OFF on 149 to match
++// that milestone's default; the 149->150 migration trigger has fired).
+ BASE_FEATURE(kTlsMldsaSignatures, base::FEATURE_ENABLED_BY_DEFAULT);
  
  #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
 diff --git a/net/socket/ssl_client_socket_impl.cc b/net/socket/ssl_client_socket_impl.cc
-index 538458447dcbd..f2625788e15b5 100644
+index b3d4cb912fb44..24a6274320243 100644
 --- a/net/socket/ssl_client_socket_impl.cc
 +++ b/net/socket/ssl_client_socket_impl.cc
-@@ -865,20 +865,17 @@ int SSLClientSocketImpl::Init() {
+@@ -878,20 +878,17 @@ int SSLClientSocketImpl::Init() {
  
    SSL_set_permute_extensions(ssl_.get(), 1);
  
@@ -56,5 +47,5 @@ index 538458447dcbd..f2625788e15b5 100644
 +  // restore the gated send below so we don't suppress an extension that stock
 +  // Chrome emits. Re-verify against a real captured ClientHello on each UA bump.
  
-   // The compliance policy must be the last thing configured in order to have
-   // defined behavior.
+   // Configure BoringSSL to ask for server padding, if provided.
+   if (ssl_config_.server_padding_to_request.has_value()) {

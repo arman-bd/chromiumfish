@@ -48,10 +48,10 @@ index 0000000000000..41444669c1bfd
 +}
 diff --git a/chrome/browser/ai_agent/agent_controller.cc b/chrome/browser/ai_agent/agent_controller.cc
 new file mode 100644
-index 0000000000000..8a6ece3d8467a
+index 0000000000000..df729a9c623f8
 --- /dev/null
 +++ b/chrome/browser/ai_agent/agent_controller.cc
-@@ -0,0 +1,1244 @@
+@@ -0,0 +1,1246 @@
 +// Copyright 2026 The ChromiumFish Authors
 +// Use of this source code is governed by an MIT-style license.
 +
@@ -79,6 +79,7 @@ index 0000000000000..8a6ece3d8467a
 +#include "chrome/browser/actor/actor_task.h"
 +#include "chrome/browser/actor/actor_task_metadata.h"
 +#include "chrome/browser/actor/enterprise_policy_checker.h"
++#include "chrome/browser/actor/tab_observation_strategy.h"
 +#include "chrome/browser/actor/tools/click_tool_request.h"
 +#include "chrome/browser/actor/tools/navigate_tool_request.h"
 +#include "chrome/browser/actor/tools/scroll_tool_request.h"
@@ -1196,7 +1197,8 @@ index 0000000000000..8a6ece3d8467a
 +}
 +
 +void AgentController::OnActorActed(
-+    std::vector<actor::ActionResultWithLatencyInfo> results) {
++    std::vector<actor::ActionResultWithLatencyInfo> results,
++    actor::TabObservationStrategy /*observation_strategy*/) {
 +  StepDone(SummarizeResults(results));
 +}
 +
@@ -1298,10 +1300,10 @@ index 0000000000000..8a6ece3d8467a
 +}  // namespace ai_agent
 diff --git a/chrome/browser/ai_agent/agent_controller.h b/chrome/browser/ai_agent/agent_controller.h
 new file mode 100644
-index 0000000000000..1026aff9b509b
+index 0000000000000..5668458bd3236
 --- /dev/null
 +++ b/chrome/browser/ai_agent/agent_controller.h
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,185 @@
 +// Copyright 2026 The ChromiumFish Authors
 +// Use of this source code is governed by an MIT-style license.
 +//
@@ -1330,7 +1332,7 @@ index 0000000000000..1026aff9b509b
 +#include "base/values.h"
 +#include "chrome/browser/ai_agent/llm_client.h"
 +#include "chrome/common/actor/action_result.h"
-+#include "chrome/common/actor/task_id.h"
++#include "components/actor/core/task_id.h"
 +#include "ui/gfx/geometry/point_f.h"
 +
 +namespace content {
@@ -1342,6 +1344,10 @@ index 0000000000000..1026aff9b509b
 +namespace optimization_guide {
 +struct AIPageContentResult;
 +}  // namespace optimization_guide
++
++namespace actor {
++class TabObservationStrategy;
++}  // namespace actor
 +
 +namespace ai_agent {
 +
@@ -1429,7 +1435,8 @@ index 0000000000000..1026aff9b509b
 +  // actionable-only). Async: runs JS, then OnReadPageText advances the loop.
 +  void DoReadPageText();
 +  void OnReadPageText(base::Value result);
-+  void OnActorActed(std::vector<actor::ActionResultWithLatencyInfo> results);
++  void OnActorActed(std::vector<actor::ActionResultWithLatencyInfo> results,
++                    actor::TabObservationStrategy observation_strategy);
 +
 +  // Advances to the next step (or finishes when steps are exhausted) after
 +  // recording `observation_note` as the prior action's outcome for the model.
@@ -2392,10 +2399,10 @@ index e749ea72e176a..a08f51404a3c4 100644
  <!--_html_template_end_-->`;
    // clang-format on
 diff --git a/chrome/browser/ui/BUILD.gn b/chrome/browser/ui/BUILD.gn
-index 0290339053788..6e029726c5f32 100644
+index b669d4f3ee5f3..63f3cc0593c0f 100644
 --- a/chrome/browser/ui/BUILD.gn
 +++ b/chrome/browser/ui/BUILD.gn
-@@ -286,6 +286,7 @@ static_library("ui") {
+@@ -167,6 +167,7 @@ static_library("ui") {
      ":url_identity",
      "//base",
      "//base:i18n",
@@ -2404,7 +2411,7 @@ index 0290339053788..6e029726c5f32 100644
      "//build:android_buildflags",
      "//build:branding_buildflags",
 diff --git a/chrome/browser/ui/browser.cc b/chrome/browser/ui/browser.cc
-index 829029ee3fa85..7b77faaf1c9f6 100644
+index b6bcac3e84d22..6b77bcdc93eea 100644
 --- a/chrome/browser/ui/browser.cc
 +++ b/chrome/browser/ui/browser.cc
 @@ -39,6 +39,7 @@
@@ -2415,7 +2422,7 @@ index 829029ee3fa85..7b77faaf1c9f6 100644
  #include "chrome/browser/ai/ai_data_keyed_service.h"          // nogncheck
  #include "chrome/browser/ai/ai_data_keyed_service_factory.h"  // nogncheck
  #include "chrome/browser/app_mode/app_mode_utils.h"
-@@ -2791,6 +2792,20 @@ void Browser::GetAIPageContent(
+@@ -2618,6 +2619,20 @@ void Browser::GetAIPageContent(
        }).Then(std::move(callback)));
  }
  
@@ -2437,10 +2444,10 @@ index 829029ee3fa85..7b77faaf1c9f6 100644
  void Browser::PrintCrossProcessSubframe(
      content::WebContents* web_contents,
 diff --git a/chrome/browser/ui/browser.h b/chrome/browser/ui/browser.h
-index f99921ebc6e41..8a76519f62992 100644
+index 718dda248e492..129883184d7a0 100644
 --- a/chrome/browser/ui/browser.h
 +++ b/chrome/browser/ui/browser.h
-@@ -968,6 +968,16 @@ class Browser : public TabStripModelObserver,
+@@ -951,6 +951,16 @@ class Browser : public TabStripModelObserver,
        content::WebContents* web_contents,
        bool include_actionable_elements,
        base::OnceCallback<void(const std::string&)> callback) override;
@@ -2701,10 +2708,10 @@ index 0000000000000..67cfe67266258
 +
 +}  // namespace content
 diff --git a/content/public/browser/BUILD.gn b/content/public/browser/BUILD.gn
-index c2e8a8be4e66c..1125bc7935750 100644
+index bea40fd122bef..9d8fb5f52f381 100644
 --- a/content/public/browser/BUILD.gn
 +++ b/content/public/browser/BUILD.gn
-@@ -216,6 +216,7 @@ source_set("browser_sources") {
+@@ -218,6 +218,7 @@ source_set("browser_sources") {
      "hid_delegate.h",
      "histogram_fetcher.h",
      "host_zoom_map.h",
@@ -2791,10 +2798,10 @@ index 16244802d3c31..69981c7e87a5a 100644
      WebContents* web_contents) {
    return false;
 diff --git a/content/public/browser/web_contents_delegate.h b/content/public/browser/web_contents_delegate.h
-index 01caa48d282c0..041ac53bf435f 100644
+index 039e8305c5a1a..38432b75e451f 100644
 --- a/content/public/browser/web_contents_delegate.h
 +++ b/content/public/browser/web_contents_delegate.h
-@@ -897,6 +897,22 @@ class CONTENT_EXPORT WebContentsDelegate {
+@@ -900,6 +900,22 @@ class CONTENT_EXPORT WebContentsDelegate {
        bool include_actionable_elements,
        base::OnceCallback<void(const std::string&)> callback);
  

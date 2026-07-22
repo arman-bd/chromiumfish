@@ -1,5 +1,5 @@
 diff --git a/third_party/blink/renderer/modules/webaudio/audio_context.cc b/third_party/blink/renderer/modules/webaudio/audio_context.cc
-index e60e454815d33..dea9295f2fe06 100644
+index 64cc335435bf3..ad64aec1e32db 100644
 --- a/third_party/blink/renderer/modules/webaudio/audio_context.cc
 +++ b/third_party/blink/renderer/modules/webaudio/audio_context.cc
 @@ -19,6 +19,7 @@
@@ -25,7 +25,7 @@ index e60e454815d33..dea9295f2fe06 100644
  // Operations tracked in the WebAudio.AudioContext.Operation histogram.
  enum class AudioContextOperation {
    kCreate,
-@@ -618,7 +611,7 @@ AudioContext::AudioContext(LocalDOMWindow& window,
+@@ -617,7 +610,7 @@ AudioContext::AudioContext(LocalDOMWindow& window,
    }
  
    destination_node_ = RealtimeAudioDestinationNode::Create(
@@ -34,7 +34,7 @@ index e60e454815d33..dea9295f2fe06 100644
        update_echo_cancellation_on_first_start);
  
    TRACE_EVENT2("webaudio", "AudioContext::AudioContext", "UUID", Uuid(),
-@@ -1144,17 +1137,14 @@ double AudioContext::baseLatency() const {
+@@ -1150,17 +1143,14 @@ double AudioContext::baseLatency() const {
    DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
    DCHECK(destination());
  
@@ -46,7 +46,7 @@ index e60e454815d33..dea9295f2fe06 100644
    DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
    DCHECK(destination());
  
--  DeferredTaskHandler::GraphAutoLocker locker(this);
+-  DeferredTaskHandler::GraphAutoLocker locker(GetDeferredTaskHandler());
 -
 -  double factor = GetOutputLatencyQuantizingFactor();
 -  return std::round(output_position_.hardware_output_latency / factor) * factor;
@@ -54,7 +54,7 @@ index e60e454815d33..dea9295f2fe06 100644
  }
  
  AudioPlaybackStats* AudioContext::playbackStats() {
-@@ -1638,13 +1628,6 @@ void AudioContext::DidInitialPermissionCheck(
+@@ -1648,13 +1638,6 @@ void AudioContext::DidInitialPermissionCheck(
        std::move(observer));
  }
  
@@ -69,10 +69,10 @@ index e60e454815d33..dea9295f2fe06 100644
    DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
  
 diff --git a/third_party/blink/renderer/modules/webaudio/audio_context.h b/third_party/blink/renderer/modules/webaudio/audio_context.h
-index b15ba3892f28e..e8b263d46c627 100644
+index d36e7a82a32df..95d30c4eff756 100644
 --- a/third_party/blink/renderer/modules/webaudio/audio_context.h
 +++ b/third_party/blink/renderer/modules/webaudio/audio_context.h
-@@ -356,7 +356,6 @@ class MODULES_EXPORT AudioContext final
+@@ -362,7 +362,6 @@ class MODULES_EXPORT AudioContext final
  
    void DidInitialPermissionCheck(mojom::blink::PermissionDescriptorPtr,
                                   mojom::blink::PermissionStatusWithDetailsPtr);
@@ -81,7 +81,7 @@ index b15ba3892f28e..e8b263d46c627 100644
    void InitializeMediaDeviceService();
    void UninitializeMediaDeviceService();
 diff --git a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
-index a63cffefb5522..0bc2761475924 100644
+index fcac660801216..a2a22fa838736 100644
 --- a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
 +++ b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
 @@ -28,6 +28,8 @@
@@ -93,7 +93,7 @@ index a63cffefb5522..0bc2761475924 100644
  #include "third_party/blink/public/platform/platform.h"
  #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
  #include "third_party/blink/renderer/bindings/modules/v8/v8_offline_audio_context_options.h"
-@@ -425,6 +427,165 @@ void OfflineAudioContext::FireCompletionEvent() {
+@@ -432,6 +434,165 @@ void OfflineAudioContext::FireCompletionEvent() {
        return;
      }
  
@@ -260,7 +260,7 @@ index a63cffefb5522..0bc2761475924 100644
      // promise too.
      DispatchEvent(*OfflineAudioCompletionEvent::Create(rendered_buffer));
 diff --git a/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc b/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc
-index c02c792af301a..189fa86eb37dd 100644
+index 13bbd23d5294c..7749e55bdf9a6 100644
 --- a/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc
 +++ b/third_party/blink/renderer/modules/webaudio/offline_audio_destination_handler.cc
 @@ -5,11 +5,15 @@
@@ -279,7 +279,7 @@ index c02c792af301a..189fa86eb37dd 100644
  #include "third_party/blink/renderer/core/execution_context/execution_context.h"
  #include "third_party/blink/renderer/modules/webaudio/audio_node_input.h"
  #include "third_party/blink/renderer/modules/webaudio/audio_node_output.h"
-@@ -180,6 +184,10 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
+@@ -185,6 +189,10 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
    // If there is more to process and there is no suspension at the moment,
    // do continue to render quanta. Then calling OfflineAudioContext.resume()
    // will pick up the render loop again from where it was suspended.
@@ -290,7 +290,7 @@ index c02c792af301a..189fa86eb37dd 100644
    while (frames_to_process_ > 0) {
      // Suspend the rendering if a scheduled suspend found at the current
      // sample frame. Otherwise render one quantum.
-@@ -191,16 +199,38 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
+@@ -196,16 +204,38 @@ void OfflineAudioDestinationHandler::DoOfflineRendering() {
      uint32_t frames_available_to_copy = std::min(
          frames_to_process_, GetDeferredTaskHandler().RenderQuantumFrames());
  

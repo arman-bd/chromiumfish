@@ -1,40 +1,50 @@
-diff --git a/content/public/common/content_switches.h b/content/public/common/content_switches.h
---- a/content/public/common/content_switches.h
-+++ b/content/public/common/content_switches.h
-@@ -102,6 +102,15 @@
- // `fingerprinting::Current()` accessor; forwarded to renderers so every
- // process in the session derives the same persona.
- CONTENT_EXPORT extern const char kPersonaSeed[];
-+// Lightweight-fork: static geolocation persona. Decimal-degree latitude and
-+// longitude (and optional horizontal accuracy in meters) that override the
-+// Geolocation API for the whole browser session, mirroring the CDP
-+// Emulation.setGeolocationOverride path. Read browser-side in
-+// WebContentsImpl::GetGeolocationContext(); their presence also auto-grants the
-+// geolocation permission (see components/permissions/permission_context_base).
-+CONTENT_EXPORT extern const char kPersonaLatitude[];
-+CONTENT_EXPORT extern const char kPersonaLongitude[];
-+CONTENT_EXPORT extern const char kPersonaAccuracy[];
- CONTENT_EXPORT extern const char kEnableBlinkFeatures[];
- CONTENT_EXPORT extern const char kEnableCaretBrowsing[];
- CONTENT_EXPORT extern const char kEnableDisplayList2dCanvas[];
-diff --git a/content/public/common/content_switches.cc b/content/public/common/content_switches.cc
---- a/content/public/common/content_switches.cc
-+++ b/content/public/common/content_switches.cc
-@@ -937,6 +937,13 @@
- // Lightweight-fork: see header. Numeric seed for fingerprint persona.
- const char kPersonaSeed[] = "persona-seed";
+diff --git a/components/permissions/permission_context_base.cc b/components/permissions/permission_context_base.cc
+index cdc99a5f1844b..633f80fe9320f 100644
+--- a/components/permissions/permission_context_base.cc
++++ b/components/permissions/permission_context_base.cc
+@@ -13,6 +13,7 @@
+ #include <utility>
+ #include <variant>
  
-+// Lightweight-fork: see header. Static geolocation persona (decimal degrees /
-+// meters). Latitude + longitude override the Geolocation API session-wide;
-+// accuracy is optional and defaults to a plausible GPS value.
-+const char kPersonaLatitude[] = "persona-lat";
-+const char kPersonaLongitude[] = "persona-lng";
-+const char kPersonaAccuracy[] = "persona-accuracy";
++#include "base/command_line.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback.h"
+ #include "base/logging.h"
+@@ -464,6 +465,32 @@ content::PermissionResult PermissionContextBase::GetPermissionStatus(
+   }
+ #endif  // BUILDFLAG(IS_ANDROID)
+ 
++  // Lightweight-fork: when a static geolocation persona is pinned on the command
++  // line (--persona-lat/--persona-lng), auto-grant the geolocation permission so
++  // the injected coordinates are actually served. The override installed in
++  // GeolocationContext is inert until the permission is GRANTED (see
++  // content/browser/geolocation/geolocation_service_impl.cc). Placed after the
++  // kill-switch, secure-origin and permissions-policy gates above, so a
++  // cross-origin iframe without allow="geolocation" is still denied. A precise
++  // GeolocationSetting is returned because GetPermissionLevel() CHECK-requires
++  // the setting to be present when kApproximateGeolocationPermission is enabled.
++  if (content_settings_type_ ==
++      content_settings::GeolocationContentSettingsType()) {
++    // Switch names mirror content/public/common/content_switches.cc; declared
++    // locally to avoid a content_switches.h dependency from this layer.
++    static constexpr char kPersonaLatSwitch[] = "persona-lat";
++    static constexpr char kPersonaLngSwitch[] = "persona-lng";
++    const base::CommandLine& cmd = *base::CommandLine::ForCurrentProcess();
++    if (cmd.HasSwitch(kPersonaLatSwitch) && cmd.HasSwitch(kPersonaLngSwitch)) {
++      return content::PermissionResult(
++          PermissionStatus::GRANTED,
++          content::PermissionStatusSource::UNSPECIFIED,
++          PermissionSetting(GeolocationSetting{
++              /*approximate=*/PermissionOption::kAllowed,
++              /*precise=*/PermissionOption::kAllowed}));
++    }
++  }
 +
- #if BUILDFLAG(IS_IOS)
- // For mobile devices, tests should include a viewport meta tag to specify page
- // dimension adjustments. Omitting the tag can lead to automatic resizing to
+   PermissionSetting retrieved_permission_data = GetPermissionStatusInternal(
+       render_frame_host, requesting_origin, embedding_origin);
+ 
 diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser/web_contents/web_contents_impl.cc
+index fe05eb81d5a62..f25f783253f14 100644
 --- a/content/browser/web_contents/web_contents_impl.cc
 +++ b/content/browser/web_contents/web_contents_impl.cc
 @@ -41,6 +41,7 @@
@@ -45,7 +55,7 @@ diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser
  #include "base/strings/string_split.h"
  #include "base/strings/string_util.h"
  #include "base/strings/stringprintf.h"
-@@ -188,6 +189,7 @@
+@@ -193,6 +194,7 @@
  #include "net/http/http_util.h"
  #include "net/traffic_annotation/network_traffic_annotation.h"
  #include "partition_alloc/buildflags.h"
@@ -53,7 +63,7 @@ diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser
  #include "services/device/public/mojom/wake_lock.mojom.h"
  #include "services/network/public/cpp/features.h"
  #include "services/network/public/cpp/request_destination.h"
-@@ -6286,6 +6288,46 @@
+@@ -6357,6 +6359,46 @@ device::mojom::GeolocationContext* WebContentsImpl::GetGeolocationContext() {
    if (!geolocation_context_) {
      GetDeviceService().BindGeolocationContext(
          geolocation_context_.BindNewPipeAndPassReceiver());
@@ -100,47 +110,49 @@ diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser
    }
    return geolocation_context_.get();
  }
-diff --git a/components/permissions/permission_context_base.cc b/components/permissions/permission_context_base.cc
---- a/components/permissions/permission_context_base.cc
-+++ b/components/permissions/permission_context_base.cc
-@@ -13,6 +13,7 @@
- #include <utility>
- #include <variant>
+diff --git a/content/public/common/content_switches.cc b/content/public/common/content_switches.cc
+index 7619a1bfcfdc5..24e067fce97de 100644
+--- a/content/public/common/content_switches.cc
++++ b/content/public/common/content_switches.cc
+@@ -936,6 +936,16 @@ const char kEnableAggressiveDOMStorageFlushing[] =
+ // Enable indication that browser is controlled by automation.
+ const char kEnableAutomation[] = "enable-automation";
  
-+#include "base/command_line.h"
- #include "base/functional/bind.h"
- #include "base/functional/callback.h"
- #include "base/logging.h"
-@@ -479,6 +480,32 @@
-   }
- #endif  // BUILDFLAG(IS_ANDROID)
- 
-+  // Lightweight-fork: when a static geolocation persona is pinned on the command
-+  // line (--persona-lat/--persona-lng), auto-grant the geolocation permission so
-+  // the injected coordinates are actually served. The override installed in
-+  // GeolocationContext is inert until the permission is GRANTED (see
-+  // content/browser/geolocation/geolocation_service_impl.cc). Placed after the
-+  // kill-switch, secure-origin and permissions-policy gates above, so a
-+  // cross-origin iframe without allow="geolocation" is still denied. A precise
-+  // GeolocationSetting is returned because GetPermissionLevel() CHECK-requires
-+  // the setting to be present when kApproximateGeolocationPermission is enabled.
-+  if (content_settings_type_ ==
-+      content_settings::GeolocationContentSettingsType()) {
-+    // Switch names mirror content/public/common/content_switches.cc; declared
-+    // locally to avoid a content_switches.h dependency from this layer.
-+    static constexpr char kPersonaLatSwitch[] = "persona-lat";
-+    static constexpr char kPersonaLngSwitch[] = "persona-lng";
-+    const base::CommandLine& cmd = *base::CommandLine::ForCurrentProcess();
-+    if (cmd.HasSwitch(kPersonaLatSwitch) && cmd.HasSwitch(kPersonaLngSwitch)) {
-+      return content::PermissionResult(
-+          PermissionStatus::GRANTED,
-+          content::PermissionStatusSource::UNSPECIFIED,
-+          PermissionSetting(GeolocationSetting{
-+              /*approximate=*/PermissionOption::kAllowed,
-+              /*precise=*/PermissionOption::kAllowed}));
-+    }
-+  }
++// Lightweight-fork: see header. Numeric seed for fingerprint persona.
++const char kPersonaSeed[] = "persona-seed";
 +
-   PermissionSetting retrieved_permission_data = GetPermissionStatusInternal(
-       render_frame_host, requesting_origin, embedding_origin);
- 
++// Lightweight-fork: see header. Static geolocation persona (decimal degrees /
++// meters). Latitude + longitude override the Geolocation API session-wide;
++// accuracy is optional and defaults to a plausible GPS value.
++const char kPersonaLatitude[] = "persona-lat";
++const char kPersonaLongitude[] = "persona-lng";
++const char kPersonaAccuracy[] = "persona-accuracy";
++
+ #if BUILDFLAG(IS_IOS)
+ // For mobile devices, tests should include a viewport meta tag to specify page
+ // dimension adjustments. Omitting the tag can lead to automatic resizing to
+diff --git a/content/public/common/content_switches.h b/content/public/common/content_switches.h
+index 7118994c96431..5c75a269f8cb8 100644
+--- a/content/public/common/content_switches.h
++++ b/content/public/common/content_switches.h
+@@ -97,6 +97,20 @@ CONTENT_EXPORT extern const char kDomAutomationController[];
+ extern const char kDisable2dCanvasClipAntialiasing[];
+ CONTENT_EXPORT extern const char kEnableAggressiveDOMStorageFlushing[];
+ CONTENT_EXPORT extern const char kEnableAutomation[];
++// Lightweight-fork: numeric seed (uint64, decimal) that selects the
++// fingerprint persona for this browser session. Read by Blink's
++// `fingerprinting::Current()` accessor; forwarded to renderers so every
++// process in the session derives the same persona.
++CONTENT_EXPORT extern const char kPersonaSeed[];
++// Lightweight-fork: static geolocation persona. Decimal-degree latitude and
++// longitude (and optional horizontal accuracy in meters) that override the
++// Geolocation API for the whole browser session, mirroring the CDP
++// Emulation.setGeolocationOverride path. Read browser-side in
++// WebContentsImpl::GetGeolocationContext(); their presence also auto-grants the
++// geolocation permission (see components/permissions/permission_context_base).
++CONTENT_EXPORT extern const char kPersonaLatitude[];
++CONTENT_EXPORT extern const char kPersonaLongitude[];
++CONTENT_EXPORT extern const char kPersonaAccuracy[];
+ CONTENT_EXPORT extern const char kEnableBlinkFeatures[];
+ CONTENT_EXPORT extern const char kEnableCaretBrowsing[];
+ CONTENT_EXPORT extern const char kEnableDisplayList2dCanvas[];

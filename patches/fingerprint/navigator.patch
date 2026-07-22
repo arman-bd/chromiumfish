@@ -1,8 +1,8 @@
 diff --git a/chrome/renderer/chrome_content_renderer_client.cc b/chrome/renderer/chrome_content_renderer_client.cc
-index 3105bffe8ee4f..9077d6d60ec12 100644
+index e177eded759db..91ad0c23590f4 100644
 --- a/chrome/renderer/chrome_content_renderer_client.cc
 +++ b/chrome/renderer/chrome_content_renderer_client.cc
-@@ -1430,8 +1430,19 @@ void ChromeContentRendererClient::
+@@ -1427,8 +1427,19 @@ void ChromeContentRendererClient::
  
  // Web Share is conditionally enabled here in chrome/, to avoid it
  // being made available in WebView or Linux.
@@ -24,7 +24,7 @@ index 3105bffe8ee4f..9077d6d60ec12 100644
  #endif
  
 diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
-index 66cf6ce5f5237..87888b81dcea3 100644
+index 608bea5cb3864..5a63ee04a90ea 100644
 --- a/components/embedder_support/user_agent_utils.cc
 +++ b/components/embedder_support/user_agent_utils.cc
 @@ -33,6 +33,7 @@
@@ -133,16 +133,24 @@ index 66cf6ce5f5237..87888b81dcea3 100644
  }
  
  std::optional<std::string> GetUserAgentFromCommandLine() {
-@@ -583,6 +601,8 @@ bool GetMobileBitForUAMetadata() {
+@@ -583,6 +601,16 @@ bool GetMobileBitForUAMetadata() {
  }
  
  std::string GetPlatformVersion() {
 +  return blink::fingerprinting::Current().ua_metadata_platform_version;
 +#if 0
- #if BUILDFLAG(IS_LINUX)
-   // TODO(crbug.com/40245146): Remove this Blink feature
-   if (base::FeatureList::IsEnabled(
-@@ -608,9 +628,12 @@ std::string GetPlatformVersion() {
++#if BUILDFLAG(IS_LINUX)
++  // TODO(crbug.com/40245146): Remove this Blink feature
++  if (base::FeatureList::IsEnabled(
++          blink::features::kReduceUserAgentDataLinuxPlatformVersion)) {
++    return std::string();
++  }
++#endif
++
+ #if BUILDFLAG(IS_ANDROID)
+   if (base::android::device_info::is_desktop() ||
+       base::android::device_info::is_xr()) {
+@@ -600,9 +628,12 @@ std::string GetPlatformVersion() {
    base::SysInfo::OperatingSystemVersionNumbers(&major, &minor, &bugfix);
    return base::StringPrintf("%d.%d.%d", major, minor, bugfix);
  #endif
@@ -155,7 +163,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
  #if BUILDFLAG(IS_ANDROID)
    if (base::android::device_info::is_desktop() ||
        base::android::device_info::is_xr()) {
-@@ -640,6 +663,7 @@ std::string GetPlatformForUAMetadata() {
+@@ -632,6 +663,7 @@ std::string GetPlatformForUAMetadata() {
  #else
    return std::string(version_info::GetOSType());
  #endif
@@ -163,7 +171,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
  }
  
  blink::UserAgentMetadata GetUserAgentMetadata(bool only_low_entropy_ch) {
-@@ -648,7 +672,7 @@ blink::UserAgentMetadata GetUserAgentMetadata(bool only_low_entropy_ch) {
+@@ -640,7 +672,7 @@ blink::UserAgentMetadata GetUserAgentMetadata(bool only_low_entropy_ch) {
    // Low entropy client hints.
    metadata.brand_version_list =
        GetUserAgentBrandMajorVersionListInternal(std::nullopt);
@@ -172,7 +180,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
    metadata.platform = GetPlatformForUAMetadata();
  
    // For users providing a valid user-agent override via the command line:
-@@ -671,7 +695,13 @@ blink::UserAgentMetadata GetUserAgentMetadata(bool only_low_entropy_ch) {
+@@ -663,7 +695,13 @@ blink::UserAgentMetadata GetUserAgentMetadata(bool only_low_entropy_ch) {
    // High entropy client hints.
    metadata.brand_full_version_list =
        GetUserAgentBrandFullVersionListInternal(std::nullopt);
@@ -187,7 +195,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
    metadata.architecture = GetCpuArchitecture();
    metadata.model = BuildModelInfo();
    metadata.form_factors = GetFormFactorsClientHint(metadata, metadata.mobile);
-@@ -709,6 +739,8 @@ std::string GetUnifiedPlatformForTesting() {
+@@ -701,6 +739,8 @@ std::string GetUnifiedPlatformForTesting() {
  // Return the CPU architecture in Windows/Mac/POSIX/Fuchsia and the empty string
  // on Android or if unknown.
  std::string GetCpuArchitecture() {
@@ -196,7 +204,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
  #if BUILDFLAG(IS_WIN)
    base::win::OSInfo::WindowsArchitecture windows_architecture =
        base::win::OSInfo::GetInstance()->GetArchitecture();
-@@ -764,11 +796,14 @@ std::string GetCpuArchitecture() {
+@@ -756,11 +796,14 @@ std::string GetCpuArchitecture() {
  #endif
    DLOG(WARNING) << "Unrecognized CPU Architecture";
    return std::string();
@@ -211,7 +219,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
  #if BUILDFLAG(IS_WIN)
    return (base::win::OSInfo::GetInstance()->GetArchitecture() ==
            base::win::OSInfo::X86_ARCHITECTURE)
-@@ -787,6 +822,7 @@ std::string GetCpuBitness() {
+@@ -779,6 +822,7 @@ std::string GetCpuBitness() {
  #else
  #error Unsupported platform
  #endif
@@ -219,7 +227,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
  }
  
  std::string BuildOSCpuInfoFromOSVersionAndCpuType(const std::string& os_version,
-@@ -848,6 +884,8 @@ std::string BuildUserAgentFromProduct(const std::string& product) {
+@@ -840,6 +884,8 @@ std::string BuildUserAgentFromProduct(const std::string& product) {
  }
  
  std::string BuildModelInfo() {
@@ -228,7 +236,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
  #if BUILDFLAG(IS_ANDROID)
    // Model information is not exposed on Android desktop.
    if (base::android::device_info::is_desktop()) {
-@@ -862,6 +900,7 @@ std::string BuildModelInfo() {
+@@ -854,6 +900,7 @@ std::string BuildModelInfo() {
  #endif
  
    return std::string();
@@ -236,7 +244,7 @@ index 66cf6ce5f5237..87888b81dcea3 100644
  }
  
  #if BUILDFLAG(IS_ANDROID)
-@@ -920,11 +959,18 @@ std::string BuildUserAgentFromOSAndProduct(const std::string& os_info,
+@@ -912,11 +959,18 @@ std::string BuildUserAgentFromOSAndProduct(const std::string& os_info,
    // Derived from Safari's UA string.
    // This is done to expose our product name in a manner that is maximally
    // compatible with Safari, we hope!!
@@ -258,10 +266,10 @@ index 66cf6ce5f5237..87888b81dcea3 100644
  }
  
 diff --git a/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc b/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc
-index a3f5649de4219..38437864c7d0a 100644
+index eacccc6407bac..59939b25d729e 100644
 --- a/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc
 +++ b/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc
-@@ -217,6 +217,52 @@ void LocalWindowProxy::Initialize() {
+@@ -291,6 +291,52 @@ void LocalWindowProxy::Initialize() {
  
    InstallConditionalFeatures();
  
@@ -315,10 +323,10 @@ index a3f5649de4219..38437864c7d0a 100644
      probe::DidCreateMainWorldContext(GetFrame());
      GetFrame()->Loader().DispatchDidClearWindowObjectInMainWorld();
 diff --git a/third_party/blink/renderer/core/dom/element.cc b/third_party/blink/renderer/core/dom/element.cc
-index 6fcc554698013..1aedc381e53ad 100644
+index 19def24e3d684..b4988b5db280b 100644
 --- a/third_party/blink/renderer/core/dom/element.cc
 +++ b/third_party/blink/renderer/core/dom/element.cc
-@@ -7552,6 +7552,12 @@ ShadowRoot* Element::attachShadow(const ShadowRootInit* shadow_root_init_dict,
+@@ -7591,6 +7591,12 @@ ShadowRoot* Element::attachShadow(const ShadowRootInit* shadow_root_init_dict,
      case ShadowRootMode::kUserAgent:
        NOTREACHED();
    }
@@ -331,7 +339,7 @@ index 6fcc554698013..1aedc381e53ad 100644
  
    // If there's already a declarative shadow root, verify that the existing
    // mode is the same as the requested mode.
-@@ -7604,6 +7610,8 @@ bool Element::AttachDeclarativeShadowRoot(
+@@ -7643,6 +7649,8 @@ bool Element::AttachDeclarativeShadowRoot(
      return false;
    }
    CHECK(mode == ShadowRootMode::kOpen || mode == ShadowRootMode::kClosed);
@@ -341,10 +349,10 @@ index 6fcc554698013..1aedc381e53ad 100644
    CustomElementRegistry* registry = nullptr;
    // Get global registry of the document by default.
 diff --git a/third_party/blink/renderer/core/dom/element.idl b/third_party/blink/renderer/core/dom/element.idl
-index 29bf3ba733039..2befeece45c4b 100644
+index 51f29e18f378f..2ec52a0b783c6 100644
 --- a/third_party/blink/renderer/core/dom/element.idl
 +++ b/third_party/blink/renderer/core/dom/element.idl
-@@ -77,6 +77,12 @@ dictionary SetHTMLUnsafeOptions {
+@@ -80,6 +80,12 @@ dictionary ParseHTMLUnsafeOptions {
      [RaisesException, CEReactions] Attr removeAttributeNode(Attr attr);
  
      [RaisesException, MeasureAs=ElementAttachShadow] ShadowRoot attachShadow(ShadowRootInit shadowRootInitDict);
@@ -358,7 +366,7 @@ index 29bf3ba733039..2befeece45c4b 100644
  
      [RaisesException] Element? closest(DOMString selectors);
 diff --git a/third_party/blink/renderer/core/dom/events/event_target.idl b/third_party/blink/renderer/core/dom/events/event_target.idl
-index 24e54a9c02041..357af2da5b6e7 100644
+index 24e54a9c02041..279064b0c80e7 100644
 --- a/third_party/blink/renderer/core/dom/events/event_target.idl
 +++ b/third_party/blink/renderer/core/dom/events/event_target.idl
 @@ -32,5 +32,14 @@ dictionary ObservableEventListenerOptions {
@@ -438,7 +446,7 @@ index cccfafe8f93a0..96aac4b016dfc 100644
  
  }  // namespace
 diff --git a/third_party/blink/renderer/core/frame/local_dom_window.cc b/third_party/blink/renderer/core/frame/local_dom_window.cc
-index f442c8d8e331b..fb3a7e40060f4 100644
+index f36ed413289cb..4a8d40f2ad7a1 100644
 --- a/third_party/blink/renderer/core/frame/local_dom_window.cc
 +++ b/third_party/blink/renderer/core/frame/local_dom_window.cc
 @@ -40,6 +40,7 @@
@@ -449,7 +457,7 @@ index f442c8d8e331b..fb3a7e40060f4 100644
  #include "third_party/blink/public/common/navigation/impression.h"
  #include "third_party/blink/public/common/switches.h"
  #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-blink.h"
-@@ -1571,29 +1572,35 @@ bool LocalDOMWindow::offscreenBuffering() const {
+@@ -1591,29 +1592,35 @@ bool LocalDOMWindow::offscreenBuffering() const {
    return true;
  }
  
@@ -499,7 +507,7 @@ index f442c8d8e331b..fb3a7e40060f4 100644
  }
  
  int LocalDOMWindow::outerWidth() const {
-@@ -1601,24 +1608,14 @@ int LocalDOMWindow::outerWidth() const {
+@@ -1621,24 +1628,14 @@ int LocalDOMWindow::outerWidth() const {
      return 0;
  
    LocalFrame* frame = GetFrame();
@@ -528,7 +536,7 @@ index f442c8d8e331b..fb3a7e40060f4 100644
  }
  
  gfx::Size LocalDOMWindow::GetViewportSize() const {
-@@ -1652,6 +1649,13 @@ gfx::Size LocalDOMWindow::GetViewportSize() const {
+@@ -1672,6 +1669,13 @@ gfx::Size LocalDOMWindow::GetViewportSize() const {
    return document()->View()->Size();
  }
  
@@ -542,7 +550,7 @@ index f442c8d8e331b..fb3a7e40060f4 100644
  int LocalDOMWindow::innerHeight() const {
    if (!GetFrame())
      return 0;
-@@ -1669,39 +1673,15 @@ int LocalDOMWindow::innerWidth() const {
+@@ -1689,39 +1693,15 @@ int LocalDOMWindow::innerWidth() const {
  }
  
  int LocalDOMWindow::screenX() const {
@@ -588,7 +596,7 @@ index f442c8d8e331b..fb3a7e40060f4 100644
  }
  
  double LocalDOMWindow::scrollX() const {
-@@ -1803,7 +1783,20 @@ double LocalDOMWindow::devicePixelRatio() const {
+@@ -1823,7 +1803,20 @@ double LocalDOMWindow::devicePixelRatio() const {
    if (!GetFrame())
      return 0.0;
  
@@ -827,10 +835,10 @@ index 8cd793a2bc0bc..cc890e5cd0f9f 100644
  }
  
 diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
-index 1b59fe994a8b1..03df9ac8a3c05 100644
+index ce5e21a444e38..1faec148e5089 100644
 --- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
 +++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
-@@ -3967,6 +3967,11 @@
+@@ -4057,6 +4057,11 @@
      },
      {
        name: "NetInfoConstantType",

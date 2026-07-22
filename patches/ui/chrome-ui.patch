@@ -1,8 +1,8 @@
 diff --git a/chrome/browser/app_controller_mac.mm b/chrome/browser/app_controller_mac.mm
-index 33ac0c1324424..064df8ba3ca2d 100644
+index 9f3d527596656..8539036faac4b 100644
 --- a/chrome/browser/app_controller_mac.mm
 +++ b/chrome/browser/app_controller_mac.mm
-@@ -909,6 +909,9 @@ - (void)mainMenuCreated {
+@@ -916,6 +916,9 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
  
    // Initialize the Profile menu.
    [self initProfileMenu];
@@ -12,7 +12,7 @@ index 33ac0c1324424..064df8ba3ca2d 100644
  }
  
  - (void)unregisterEventHandlers {
-@@ -1891,6 +1894,17 @@ - (void)initProfileMenu {
+@@ -1924,6 +1927,17 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
    NSMenu* mainMenu = [NSApp mainMenu];
    NSMenuItem* profileMenu = [mainMenu itemWithTag:IDC_PROFILE_MAIN_MENU];
  
@@ -30,7 +30,7 @@ index 33ac0c1324424..064df8ba3ca2d 100644
    if (!profiles::IsMultipleProfilesEnabled()) {
      [mainMenu removeItem:profileMenu];
      return;
-@@ -1901,6 +1915,39 @@ - (void)initProfileMenu {
+@@ -1934,6 +1948,39 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
  
    _profileMenuController =
        [[ProfileMenuController alloc] initWithMainMenuItem:profileMenu];
@@ -71,10 +71,10 @@ index 33ac0c1324424..064df8ba3ca2d 100644
  
  - (void)initShareMenu {
 diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
-index 61e834cfb3eb4..1078787a34be9 100644
+index f5831f33b9fd1..da5fad6448049 100644
 --- a/chrome/browser/ui/browser_command_controller.cc
 +++ b/chrome/browser/ui/browser_command_controller.cc
-@@ -220,6 +220,109 @@ void AppInfoDialogClosedCallback(SessionID session_id,
+@@ -228,6 +228,109 @@ void AppInfoDialogClosedCallback(SessionID session_id,
    }
  }
  
@@ -184,7 +184,7 @@ index 61e834cfb3eb4..1078787a34be9 100644
  bool CanOpenFile(Browser* browser) {
    if (browser->is_type_devtools() || browser->is_type_app() ||
        browser->is_type_app_popup()) {
-@@ -581,15 +684,24 @@ void BrowserCommandController::ShowCustomizeChromeSidePanel(
+@@ -594,15 +697,24 @@ void BrowserCommandController::ShowCustomizeChromeSidePanel(
  // BrowserCommandController, CommandUpdater implementation:
  
  bool BrowserCommandController::SupportsCommand(int id) const {
@@ -209,7 +209,7 @@ index 61e834cfb3eb4..1078787a34be9 100644
    return ExecuteCommandWithDisposition(id, WindowOpenDisposition::CURRENT_TAB,
                                         time_stamp);
  }
-@@ -598,6 +710,9 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
+@@ -611,6 +723,9 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
      int id,
      WindowOpenDisposition disposition,
      base::TimeTicks time_stamp) {
@@ -220,10 +220,10 @@ index 61e834cfb3eb4..1078787a34be9 100644
    // naming collision for ExecuteCommandWithDisposition (both
    // CommandUpdaterDelegate and CommandUpdater declare this function so we
 diff --git a/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc b/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc
-index ef13086a29dc0..dad82e3f23508 100644
+index 26feac287c1f6..e3d8dbfa60403 100644
 --- a/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc
 +++ b/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc
-@@ -338,6 +338,9 @@ void ReadAnythingEntryPointController::UpdatePageActionVisibility(
+@@ -340,6 +340,9 @@ void ReadAnythingEntryPointController::UpdatePageActionVisibility(
      tabs::TabInterface* tab,
      base::OnceCallback<void(user_education::FeaturePromoResult promo_result)>
          show_promo_callback) {
@@ -233,7 +233,7 @@ index ef13086a29dc0..dad82e3f23508 100644
    if (!base::FeatureList::IsEnabled(features::kPageActionsMigration) ||
        !features::IsReadAnythingOmniboxChipEnabled() || !tab) {
      return;
-@@ -382,6 +385,7 @@ void ReadAnythingEntryPointController::UpdatePageActionVisibility(
+@@ -384,6 +387,7 @@ void ReadAnythingEntryPointController::UpdatePageActionVisibility(
          feature_engagement::kIPHReadingModePageActionLabelFeature);
    }
    page_action_controller->Hide(kActionSidePanelShowReadAnything);
@@ -279,7 +279,7 @@ index 0deb93f45504c..47fc835cc2dde 100644
  // for flags which are not available in about:flags.
  #if !BUILDFLAG(IS_ANDROID)
 diff --git a/chrome/browser/ui/startup/infobar_utils.cc b/chrome/browser/ui/startup/infobar_utils.cc
-index 8f6bccf2a4b22..ec988a900f1ae 100644
+index 4907b9a951040..27d7e2ae0f986 100644
 --- a/chrome/browser/ui/startup/infobar_utils.cc
 +++ b/chrome/browser/ui/startup/infobar_utils.cc
 @@ -18,7 +18,6 @@
@@ -288,9 +288,9 @@ index 8f6bccf2a4b22..ec988a900f1ae 100644
  #include "chrome/browser/ui/startup/bidding_and_auction_consented_debugging_infobar_delegate.h"
 -#include "chrome/browser/ui/startup/google_api_keys_infobar_delegate.h"
  #include "chrome/browser/ui/startup/obsolete_system_infobar_delegate.h"
+ #include "chrome/browser/ui/startup/oscryptasync_availability_infobar_delegate.h"
  #include "chrome/browser/ui/startup/startup_browser_creator.h"
- #include "chrome/browser/ui/startup/startup_types.h"
-@@ -28,7 +27,6 @@
+@@ -29,7 +28,6 @@
  #include "components/infobars/content/content_infobar_manager.h"
  #include "components/prefs/pref_service.h"
  #include "content/public/common/content_switches.h"
@@ -298,7 +298,7 @@ index 8f6bccf2a4b22..ec988a900f1ae 100644
  
  #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
  #include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt.h"
-@@ -144,9 +142,13 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
+@@ -145,9 +143,13 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
      return;
    }
  
@@ -315,7 +315,7 @@ index 8f6bccf2a4b22..ec988a900f1ae 100644
    base::UmaHistogramBoolean("Startup.CrashBubbleShown", should_display_bubble);
    if (should_display_bubble) {
      SessionCrashedBubble::ShowIfNotOffTheRecordProfile(
-@@ -184,9 +186,11 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
+@@ -185,9 +187,11 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
    infobars::ContentInfoBarManager* infobar_manager =
        infobars::ContentInfoBarManager::FromWebContents(web_contents);
  
@@ -331,10 +331,10 @@ index 8f6bccf2a4b22..ec988a900f1ae 100644
    if (ObsoleteSystem::IsObsoleteNowOrSoon()) {
      PrefService* local_state = g_browser_process->local_state();
 diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/toolbar/app_menu_model.cc
-index 2f587ad325d3a..2de13ed578b66 100644
+index 44cc2b51c48a2..4202b09d83d16 100644
 --- a/chrome/browser/ui/toolbar/app_menu_model.cc
 +++ b/chrome/browser/ui/toolbar/app_menu_model.cc
-@@ -240,7 +240,7 @@ void AddSubMenuWithStringIdAndVectorIcon(ui::SimpleMenuModel* model,
+@@ -245,7 +245,7 @@ void AddSubMenuWithStringIdAndVectorIcon(ui::SimpleMenuModel* model,
  
  // Conditionally return the update app menu item title based on upgrade detector
  // state.
@@ -343,7 +343,7 @@ index 2f587ad325d3a..2de13ed578b66 100644
    if (UpgradeDetector::GetInstance()->is_outdated_install() ||
        UpgradeDetector::GetInstance()->is_outdated_install_no_au()) {
      return l10n_util::GetStringUTF16(IDS_UPGRADE_BUBBLE_MENU_ITEM);
-@@ -891,7 +891,7 @@ SaveAndShareSubMenuModel::SaveAndShareSubMenuModel(
+@@ -960,7 +960,7 @@ SaveAndShareSubMenuModel::SaveAndShareSubMenuModel(
    }
  }
  
@@ -352,7 +352,7 @@ index 2f587ad325d3a..2de13ed578b66 100644
    PrefService* local_state = g_browser_process->local_state();
    return local_state && local_state->GetBoolean(prefs::kPromotionsEnabled);
  }
-@@ -1925,8 +1925,16 @@ void AppMenuModel::LogMenuAction(AppMenuAction action_id) {
+@@ -2050,8 +2050,16 @@ void AppMenuModel::LogMenuAction(AppMenuAction action_id) {
  // - Learn about the browser and global customisation e.g. settings, help.
  // - Browser relaunch, quit.
  void AppMenuModel::Build() {
@@ -370,7 +370,7 @@ index 2f587ad325d3a..2de13ed578b66 100644
  
    if (app_menu_icon_controller_ &&
        app_menu_icon_controller_->GetTypeAndSeverity().type ==
-@@ -2182,6 +2190,7 @@ void AppMenuModel::Build() {
+@@ -2345,6 +2353,7 @@ void AppMenuModel::Build() {
  #endif  // !BUILDFLAG(IS_CHROMEOS)
  
    uma_action_recorded_ = false;
@@ -379,12 +379,12 @@ index 2f587ad325d3a..2de13ed578b66 100644
  
  void AppMenuModel::CreateCutCopyPasteMenu() {
 diff --git a/chrome/browser/ui/views/bookmarks/bookmark_page_action_controller.cc b/chrome/browser/ui/views/bookmarks/bookmark_page_action_controller.cc
-index 48ee1579104ea..afe9c3fda9fc3 100644
+index 744efde599c45..6afc973fe5533 100644
 --- a/chrome/browser/ui/views/bookmarks/bookmark_page_action_controller.cc
 +++ b/chrome/browser/ui/views/bookmarks/bookmark_page_action_controller.cc
-@@ -28,15 +28,6 @@
- #include "ui/base/l10n/l10n_util.h"
+@@ -32,15 +32,6 @@
  #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
+ #include "ui/gfx/animation/tween.h"
  
 -namespace {
 -
@@ -398,7 +398,7 @@ index 48ee1579104ea..afe9c3fda9fc3 100644
  DEFINE_USER_DATA(BookmarkPageActionController);
  
  BookmarkPageActionController::BookmarkPageActionController(
-@@ -127,9 +118,8 @@ void BookmarkPageActionController::UpdatePageActionVisibility() {
+@@ -131,9 +122,8 @@ void BookmarkPageActionController::UpdatePageActionVisibility() {
  }
  
  bool BookmarkPageActionController::ShouldShowPageAction() const {
@@ -411,10 +411,10 @@ index 48ee1579104ea..afe9c3fda9fc3 100644
  
  void BookmarkPageActionController::SetStarred(bool starred) {
 diff --git a/chrome/browser/ui/views/frame/browser_view.cc b/chrome/browser/ui/views/frame/browser_view.cc
-index bcb1930a86dd2..a9435f00f5377 100644
+index c5b196b2be317..288a6865641f2 100644
 --- a/chrome/browser/ui/views/frame/browser_view.cc
 +++ b/chrome/browser/ui/views/frame/browser_view.cc
-@@ -5238,6 +5238,9 @@ ContentsLayoutManager* BrowserView::GetContentsLayoutManager() const {
+@@ -5170,6 +5170,9 @@ ContentsLayoutManager* BrowserView::GetContentsLayoutManager() const {
  }
  
  bool BrowserView::MaybeShowBookmarkBar(WebContents* contents) {
@@ -424,7 +424,7 @@ index bcb1930a86dd2..a9435f00f5377 100644
    const bool show_bookmark_bar =
        contents && browser_->SupportsWindowFeature(
                        Browser::WindowFeature::kFeatureBookmarkBar);
-@@ -5281,6 +5284,7 @@ bool BrowserView::MaybeShowBookmarkBar(WebContents* contents) {
+@@ -5213,6 +5216,7 @@ bool BrowserView::MaybeShowBookmarkBar(WebContents* contents) {
    }
  
    return needs_layout;
@@ -433,10 +433,10 @@ index bcb1930a86dd2..a9435f00f5377 100644
  
  bool BrowserView::MaybeShowInfoBar(WebContents* contents) {
 diff --git a/chrome/browser/ui/views/location_bar/location_bar_view.cc b/chrome/browser/ui/views/location_bar/location_bar_view.cc
-index f2d0284370410..5cb0beba7fa06 100644
+index 24c769cf019fe..e65f61c88ef42 100644
 --- a/chrome/browser/ui/views/location_bar/location_bar_view.cc
 +++ b/chrome/browser/ui/views/location_bar/location_bar_view.cc
-@@ -331,6 +331,10 @@ void LocationBarView::Init() {
+@@ -330,6 +330,10 @@ void LocationBarView::Init() {
        std::make_unique<LocationIconView>(omnibox_chip_font_list, this, this);
    location_icon_view->set_drag_controller(this);
    location_icon_view_ = AddChildView(std::move(location_icon_view));
@@ -445,9 +445,9 @@ index f2d0284370410..5cb0beba7fa06 100644
 +  // internal pointer references; just make it invisible.
 +  location_icon_view_->SetVisible(false);
  
-   if (page_info::IsMerchantTrustFeatureEnabled() &&
-       page_info::kMerchantTrustEnableOmniboxChip.Get()) {
-@@ -564,9 +568,10 @@ void LocationBarView::Init() {
+   // Initialize the Omnibox view. browser_ can be nullptr on ChromeOS in the
+   // case of simple_web_view_dialog. Or it can be nulltpr on ChromeOS and on
+@@ -567,9 +571,10 @@ void LocationBarView::Init() {
                                  PageActionIconType::kAiMode);
    }
  
@@ -461,7 +461,7 @@ index f2d0284370410..5cb0beba7fa06 100644
  
    params.icon_color = color_provider->GetColor(kColorOmniboxActionIcon);
    params.between_icon_spacing = kBetweenIconSpacing;
-@@ -958,18 +963,9 @@ void LocationBarView::Layout(PassKey) {
+@@ -970,18 +975,9 @@ void LocationBarView::Layout(PassKey) {
        }
        selected_keyword_view_->SetCustomImage(image);
      }
@@ -483,10 +483,10 @@ index f2d0284370410..5cb0beba7fa06 100644
    }
  
 diff --git a/chrome/browser/ui/views/toolbar/toolbar_view.cc b/chrome/browser/ui/views/toolbar/toolbar_view.cc
-index 9bdbc454ec0be..f90eb6d23f065 100644
+index 9f1ad065ba766..b504e43e2de9c 100644
 --- a/chrome/browser/ui/views/toolbar/toolbar_view.cc
 +++ b/chrome/browser/ui/views/toolbar/toolbar_view.cc
-@@ -581,22 +581,8 @@ void ToolbarView::Init() {
+@@ -588,22 +588,8 @@ void ToolbarView::Init() {
    if (!features::IsWebUIAvatarButtonEnabled()) {
      avatar_ =
          AddChildView(std::make_unique<AvatarToolbarButton>(browser_view_));
@@ -510,8 +510,8 @@ index 9bdbc454ec0be..f90eb6d23f065 100644
 +    avatar_->SetVisible(false);
    }
  
- 
-@@ -611,6 +597,10 @@ void ToolbarView::Init() {
+   overflow_button_ = AddChildView(std::make_unique<OverflowButton>());
+@@ -617,6 +603,10 @@ void ToolbarView::Init() {
        l10n_util::GetStringUTF16(IDS_APPMENU_TOOLTIP));
    app_menu_button->SetID(VIEW_ID_APP_MENU);
    app_menu_button_ = AddChildView(std::move(app_menu_button));
@@ -523,10 +523,10 @@ index 9bdbc454ec0be..f90eb6d23f065 100644
    if (base::FeatureList::IsEnabled(contextual_tasks::kContextualTasks) &&
        contextual_tasks::GetExpandButtonOption() ==
 diff --git a/chrome/browser/ui/webui/chrome_web_ui_configs.cc b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
-index 9daef52054236..d06081da742fc 100644
+index bced2aebb3495..652b2e645e57e 100644
 --- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
 +++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
-@@ -292,11 +292,13 @@ void RegisterChromeWebUIConfigs() {
+@@ -298,11 +298,13 @@ void RegisterChromeWebUIConfigs() {
            security_interstitials::KnownInterceptionDisclosureUIConfig>());
    map.AddWebUIConfig(std::make_unique<SavedTabGroupsUnsupportedUIConfig>());
    map.AddWebUIConfig(std::make_unique<SegmentationInternalsUIConfig>());
@@ -542,7 +542,7 @@ index 9daef52054236..d06081da742fc 100644
    map.AddWebUIConfig(std::make_unique<TranslateInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<UsbInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<user_actions_ui::UserActionsUIConfig>());
-@@ -335,17 +337,25 @@ void RegisterChromeWebUIConfigs() {
+@@ -338,18 +340,26 @@ void RegisterChromeWebUIConfigs() {
    map.AddWebUIConfig(std::make_unique<actor::ui::ActorOverlayUIConfig>());
    map.AddWebUIConfig(std::make_unique<AppServiceInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<AutofillMlInternalsUIConfig>());
@@ -561,6 +561,7 @@ index 9daef52054236..d06081da742fc 100644
 -  map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
 +  // map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
    map.AddWebUIConfig(std::make_unique<DrivePickerHostUIConfig>());
+   map.AddWebUIConfig(std::make_unique<glic::GlicExperimentalOptInUIConfig>());
 -  map.AddWebUIConfig(std::make_unique<FeedbackUIConfig>());
 -  map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
 -  map.AddWebUIConfig(std::make_unique<HistorySidePanelUIConfig>());
@@ -575,7 +576,7 @@ index 9daef52054236..d06081da742fc 100644
    map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<InspectUIConfig>());
  #if BUILDFLAG(ENABLE_SESSION_SERVICE)
-@@ -362,13 +372,17 @@ void RegisterChromeWebUIConfigs() {
+@@ -369,7 +379,9 @@ void RegisterChromeWebUIConfigs() {
    map.AddWebUIConfig(std::make_unique<OmniboxPopupUIConfig>());
    map.AddWebUIConfig(
        std::make_unique<on_device_internals::OnDeviceInternalsUIConfig>());
@@ -584,7 +585,9 @@ index 9daef52054236..d06081da742fc 100644
 +  // navigation can't reach it. Command-level already blocked.
 +  // map.AddWebUIConfig(std::make_unique<PasswordManagerUIConfig>());
    map.AddWebUIConfig(
-       std::make_unique<private_ai::PrivateAiInternalsUIConfig>());
+       std::make_unique<
+           personal_context::notice::PersonalContextNoticeUIConfig>());
+@@ -378,7 +390,9 @@ void RegisterChromeWebUIConfigs() {
    map.AddWebUIConfig(std::make_unique<ProfileInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<ReadingListUIConfig>());
    map.AddWebUIConfig(std::make_unique<SearchEngineChoiceUIConfig>());
@@ -595,7 +598,7 @@ index 9daef52054236..d06081da742fc 100644
    map.AddWebUIConfig(std::make_unique<ShoppingInsightsSidePanelUIConfig>());
    map.AddWebUIConfig(std::make_unique<SuggestInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<SupportToolUIConfig>());
-@@ -435,7 +449,9 @@ void RegisterChromeWebUIConfigs() {
+@@ -446,7 +460,9 @@ void RegisterChromeWebUIConfigs() {
  #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
      BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_DESKTOP_ANDROID)
    map.AddWebUIConfig(std::make_unique<DiscardsUIConfig>());
@@ -607,10 +610,10 @@ index 9daef52054236..d06081da742fc 100644
          // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_DESKTOP_ANDROID)
  
 diff --git a/chrome/common/webui_url_constants.cc b/chrome/common/webui_url_constants.cc
-index dd37ab85cec11..4ff23f0e8ab8c 100644
+index 307b2de1bdb81..107aa9acadab5 100644
 --- a/chrome/common/webui_url_constants.cc
 +++ b/chrome/common/webui_url_constants.cc
-@@ -336,7 +336,8 @@ const GURL& ChromeUINewTabPageURLAsGURL() {
+@@ -337,7 +337,8 @@ const GURL& ChromeUINewTabPageURLAsGURL() {
  }
  
  const GURL& ChromeUINewTabURLAsGURL() {

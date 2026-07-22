@@ -95,10 +95,10 @@ index 4d1f2acf58e43..92ace9029b594 100644
    // is enabled. For that reason, the partition can only be initialized after V8
    // has been initialized.
 diff --git a/third_party/blink/renderer/platform/BUILD.gn b/third_party/blink/renderer/platform/BUILD.gn
-index bdc38284d22fd..97c26caabaf57 100644
+index ac8478a059fa6..fcfd08b7185f4 100644
 --- a/third_party/blink/renderer/platform/BUILD.gn
 +++ b/third_party/blink/renderer/platform/BUILD.gn
-@@ -1784,6 +1784,7 @@ component("platform") {
+@@ -1783,6 +1783,7 @@ component("platform") {
      "//third_party/blink/public/mojom:color_scheme_mojo_bindings",
      "//third_party/blink/public/mojom:embedded_frame_sink_mojo_bindings_blink",
      "//third_party/blink/renderer/platform/blob",
@@ -2010,7 +2010,7 @@ index 0000000000000..8d65a9dd73d52
 +}  // namespace blink::canvas_bridge
 diff --git a/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h
 new file mode 100644
-index 0000000000000..79e74cd3e5cef
+index 0000000000000..bd571b825fafd
 --- /dev/null
 +++ b/third_party/blink/renderer/platform/canvas_bridge/canvas_bridge_codec.h
 @@ -0,0 +1,258 @@

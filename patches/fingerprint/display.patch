@@ -350,7 +350,7 @@ index 787aa750ae6e4..4855bc12255b5 100644
  
    // The internal id of the underlying display, to support multi-screen devices.
 diff --git a/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc b/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc
-index 8f88c4c102d62..843920c65cb16 100644
+index b3bd1d9dc2907..31983e5887fa3 100644
 --- a/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc
 +++ b/third_party/blink/renderer/core/scroll/scrollbar_theme_mac.cc
 @@ -330,7 +330,14 @@ int ScrollbarThemeMac::ScrollbarThickness(
