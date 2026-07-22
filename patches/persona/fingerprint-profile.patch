@@ -62,10 +62,10 @@ index c34a84809962d..868aa83c3cfb6 100644
      "frame/frame_ad_evidence_mojom_traits.cc",
 diff --git a/third_party/blink/common/fingerprinting/fingerprint_profile.cc b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
 new file mode 100644
-index 0000000000000..53aabb85c54ce
+index 0000000000000..4cabfd0c61ad4
 --- /dev/null
 +++ b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
-@@ -0,0 +1,548 @@
+@@ -0,0 +1,550 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -133,20 +133,22 @@ index 0000000000000..53aabb85c54ce
 +  double weight;
 +};
 +
-+// Pinned to MATCH the engine: this tree is built from Chromium
-+// 149.0.7827.115 (the current stable as of migration), so the persona
-+// claims exactly 149.0.7827.115. Claiming the engine's own version is
-+// the only way to stay consistent with feature-detected reality — a
-+// persona one milestone behind (we previously claimed 148 on a 149
-+// engine, after earlier claiming 148 on a 150 engine) risks UA-vs-engine
-+// tampering hits if a probe gates on a 149-era API. Keep this in lockstep
-+// with the checked-out Chromium tag whenever the engine is re-based.
++// Pinned to the engine's milestone: this tree is built from Chromium 150
++// (engine tag 150.0.7871.129). The persona claims current stable
++// 150.0.7871.181 — same milestone as the engine, so it stays consistent with
++// feature-detected reality (150 patch releases add no JS-observable surface,
++// so .181 vs the .129 engine is indistinguishable to a probe), while blending
++// with the live Chrome-150 population and matching the X-Browser-Validation
++// seed extracted from real Chrome 150.0.7871.181. A persona a milestone behind
++// the engine (we previously claimed 148 on a 149 engine) risks UA-vs-engine
++// tampering hits if a probe gates on a milestone API — keep this in lockstep
++// with the checked-out Chromium milestone whenever the engine is re-based.
 +// The GREASE brand order is NOT hardcoded here: Chromium's built-in
 +// GetGreasedUserAgentBrandList seeds its permutation from the major
-+// version, so setting major=149 yields real-Chrome-149's brand order
++// version, so setting major=150 yields real-Chrome-150's brand order
 +// (and Sec-CH-UA-Full-Version-List) automatically, byte-for-byte.
 +constexpr std::array<WeightedEntry<ChromeVer>, 1> kChromeVersions = {{
-+    {{149, "149.0.7827.115"}, 1.00},
++    {{150, "150.0.7871.181"}, 1.00},
 +}};
 +
 +// Lock to Win 11 (15.0.0). Captured CF WIN traffic on 2026-05-24 showed
