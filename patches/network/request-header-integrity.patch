@@ -15,7 +15,7 @@ index 8fa0839680262..4ee28fe0f690d 100644
    channel_name_header_name = ""
    copyright_header_name = ""
 diff --git a/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc b/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
-index 01c45c9b85673..4eb1d346a1664 100644
+index 01c45c9b85673..a456576df3a35 100644
 --- a/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
 +++ b/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
 @@ -37,28 +37,33 @@
@@ -58,7 +58,7 @@ index 01c45c9b85673..4eb1d346a1664 100644
  #endif
  
  namespace request_header_integrity {
-@@ -79,36 +84,88 @@ enum class PlatformRuntimeIntegrityResult {
+@@ -79,36 +84,101 @@ enum class PlatformRuntimeIntegrityResult {
  
  BASE_FEATURE(kRequestHeaderIntegrity, base::FEATURE_ENABLED_BY_DEFAULT);
  
@@ -101,15 +101,21 @@ index 01c45c9b85673..4eb1d346a1664 100644
 +const char* SelectPlatformApiKey(const std::string& user_agent) {
 +  if (user_agent.find("Windows") != std::string::npos) {
 +    return "AIzaSyA2KlwBX3mkFo30om9LUFYQhpqLoa_BNhE";
-+  }
+   }
 +  if (user_agent.find("Macintosh") != std::string::npos ||
 +      user_agent.find("Mac OS X") != std::string::npos) {
 +    return "AIzaSyDr2UxVnv_U85AbhhY8XSHSIavUW0DC-sY";
-   }
-+  // Android AND Linux/X11 share the same baked GOOGLE_API_KEY. Verified against
-+  // a live Pixel 6 / Chrome 149 Android capture (x-browser-validation
-+  // 50zh7+3sV3Q0N1RI1xKsWF5cbms=). (This supersedes the stale dsekz Linux key.)
-+  return "AIzaSyDlUur5xXJ0gBeLFW_D2PtjduqOFQMsqEY";
++  }
++  // Android uses this baked GOOGLE_API_KEY (verified vs a live Pixel 6 /
++  // Chrome 149 capture: x-browser-validation 50zh7+3sV3Q0N1RI1xKsWF5cbms=).
++  if (user_agent.find("Android") != std::string::npos) {
++    return "AIzaSyDlUur5xXJ0gBeLFW_D2PtjduqOFQMsqEY";
++  }
++  // Linux/X11 desktop uses its OWN key -- the earlier "Linux shares Android's
++  // key" assumption was wrong. Verified byte-exact vs real Chrome 150.0.7871.181
++  // on Linux (reproduces both the S9Sk+hUQ/euH... and tij7ZGDuvYVk... captures
++  // with desktop seed 57a77967c097ba5f).
++  return "AIzaSyBqJZh-7pA44blAaAkH6490hUFOwX0KCYM";
 +}
  
 -  return channel_name;
@@ -144,7 +150,14 @@ index 01c45c9b85673..4eb1d346a1664 100644
 +    case 149:
 +      return is_android ? "699497c72b2fa8d1" : "4bcb2b700636796d";
 +    case 150:
-+      return "52a4ca3646b0641a";
++      // Desktop seed verified byte-exact vs real Chrome 150.0.7871.181: a Linux
++      // capture reproduced BOTH X-Browser-Validation values -- S9Sk+hUQ/euH...
++      // for the reduced Chrome/150.0.0.0 UA and tij7ZGDuvYVk... for
++      // HeadlessChrome/150.0.0.0. Shared across desktop (Win/Mac/Linux); the
++      // per-platform digest differs only by the API key above. Android 150 seed
++      // is still TODO -- extract from a Chrome 150 libmonochrome.so and verify
++      // against a live device (returns empty until then rather than a guess).
++      return is_android ? "" : "57a77967c097ba5f";
 +    default:
 +      // Unknown milestone: fall back to an empty seed (best effort). Add the
 +      // real value above when bumping the persona to a new Chrome version.
