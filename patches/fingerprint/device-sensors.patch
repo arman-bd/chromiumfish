@@ -526,7 +526,7 @@ index 976a3c8c36dbf..3ef3301643411 100644
  
  void NetworkInformation::ConnectionChange(
 diff --git a/third_party/blink/renderer/modules/speech/speech_synthesis.cc b/third_party/blink/renderer/modules/speech/speech_synthesis.cc
-index 891a81543becd..46bbfe70731a4 100644
+index 891a81543becd..3ea0db4cbcf1b 100644
 --- a/third_party/blink/renderer/modules/speech/speech_synthesis.cc
 +++ b/third_party/blink/renderer/modules/speech/speech_synthesis.cc
 @@ -25,9 +25,11 @@
@@ -541,7 +541,7 @@ index 891a81543becd..46bbfe70731a4 100644
  #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
  #include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
  #include "third_party/blink/public/platform/platform.h"
-@@ -93,8 +95,43 @@ void SpeechSynthesis::OnSetVoiceList(
+@@ -93,8 +95,65 @@ void SpeechSynthesis::OnSetVoiceList(
  }
  
  const HeapVector<Member<SpeechSynthesisVoice>>& SpeechSynthesis::getVoices() {
@@ -560,25 +560,47 @@ index 891a81543becd..46bbfe70731a4 100644
 +  voice_list_.clear();
 +
 +  struct StubVoice {
-+    const char* voice_uri;
 +    const char* name;
 +    const char* lang;
++    bool local_service;
 +  };
-+  static constexpr std::array<StubVoice, 3> kWinStubVoices = {{
-+      {"Microsoft David - English (United States)",
-+       "Microsoft David - English (United States)", "en-US"},
-+      {"Microsoft Zira - English (United States)",
-+       "Microsoft Zira - English (United States)", "en-US"},
-+      {"Microsoft Mark - English (United States)",
-+       "Microsoft Mark - English (United States)", "en-US"},
++  // Canonical consumer Windows 11 Chrome voice set: the 3 local Microsoft SAPI
++  // voices plus the 19 Google network voices Chrome exposes when online (=22).
++  // Verified against a live Windows Chrome 150 capture, which showed exactly
++  // these 19 Google voices; a real consumer desktop also ships the 3 Microsoft
++  // SAPI voices. A 3-voice list is itself a strong anti-detect tell (a Windows
++  // Chrome has ~19-22), which is what this replaces.
++  static constexpr std::array<StubVoice, 22> kWinStubVoices = {{
++      {"Microsoft David - English (United States)", "en-US", true},
++      {"Microsoft Mark - English (United States)", "en-US", true},
++      {"Microsoft Zira - English (United States)", "en-US", true},
++      {"Google Deutsch", "de-DE", false},
++      {"Google US English", "en-US", false},
++      {"Google UK English Female", "en-GB", false},
++      {"Google UK English Male", "en-GB", false},
++      {"Google español", "es-ES", false},
++      {"Google español de Estados Unidos", "es-US", false},
++      {"Google français", "fr-FR", false},
++      {"Google हिन्दी", "hi-IN", false},
++      {"Google Bahasa Indonesia", "id-ID", false},
++      {"Google italiano", "it-IT", false},
++      {"Google 日本語", "ja-JP", false},
++      {"Google 한국의", "ko-KR", false},
++      {"Google Nederlands", "nl-NL", false},
++      {"Google polski", "pl-PL", false},
++      {"Google português do Brasil", "pt-BR", false},
++      {"Google русский", "ru-RU", false},
++      {"Google 普通话（中国大陆）", "zh-CN", false},
++      {"Google 粤語（香港）", "zh-HK", false},
++      {"Google 國語（臺灣）", "zh-TW", false},
 +  }};
 +  bool is_first = true;
 +  for (const StubVoice& v : kWinStubVoices) {
 +    auto mojom_voice = mojom::blink::SpeechSynthesisVoice::New();
-+    mojom_voice->voice_uri = String(v.voice_uri);
++    mojom_voice->voice_uri = String(v.name);
 +    mojom_voice->name = String(v.name);
 +    mojom_voice->lang = String(v.lang);
-+    mojom_voice->is_local_service = true;
++    mojom_voice->is_local_service = v.local_service;
 +    mojom_voice->is_default = is_first;
 +    is_first = false;
 +    voice_list_.push_back(

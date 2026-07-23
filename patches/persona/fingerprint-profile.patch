@@ -62,10 +62,10 @@ index c34a84809962d..868aa83c3cfb6 100644
      "frame/frame_ad_evidence_mojom_traits.cc",
 diff --git a/third_party/blink/common/fingerprinting/fingerprint_profile.cc b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
 new file mode 100644
-index 0000000000000..4cabfd0c61ad4
+index 0000000000000..a3daee69d4b6e
 --- /dev/null
 +++ b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
-@@ -0,0 +1,550 @@
+@@ -0,0 +1,559 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -415,6 +415,15 @@ index 0000000000000..4cabfd0c61ad4
 +  const HwTier& tier = kHwTiers[tier_idx].value;
 +  p.hardware_concurrency = WeightedPick(rng, tier.hc);
 +  p.device_memory_gb = WeightedPick(rng, tier.mem);
++  // navigator.deviceMemory is spec-capped at 8 GiB: real Chrome rounds actual
++  // RAM down to a power of two and never reports >8, regardless of a 16/32 GiB
++  // machine. The desktop mem tiers draw 16/32 for realism in *other* respects,
++  // but the exposed value (JS deviceMemory + Sec-CH-Device-Memory) must clamp,
++  // else it's an impossible value anti-bots flag. (The rng draw above is
++  // unchanged, so existing seeds keep every other field.)
++  if (p.device_memory_gb > 8.0f) {
++    p.device_memory_gb = 8.0f;
++  }
 +  if (android) {
 +    // Coherence: a phone's hc/mem are fixed by its SoC, not the desktop tier
 +    // pool. Pixel Tensor = 8 cores; navigator.deviceMemory is spec-capped at 8.
