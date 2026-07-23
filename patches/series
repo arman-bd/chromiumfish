@@ -8,6 +8,7 @@ fingerprint/navigator.patch
 fingerprint/display.patch
 fingerprint/device-sensors.patch
 fingerprint/timing-misc.patch
+fingerprint/ucrt-tanh.patch
 fonts/lean-windows-fonts.patch
 fonts/font-substitution.patch
 canvas-bridge/component.patch

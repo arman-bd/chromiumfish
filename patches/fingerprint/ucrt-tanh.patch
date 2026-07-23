@@ -1,0 +1,183 @@
+diff --git a/v8/src/base/ieee754.cc b/v8/src/base/ieee754.cc
+index 64c00199258..8008952bc07 100644
+--- a/v8/src/base/ieee754.cc
++++ b/v8/src/base/ieee754.cc
+@@ -17,6 +17,13 @@
+ 
+ #include <cmath>
+ #include <limits>
++#include <cstdint>
++#include <cstring>
++#include <cstdio>
++#include <atomic>
++#if defined(__linux__)
++#include <unistd.h>
++#endif
+ 
+ #include "src/base/build_config.h"
+ #include "src/base/macros.h"
+@@ -370,7 +377,163 @@ double sinh(double x) {
+ #undef SET_HIGH_WORD
+ #undef SET_LOW_WORD
+ 
+-double tanh(double x) { return std::tanh(x); }
++
++// ---- ChromiumFish: bit-exact Windows-UCRT tanh (persona parity) ----------
++// Reverse-engineered from ucrtbase.dll tanh (FMA path) and validated
++// bit-identical to real Windows Chrome tanh over 13,736 points (dense grid +
++// edge cases). Uses only fma() + IEEE-754 primitives => architecture-neutral
++// (identical bits on x64/arm64). Activated only for the Windows persona on
++// Linux hosts; mac/android/other personas fall through to std::tanh.
++namespace {
++
++inline double cf_b(uint64_t u){ double d; std::memcpy(&d,&u,8); return d; }
++
++const uint64_t kCfT1[32]={
++0x3ff0000000000000ULL,0x3ff059b0d0000000ULL,0x3ff0b55860000000ULL,0x3ff11301d0000000ULL,
++0x3ff172b830000000ULL,0x3ff1d48730000000ULL,0x3ff2387a60000000ULL,0x3ff29e9df0000000ULL,
++0x3ff306fe00000000ULL,0x3ff371a730000000ULL,0x3ff3dea640000000ULL,0x3ff44e0860000000ULL,
++0x3ff4bfdad0000000ULL,0x3ff5342b50000000ULL,0x3ff5ab07d0000000ULL,0x3ff6247eb0000000ULL,
++0x3ff6a09e60000000ULL,0x3ff71f75e0000000ULL,0x3ff7a11470000000ULL,0x3ff8258990000000ULL,
++0x3ff8ace540000000ULL,0x3ff93737b0000000ULL,0x3ff9c49180000000ULL,0x3ffa5503b0000000ULL,
++0x3ffae89f90000000ULL,0x3ffb7f76f0000000ULL,0x3ffc199bd0000000ULL,0x3ffcb720d0000000ULL,
++0x3ffd5818d0000000ULL,0x3ffdfc9730000000ULL,0x3ffea4afa0000000ULL,0x3fff507650000000ULL};
++const uint64_t kCfT2[32]={
++0x0ULL,0x3e48ac2ba1d73e2aULL,0x3e69f3121ec53172ULL,0x3df25b50a4ebbf1bULL,
++0x3e68faa2f5b9bef9ULL,0x3e368b9aa7805b80ULL,0x3e6ceac470cd83f6ULL,0x3e547f7b84b09745ULL,
++0x3e64636e2a5bd1abULL,0x3e5ceaa72a9c5154ULL,0x3e682468446b6824ULL,0x3e18624b40c4dbd0ULL,
++0x3e54d8a89c750e5eULL,0x3e5a753e077c2a0fULL,0x3e6a90a852b19260ULL,0x3e0d2ac258f87d03ULL,
++0x3e59fcef32422cbfULL,0x3e61d8bee7ba46e2ULL,0x3e4f580c36bea881ULL,0x3e62999c25159f11ULL,
++0x3e415506dadd3e2aULL,0x3e29b8bc9e8a0388ULL,0x3e451f8480e3e236ULL,0x3e41f12ae45a1224ULL,
++0x3e62b5a75abd0e6aULL,0x3e47daf237553d84ULL,0x3e6b0aa538444196ULL,0x3e69df20d22a0798ULL,
++0x3e69f7490e4bb40bULL,0x3e4bdcdaf5cb4656ULL,0x3e452486cc2c7b9dULL,0x3e66dc8a80ce9f09ULL};
++
++// exp-kernel (ucrtbase 0x77270): arg>0 -> o0=2^(j/32)hi, o1=2^(j/32)lo+2^(j/32)*(e^r-1), k=exp.
++void cf_expk(double arg,double* o0,double* o1,int* k){
++  const double kInvLn2x32=cf_b(0x40471547652b82feULL); // 32/ln2
++  const double kLn2Hi    =cf_b(0x3f962e42fe000000ULL); // ln2/32 hi
++  const double kLn2Lo    =cf_b(0x3dcf473de6af278eULL); // ln2/32 lo
++  const double kC720=cf_b(0x3f56c1728d739765ULL),kC120=cf_b(0x3f811115b7aa905eULL);
++  const double kC24 =cf_b(0x3fa5555555545d4eULL),kC6 =cf_b(0x3fc5555555548f7cULL);
++  double n=arg*kInvLn2x32;
++  int Ni=(int)(n+0.5);
++  int j=Ni&31;
++  double Nd=(double)Ni;
++  double r_hi=std::fma(-kLn2Hi,Nd,arg);
++  double r5=r_hi;
++  *k=Ni>>5;
++  double negNd=(double)(-Ni);
++  double r_lo=negNd*kLn2Lo;
++  double t1=cf_b(kCfT1[j]),t2=cf_b(kCfT2[j]);
++  double r=std::fma(1.0,r_lo,r_hi);
++  double p=kC720;
++  p=std::fma(p,r,kC120); p=std::fma(p,r,kC24); p=std::fma(p,r,kC6); p=std::fma(p,r,0.5);
++  double r2=r*r;
++  double corr=std::fma(r2,p,r_lo);
++  double t_full=t2+t1;
++  double em1=corr+r5;
++  *o0=t1;
++  *o1=std::fma(t_full,em1,t2);
++}
++
++double chromfish_ucrt_tanh(double x){
++  uint64_t bits; std::memcpy(&bits,&x,8);
++  uint64_t ab=bits&0x7fffffffffffffffULL;
++  if(ab<0x3e30000000000000ULL) return x;
++  if(ab>0x7ff0000000000000ULL){ uint64_t q=bits|0x8000000000000ULL; return cf_b(q); }
++  int sign=(bits!=ab);
++  double ax=cf_b(ab);
++  if(ax>20.0) return sign?-1.0:1.0;
++  if(ax<=1.0){
++    double x2=ax*ax,x3=x2*ax,num,den;
++    if(ax<0.9){
++      double p=1.4207792637883471e-08;
++      p=std::fma(-p,x2,-0.0002000476210719095);
++      p=std::fma( p,x2,-0.017601634900304468);
++      p=std::fma( p,x2,-0.27403042465617977);
++      num=p*x3;
++      double q=0.00020911402625291644;
++      q=std::fma(q,x2,0.020156216602693764);
++      q=std::fma(q,x2,0.3816414142883289);
++      q=std::fma(q,x2,0.8220912739685393);
++      den=q;
++    } else {
++      double p=1.154758789961434e-08;
++      p=std::fma(-p,x2,-0.00016559704390354995);
++      p=std::fma( p,x2,-0.014617304728873168);
++      p=std::fma( p,x2,-0.2277938706590883);
++      num=p*x3;
++      double q=0.00017307605012622596;
++      q=std::fma(q,x2,0.016735877546189656);
++      q=std::fma(q,x2,0.3172045589772944);
++      q=std::fma(q,x2,0.6833816119772959);
++      den=q;
++    }
++    double r=num/den+ax;
++    return sign?-r:r;
++  }
++  double o0,o1; int k;
++  cf_expk(2.0*ax,&o0,&o1,&k);
++  double mant=o0+o1;
++  int khalf=k/2,krem=k-khalf;
++  double p_hi=cf_b(((uint64_t)(int64_t)(khalf+0x3ff))<<52);
++  double p_lo=cf_b(((uint64_t)(int64_t)(krem +0x3ff))<<52);
++  double D=mant*p_hi;
++  D=std::fma(D,p_lo,1.0);
++  double r=1.0-2.0/D;
++  return sign?-r:r;
++}
++
++#if defined(__linux__)
++// Read --persona-os from this process's own command line. 1=win (or absent =>
++// fork default is Windows), 0=mac/android (fall through to std::tanh).
++int CfReadPersonaOsWin(){
++  FILE* f=std::fopen("/proc/self/cmdline","rb");
++  if(!f) return 1;
++  char buf[8192]; size_t n=std::fread(buf,1,sizeof(buf)-1,f); std::fclose(f);
++  buf[n]=0;
++  // The cmdline may be NUL-separated (real argv, e.g. browser process) OR a
++  // single space-separated string (Chrome rewrites the renderer's process
++  // title into argv memory -> only one NUL). Scan the whole blob for the
++  // switch and read its value until the next space or NUL.
++  const char kKey[]="--persona-os="; const size_t kLen=sizeof(kKey)-1;
++  if(n>=kLen){
++    for(size_t i=0;i+kLen<=n;i++){
++      if(std::memcmp(buf+i,kKey,kLen)!=0) continue;
++      const char* v=buf+i+kLen;
++      if(std::strncmp(v,"mac",3)==0 && (v[3]==' '||v[3]=='\0')) return 0;
++      if(std::strncmp(v,"android",7)==0 && (v[7]==' '||v[7]=='\0')) return 0;
++      return 1;                              // "win" or anything else
++    }
++  }
++  return 1;                                  // switch absent -> default Windows
++}
++#endif
++
++// 1 iff Windows persona. Cache is keyed on getpid() so the value is re-read
++// after the zygote fork (a magic-static would be poisoned by the zygote's
++// switch-less command line and inherited by every renderer).
++int CfPersonaTanhIsWin(){
++#if defined(__linux__)
++  static std::atomic<int> cached_pid{0};
++  static std::atomic<int> cached_win{1};
++  int pid=static_cast<int>(getpid());
++  if(cached_pid.load(std::memory_order_relaxed)!=pid){
++    cached_win.store(CfReadPersonaOsWin(), std::memory_order_relaxed);
++    cached_pid.store(pid, std::memory_order_relaxed);
++  }
++  return cached_win.load(std::memory_order_relaxed);
++#else
++  return 0;
++#endif
++}
++
++}  // namespace
++// --------------------------------------------------------------------------
++
++double tanh(double x) {
++  if (CfPersonaTanhIsWin()) return chromfish_ucrt_tanh(x);
++  return std::tanh(x);
++}
+ 
+ #if defined(V8_USE_LIBM_TRIG_FUNCTIONS) && defined(BUILDING_V8_BASE_SHARED)
+ double libm_sin(double x) { return glibc_sin(x); }
