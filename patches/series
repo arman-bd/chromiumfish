@@ -10,6 +10,7 @@ fingerprint/device-sensors.patch
 fingerprint/timing-misc.patch
 fingerprint/ucrt-tanh.patch
 fingerprint/webgpu-adapter.patch
+fingerprint/chrome-build-identity.patch
 fonts/lean-windows-fonts.patch
 fonts/font-substitution.patch
 canvas-bridge/component.patch

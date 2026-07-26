@@ -1,0 +1,146 @@
+diff --git a/components/cdm/renderer/key_system_support_update.cc b/components/cdm/renderer/key_system_support_update.cc
+index 376bbcf236b68..7a4078b567b97 100644
+--- a/components/cdm/renderer/key_system_support_update.cc
++++ b/components/cdm/renderer/key_system_support_update.cc
+@@ -58,6 +58,71 @@ namespace cdm {
+ 
+ namespace {
+ 
++// Persona-fork: FingerprintJS (and similar) classify a Blink browser that
++// claims "Google Chrome" but cannot obtain a com.widevine.alpha
++// MediaKeySystemAccess as a generic "Chromium-Based Browser" (their cx()
++// "is real Chrome" check). The upstream build has enable_widevine=false, so
++// Widevine is absent. Register a software (L3) Widevine key system so EME
++// *access* probes (requestMediaKeySystemAccess and
++// mediaCapabilities.decodingInfo) succeed and report Chrome. Actual playback
++// (createMediaKeys) still has no CDM, but access probes never reach that.
++class PersonaWidevineKeySystemInfo : public media::KeySystemInfo {
++ public:
++  std::string GetBaseKeySystemName() const override {
++    return "com.widevine.alpha";
++  }
++  bool IsSupportedKeySystem(const std::string& key_system) const override {
++    return key_system == "com.widevine.alpha";
++  }
++  bool ShouldUseBaseKeySystemName() const override { return true; }
++  bool IsSupportedInitDataType(
++      media::EmeInitDataType init_data_type) const override {
++    return init_data_type == media::EmeInitDataType::CENC ||
++           init_data_type == media::EmeInitDataType::WEBM ||
++           init_data_type == media::EmeInitDataType::KEYIDS;
++  }
++  media::EmeConfig::Rule GetEncryptionSchemeConfigRule(
++      media::EncryptionScheme scheme) const override {
++    if (scheme == media::EncryptionScheme::kCenc ||
++        scheme == media::EncryptionScheme::kCbcs) {
++      return media::EmeConfig::SupportedRule();
++    }
++    return media::EmeConfig::UnsupportedRule();
++  }
++  media::SupportedCodecs GetSupportedCodecs() const override {
++    return media::EME_CODEC_AAC | media::EME_CODEC_AVC1 | media::EME_CODEC_VP8 |
++           media::EME_CODEC_VP9_PROFILE0 | media::EME_CODEC_VP9_PROFILE2 |
++           media::EME_CODEC_OPUS | media::EME_CODEC_VORBIS |
++           media::EME_CODEC_FLAC | media::EME_CODEC_AV1;
++  }
++  media::SupportedCodecs GetSupportedHwSecureCodecs() const override {
++    return media::EME_CODEC_NONE;
++  }
++  media::EmeConfig::Rule GetRobustnessConfigRule(
++      const std::string& /*key_system*/,
++      media::EmeMediaType /*media_type*/,
++      const std::string& requested_robustness,
++      const bool* /*hw_secure_requirement*/) const override {
++    // Software (L3) desktop Widevine: empty / SW_SECURE_CRYPTO /
++    // SW_SECURE_DECODE are grantable; hardware-secure levels are not.
++    if (requested_robustness.empty() ||
++        requested_robustness == "SW_SECURE_CRYPTO" ||
++        requested_robustness == "SW_SECURE_DECODE") {
++      return media::EmeConfig::SupportedRule();
++    }
++    return media::EmeConfig::UnsupportedRule();
++  }
++  media::EmeConfig::Rule GetPersistentLicenseSessionSupport() const override {
++    return media::EmeConfig::SupportedRule();
++  }
++  media::EmeFeatureSupport GetPersistentStateSupport() const override {
++    return media::EmeFeatureSupport::REQUESTABLE;
++  }
++  media::EmeFeatureSupport GetDistinctiveIdentifierSupport() const override {
++    return media::EmeFeatureSupport::REQUESTABLE;
++  }
++};
++
+ #if BUILDFLAG(ENABLE_WIDEVINE) || BUILDFLAG(IS_ANDROID) || \
+     BUILDFLAG(ENABLE_PLAYREADY)
+ SupportedCodecs GetVP9Codecs(
+@@ -630,6 +695,22 @@ void OnKeySystemSupportUpdated(
+ #endif  // BUILDFLAG(IS_ANDROID)
+   }
+ 
++  // Persona-fork: advertise com.widevine.alpha when personifying a real Chrome
++  // (which always ships Widevine) so DRM access probes report Chrome, not a
++  // generic Chromium. See PersonaWidevineKeySystemInfo above.
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch("persona-os")) {
++    bool has_widevine = false;
++    for (const auto& info : key_systems) {
++      if (info->IsSupportedKeySystem("com.widevine.alpha")) {
++        has_widevine = true;
++        break;
++      }
++    }
++    if (!has_widevine) {
++      key_systems.push_back(std::make_unique<PersonaWidevineKeySystemInfo>());
++    }
++  }
++
+   cb.Run(std::move(key_systems));
+ }
+ 
+diff --git a/third_party/blink/renderer/core/html/media/html_media_element.cc b/third_party/blink/renderer/core/html/media/html_media_element.cc
+index 58b1c2698a6c6..10d84f7f49028 100644
+--- a/third_party/blink/renderer/core/html/media/html_media_element.cc
++++ b/third_party/blink/renderer/core/html/media/html_media_element.cc
+@@ -26,6 +26,8 @@
+ 
+ #include "third_party/blink/renderer/core/html/media/html_media_element.h"
+ 
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
++
+ #include <algorithm>
+ #include <limits>
+ #include <utility>
+@@ -1020,6 +1022,33 @@ V8CanPlayTypeResult HTMLMediaElement::canPlayType(
+   MIMETypeRegistry::SupportsType support =
+       GetSupportsType(ContentType(mime_type));
+ 
++  // Persona-fork: real Chrome on Windows/macOS ships proprietary codecs this
++  // Linux build lacks at runtime. Report them supported so canPlayType()
++  // matches the claimed OS (Windows: HEVC/E-AC3/AC3/Dolby Vision; macOS: HEVC).
++  if (support == MIMETypeRegistry::kNotSupported) {
++    const auto& fp = blink::fingerprinting::Current();
++    const bool is_win = fp.ua_metadata_platform == "Windows";
++    const bool is_mac = fp.ua_metadata_platform == "macOS";
++    if (is_win || is_mac) {
++      std::string t = mime_type.Utf8();
++      for (char& c : t) {
++        if (c >= 'A' && c <= 'Z') {
++          c += 32;
++        }
++      }
++      auto has = [&](const char* needle) {
++        return t.find(needle) != std::string::npos;
++      };
++      const bool hevc = has("hvc1") || has("hev1");
++      const bool dolby = has("dvh1") || has("dvhe") || has("dav1");
++      const bool ac3_eac3 =
++          has("ec-3") || has("ac-3") || has("mp4a.a5") || has("mp4a.a6");
++      if ((is_win && (hevc || dolby || ac3_eac3)) || (is_mac && hevc)) {
++        support = MIMETypeRegistry::kSupported;
++      }
++    }
++  }
++
+   V8CanPlayTypeResult can_play =
+       V8CanPlayTypeResult(V8CanPlayTypeResult::Enum::k);
+ 
