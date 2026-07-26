@@ -835,7 +835,7 @@ index 8cd793a2bc0bc..cc890e5cd0f9f 100644
  }
  
 diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
-index ce5e21a444e38..1faec148e5089 100644
+index ce5e21a444e38..30503d67fb2ec 100644
 --- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
 +++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
 @@ -4057,6 +4057,11 @@
@@ -850,3 +850,11 @@ index ce5e21a444e38..1faec148e5089 100644
      },
      {
        name: "NetInfoDownlinkMax",
+@@ -6658,6 +6663,7 @@
+         "iOS": "stable",
+         "Mac": "stable",
+         "Win": "stable",
++        "Linux": "stable",
+         "default": "experimental",
+       },
+       base_feature: "none",

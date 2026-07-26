@@ -1,5 +1,88 @@
+diff --git a/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
+index 16b2f87a42e31..56a93547a96a3 100644
+--- a/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.h"
+ 
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
++
+ #include <memory>
+ 
+ #include "base/compiler_specific.h"
+@@ -4789,13 +4791,13 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+     case GL_FRAGMENT_SHADER_DERIVATIVE_HINT:
+       return GetUnsignedIntParameter(script_state, pname);
+     case GL_MAX_3D_TEXTURE_SIZE:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_3d_max_texture_size);
+     case GL_MAX_ARRAY_TEXTURE_LAYERS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_max_array_texture_layers);
+     case GC3D_MAX_CLIENT_WAIT_TIMEOUT_WEBGL:
+       return WebGLAny(script_state, kMaxClientWaitTimeout);
+     case GL_MAX_COLOR_ATTACHMENTS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_max_color_attachments);
+     case GL_MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS:
+       return GetInt64Parameter(script_state, pname);
+     case GL_MAX_COMBINED_UNIFORM_BLOCKS:
+@@ -4803,27 +4805,27 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+     case GL_MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS:
+       return GetInt64Parameter(script_state, pname);
+     case GL_MAX_DRAW_BUFFERS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_max_draw_buffers);
+     case GL_MAX_ELEMENT_INDEX:
+-      return GetInt64Parameter(script_state, pname);
++      return WebGLAny(script_state, static_cast<GLint64>(fingerprinting::Current().webgl_max_element_index));
+     case GL_MAX_ELEMENTS_INDICES:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_ELEMENTS_VERTICES:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_FRAGMENT_INPUT_COMPONENTS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_max_fragment_input_components);
+     case GL_MAX_FRAGMENT_UNIFORM_BLOCKS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_max_fragment_uniform_blocks);
+     case GL_MAX_FRAGMENT_UNIFORM_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_PROGRAM_TEXEL_OFFSET:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_SAMPLES:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_max_samples);
+     case GL_MAX_SERVER_WAIT_TIMEOUT:
+       return GetInt64Parameter(script_state, pname);
+     case GL_MAX_TEXTURE_LOD_BIAS:
+-      return GetFloatParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_max_texture_lod_bias);
+     case GL_MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS:
+@@ -4831,15 +4833,15 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+     case GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_UNIFORM_BLOCK_SIZE:
+-      return GetInt64Parameter(script_state, pname);
++      return WebGLAny(script_state, static_cast<GLint64>(fingerprinting::Current().webgl_max_uniform_block_size));
+     case GL_MAX_UNIFORM_BUFFER_BINDINGS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_VARYING_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MAX_VERTEX_OUTPUT_COMPONENTS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_max_vertex_output_components);
+     case GL_MAX_VERTEX_UNIFORM_BLOCKS:
+-      return GetIntParameter(script_state, pname);
++      return WebGLAny(script_state, fingerprinting::Current().webgl_max_vertex_uniform_blocks);
+     case GL_MAX_VERTEX_UNIFORM_COMPONENTS:
+       return GetIntParameter(script_state, pname);
+     case GL_MIN_PROGRAM_TEXEL_OFFSET:
 diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
-index ceb4c3f606e9f..5e605b87e1a29 100644
+index ceb4c3f606e9f..740acecf15bb9 100644
 --- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 +++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 @@ -25,6 +25,7 @@
@@ -438,7 +521,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
    return MakeGarbageCollected<WebGLShaderPrecisionFormat>(range[0], range[1],
                                                            precision);
  }
-@@ -4510,14 +4678,82 @@ WebGLRenderingContextBase::getSupportedExtensions() {
+@@ -4510,14 +4678,102 @@ WebGLRenderingContextBase::getSupportedExtensions() {
    if (isContextLost())
      return std::nullopt;
  
@@ -514,11 +597,31 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
 +      "OES_draw_buffers_indexed",
 +      "OVR_multiview2",
 +  };
-+  for (const char* name : kCanonicalWebGL1Extensions) {
-+    result.push_back(String(name));
-+  }
++  // Lightweight-fork: WebGL2 promotes ~15 WebGL1 extensions to CORE; a real
++  // WebGL2 getSupportedExtensions() must NOT list them (listing them is a
++  // structurally-impossible tell). For WebGL2 return only the non-core WebGL1
++  // subset + the WebGL2-only set. We under-claim the ~8 SwiftShader-unsupported
++  // real-Win entries (KHR_parallel_shader_compile etc.) to stay consistent with
++  // getExtension().
++  static const char* const kCanonicalWebGL2NonCore[] = {
++      "EXT_clip_control", "EXT_color_buffer_half_float", "EXT_depth_clamp",
++      "EXT_float_blend", "EXT_polygon_offset_clamp",
++      "EXT_texture_compression_bptc", "EXT_texture_compression_rgtc",
++      "EXT_texture_filter_anisotropic", "EXT_texture_mirror_clamp_to_edge",
++      "OES_texture_float_linear", "WEBGL_compressed_texture_s3tc",
++      "WEBGL_compressed_texture_s3tc_srgb", "WEBGL_debug_renderer_info",
++      "WEBGL_debug_shaders", "WEBGL_lose_context", "WEBGL_multi_draw",
++      "WEBGL_polygon_mode",
++  };
 +  if (IsWebGL2()) {
++    for (const char* name : kCanonicalWebGL2NonCore) {
++      result.push_back(String(name));
++    }
 +    for (const char* name : kCanonicalWebGL2Extensions) {
++      result.push_back(String(name));
++    }
++  } else {
++    for (const char* name : kCanonicalWebGL1Extensions) {
 +      result.push_back(String(name));
      }
    }
@@ -526,7 +629,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
    return result;
  }
  
-@@ -5056,6 +5292,12 @@ void WebGLRenderingContextBase::linkProgram(WebGLProgram* program) {
+@@ -5056,6 +5312,12 @@ void WebGLRenderingContextBase::linkProgram(WebGLProgram* program) {
      ContextGL()->GenQueriesEXT(1, &query);
      ContextGL()->BeginQueryEXT(GL_PROGRAM_COMPLETION_QUERY_CHROMIUM, query);
    }
@@ -539,7 +642,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
    ContextGL()->LinkProgram(ObjectOrZero(program));
    if (ExtensionEnabled(kKHRParallelShaderCompileName)) {
      ContextGL()->EndQueryEXT(GL_PROGRAM_COMPLETION_QUERY_CHROMIUM);
-@@ -5312,8 +5554,6 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+@@ -5312,8 +5574,6 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
                                          buffer_size.ValueOrDie())) {
      return;
    }
@@ -548,7 +651,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
    uint8_t* data = static_cast<uint8_t*>(pixels->BaseAddressMaybeShared()) +
                    offset_in_bytes.ValueOrDie();
  
-@@ -5329,6 +5569,8 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+@@ -5329,6 +5589,8 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
      data = buffer->data();
    }
  
@@ -557,7 +660,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
    // Last-chance early-out, in case somehow the context was lost during
    // the above ClearIfComposited operation.
    if (isContextLost() || !GetDrawingBuffer())
-@@ -5341,6 +5583,31 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+@@ -5341,6 +5603,31 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
      }
      ContextGL()->ReadPixels(x, y, width, height, format, type, data);
    }
@@ -589,7 +692,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
  }
  
  void WebGLRenderingContextBase::RenderbufferStorageImpl(
-@@ -5454,6 +5721,12 @@ void WebGLRenderingContextBase::shaderSource(WebGLShader* shader,
+@@ -5454,6 +5741,12 @@ void WebGLRenderingContextBase::shaderSource(WebGLShader* shader,
    DCHECK(ascii_string.Is8Bit() && ascii_string.ContainsOnlyAsciiOrEmpty());
    const GLchar* shader_data = base::as_chars(ascii_string.Span8()).data();
    const GLint shader_length = ascii_string.length();
@@ -602,7 +705,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
    ContextGL()->ShaderSource(ObjectOrZero(shader), 1, &shader_data,
                              &shader_length);
  }
-@@ -7431,6 +7704,12 @@ void WebGLRenderingContextBase::useProgram(WebGLProgram* program) {
+@@ -7431,6 +7724,12 @@ void WebGLRenderingContextBase::useProgram(WebGLProgram* program) {
      if (current_program_)
        current_program_->OnDetached(ContextGL());
      current_program_ = program;
@@ -615,7 +718,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
      ContextGL()->UseProgram(ObjectOrZero(program));
      if (program)
        program->OnAttached();
-@@ -7558,6 +7837,13 @@ void WebGLRenderingContextBase::vertexAttribPointer(GLuint index,
+@@ -7558,6 +7857,13 @@ void WebGLRenderingContextBase::vertexAttribPointer(GLuint index,
  
    bound_vertex_array_object_->SetArrayBufferForAttrib(
        index, bound_array_buffer_.Get());
@@ -629,7 +732,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
    ContextGL()->VertexAttribPointer(
        index, size, type, normalized, stride,
        reinterpret_cast<void*>(static_cast<intptr_t>(offset)));
-@@ -7583,6 +7869,11 @@ void WebGLRenderingContextBase::viewport(GLint x,
+@@ -7583,6 +7889,11 @@ void WebGLRenderingContextBase::viewport(GLint x,
                                           GLsizei height) {
    if (isContextLost())
      return;
@@ -641,7 +744,7 @@ index ceb4c3f606e9f..5e605b87e1a29 100644
    ContextGL()->Viewport(x, y, width, height);
  }
  
-@@ -9420,4 +9711,38 @@ bool WebGLRenderingContextBase::checkProgramCompletionQueryAvailable(
+@@ -9420,4 +9731,38 @@ bool WebGLRenderingContextBase::checkProgramCompletionQueryAvailable(
    }
    return false;
  }

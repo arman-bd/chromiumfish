@@ -1,0 +1,42 @@
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+index 4e4ca8dcb4feb..c45f8d4949ee0 100644
+--- a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "third_party/blink/renderer/modules/webgpu/gpu_adapter.h"
+ 
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
++
+ #include "services/metrics/public/cpp/ukm_builders.h"
+ #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_object_builder.h"
+@@ -40,6 +42,14 @@ GPUSupportedFeatures* MakeFeatureNameSet(wgpu::Adapter adapter) {
+   const auto features_span = UNSAFE_BUFFERS(base::span<const wgpu::FeatureName>(
+       supported_features.features, supported_features.featureCount));
+   for (const auto& f : features_span) {
++    // Lightweight-fork: desktop Intel D3D12 WebGPU exposes BC only; drop the
++    // mobile ASTC/ETC2 compression that SwiftShader-Vulkan leaks.
++    if (!blink::fingerprinting::Current().ua_metadata_mobile &&
++        (f == wgpu::FeatureName::TextureCompressionASTC ||
++         f == wgpu::FeatureName::TextureCompressionETC2 ||
++         f == wgpu::FeatureName::TextureCompressionASTCSliced3D)) {
++      continue;
++    }
+     auto feature_name_enum_optional =
+         GPUSupportedFeatures::ToV8FeatureNameEnum(f);
+     if (feature_name_enum_optional) {
+@@ -89,6 +99,13 @@ GPUAdapter::GPUAdapter(
+ 
+   GetHandle().GetInfo(&info);
+   adapter_type_ = info.adapterType;
++  // Lightweight-fork: SwiftShader reports adapterType=CPU, which sets
++  // isFallbackAdapter=true and adapter.info.adapterType="cpu" — impossible
++  // for the spoofed Intel UHD 770. Present as an integrated GPU on desktop.
++  if (!blink::fingerprinting::Current().ua_metadata_mobile &&
++      adapter_type_ == wgpu::AdapterType::CPU) {
++    adapter_type_ = wgpu::AdapterType::IntegratedGPU;
++  }
+   backend_type_ = info.backendType;
+ 
+   // TODO(crbug.com/359418629): Report xr compatibility in GetInfo()

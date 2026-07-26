@@ -62,10 +62,10 @@ index c34a84809962d..868aa83c3cfb6 100644
      "frame/frame_ad_evidence_mojom_traits.cc",
 diff --git a/third_party/blink/common/fingerprinting/fingerprint_profile.cc b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
 new file mode 100644
-index 0000000000000..a3daee69d4b6e
+index 0000000000000..43fecffd3f646
 --- /dev/null
 +++ b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
-@@ -0,0 +1,559 @@
+@@ -0,0 +1,567 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -551,6 +551,10 @@ index 0000000000000..a3daee69d4b6e
 +    p.webgl_max_vertex_uniform_blocks = 36;
 +    p.webgl_max_fragment_uniform_blocks = 36;
 +    p.webgl_max_uniform_block_size = 134217728;  // 128 MB (Mali)
++    p.webgl_max_element_index = 4294967294;
++    p.webgl_max_texture_lod_bias = 2.0f;
++    p.webgl_max_vertex_output_components = 128;
++    p.webgl_max_fragment_input_components = 128;
 +    p.webgl_precision_float_bits = 23;
 +    p.webgl_precision_range_min = 127;
 +    p.webgl_precision_range_max = 127;
@@ -577,9 +581,13 @@ index 0000000000000..a3daee69d4b6e
 +    p.webgl_3d_max_texture_size = 2048;
 +    p.webgl_max_array_texture_layers = 2048;
 +    p.webgl_max_samples = 8;
-+    p.webgl_max_vertex_uniform_blocks = 14;
-+    p.webgl_max_fragment_uniform_blocks = 14;
++    p.webgl_max_vertex_uniform_blocks = 12;
++    p.webgl_max_fragment_uniform_blocks = 12;
 +    p.webgl_max_uniform_block_size = 65536;
++    p.webgl_max_element_index = 4294967294;      // 0xFFFFFFFE (D3D11)
++    p.webgl_max_texture_lod_bias = 2.0f;         // D3D11 clamp
++    p.webgl_max_vertex_output_components = 120;  // D3D11
++    p.webgl_max_fragment_input_components = 120;
 +    p.webgl_precision_float_bits = 23;
 +    p.webgl_precision_range_min = 127;
 +    p.webgl_precision_range_max = 127;
@@ -641,10 +649,10 @@ index 15ef3766c1593..fc9807c1a3a68 100644
      "frame/delegated_capability_request_token.h",
 diff --git a/third_party/blink/public/common/fingerprinting/fingerprint_profile.h b/third_party/blink/public/common/fingerprinting/fingerprint_profile.h
 new file mode 100644
-index 0000000000000..549e38acbddf1
+index 0000000000000..4905d10d47ff2
 --- /dev/null
 +++ b/third_party/blink/public/common/fingerprinting/fingerprint_profile.h
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,120 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -730,6 +738,10 @@ index 0000000000000..549e38acbddf1
 +  int webgl_max_vertex_uniform_blocks;
 +  int webgl_max_fragment_uniform_blocks;
 +  int webgl_max_uniform_block_size;
++  int64_t webgl_max_element_index;
++  float webgl_max_texture_lod_bias;
++  int webgl_max_vertex_output_components;
++  int webgl_max_fragment_input_components;
 +  int webgl_precision_float_bits;
 +  int webgl_precision_range_min;
 +  int webgl_precision_range_max;
