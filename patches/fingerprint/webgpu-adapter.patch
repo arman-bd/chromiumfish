@@ -40,3 +40,34 @@ index 4e4ca8dcb4feb..c45f8d4949ee0 100644
    backend_type_ = info.backendType;
  
    // TODO(crbug.com/359418629): Report xr compatibility in GetInfo()
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.cc b/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.cc
+index c6f066cce474c..7f0ca595556ea 100644
+--- a/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "third_party/blink/renderer/modules/webgpu/gpu_supported_limits.h"
+ 
++#include "third_party/blink/public/common/fingerprinting/fingerprint_profile.h"
++
+ #include <algorithm>
+ 
+ #include "base/numerics/checked_math.h"
+@@ -72,6 +74,17 @@ constexpr uint64_t UndefinedLimitValue<uint64_t>() {
+ 
+ GPUSupportedLimits::GPUSupportedLimits(const ComboLimits& limits) {
+   limits.UnlinkedCopyTo(&limits_);
++  // Persona-fork: a real Intel Windows/macOS WebGPU adapter reports
++  // maxTextureDimension1D/2D = 16384; the SwiftShader software backend reports
++  // 8192. Align for desktop personas (confirmed vs real Windows Chrome 150).
++  if (!blink::fingerprinting::Current().ua_metadata_mobile) {
++    if (limits_.maxTextureDimension2D < 16384) {
++      limits_.maxTextureDimension2D = 16384;
++    }
++    if (limits_.maxTextureDimension1D < 16384) {
++      limits_.maxTextureDimension1D = 16384;
++    }
++  }
+ }
+ 
+ // static

@@ -98,7 +98,7 @@ index 376bbcf236b68..7a4078b567b97 100644
  }
  
 diff --git a/third_party/blink/renderer/core/html/media/html_media_element.cc b/third_party/blink/renderer/core/html/media/html_media_element.cc
-index 58b1c2698a6c6..10d84f7f49028 100644
+index 58b1c2698a6c6..46f0b5864e987 100644
 --- a/third_party/blink/renderer/core/html/media/html_media_element.cc
 +++ b/third_party/blink/renderer/core/html/media/html_media_element.cc
 @@ -26,6 +26,8 @@
@@ -131,11 +131,11 @@ index 58b1c2698a6c6..10d84f7f49028 100644
 +      auto has = [&](const char* needle) {
 +        return t.find(needle) != std::string::npos;
 +      };
++      // Real Chrome on Windows/macOS advertises HEVC but NOT E-AC3/AC3/Dolby
++      // Vision by default (those depend on OEM/Store codec packs) — confirmed
++      // against a real Windows Chrome 150 capture. Claim HEVC only.
 +      const bool hevc = has("hvc1") || has("hev1");
-+      const bool dolby = has("dvh1") || has("dvhe") || has("dav1");
-+      const bool ac3_eac3 =
-+          has("ec-3") || has("ac-3") || has("mp4a.a5") || has("mp4a.a6");
-+      if ((is_win && (hevc || dolby || ac3_eac3)) || (is_mac && hevc)) {
++      if ((is_win || is_mac) && hevc) {
 +        support = MIMETypeRegistry::kSupported;
 +      }
 +    }

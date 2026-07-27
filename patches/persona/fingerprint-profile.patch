@@ -62,7 +62,7 @@ index c34a84809962d..868aa83c3cfb6 100644
      "frame/frame_ad_evidence_mojom_traits.cc",
 diff --git a/third_party/blink/common/fingerprinting/fingerprint_profile.cc b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
 new file mode 100644
-index 0000000000000..43fecffd3f646
+index 0000000000000..86625f66810f0
 --- /dev/null
 +++ b/third_party/blink/common/fingerprinting/fingerprint_profile.cc
 @@ -0,0 +1,567 @@
@@ -580,7 +580,7 @@ index 0000000000000..43fecffd3f646
 +    p.webgl_max_color_attachments = 8;
 +    p.webgl_3d_max_texture_size = 2048;
 +    p.webgl_max_array_texture_layers = 2048;
-+    p.webgl_max_samples = 8;
++    p.webgl_max_samples = 16;  // real Intel D3D11 desktop = 16
 +    p.webgl_max_vertex_uniform_blocks = 12;
 +    p.webgl_max_fragment_uniform_blocks = 12;
 +    p.webgl_max_uniform_block_size = 65536;
