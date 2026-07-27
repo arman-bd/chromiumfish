@@ -21,6 +21,7 @@ audio/webaudio.patch
 network/webrtc-leak-shield.patch
 network/tls-fingerprint.patch
 network/request-header-integrity.patch
+network/tcp-os-fingerprint.patch
 devtools/humanized-input.patch
 ui/chrome-ui.patch
 ui/search-engines.patch

@@ -1,0 +1,59 @@
+diff --git a/net/socket/tcp_socket_posix.cc b/net/socket/tcp_socket_posix.cc
+index 72b1f0316cbaa..1eb72ef087f2b 100644
+--- a/net/socket/tcp_socket_posix.cc
++++ b/net/socket/tcp_socket_posix.cc
+@@ -5,12 +5,14 @@
+ #include "net/socket/tcp_socket.h"
+ 
+ #include <errno.h>
++#include <netinet/in.h>
+ #include <netinet/tcp.h>
+ #include <sys/socket.h>
+ 
+ #include <algorithm>
+ #include <memory>
+ 
++#include "base/command_line.h"
+ #include "base/feature_list.h"
+ #include "base/files/file_path.h"
+ #include "base/functional/bind.h"
+@@ -69,6 +71,22 @@ namespace net {
+ 
+ namespace {
+ 
++// ChromiumFish: when running under a Windows persona (--persona-os=win) on a
++// non-Windows host, present a Windows initial TTL / IPv6 hop-limit (128) on
++// outbound client connections. Chrome-on-Linux/macOS otherwise emits TTL 64,
++// which network-layer OS fingerprinters (p0f, and FingerprintJS's os_mismatch
++// signal) read to infer the real host OS despite the spoofed UA / platform.
++// Returns 0 when no override applies, leaving the OS default untouched.
++int PersonaHopLimitOverride() {
++  static const int hop_limit = [] {
++    return base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++               "persona-os") == "win"
++               ? 128
++               : 0;
++  }();
++  return hop_limit;
++}
++
+ // SetTCPKeepAlive sets SO_KEEPALIVE.
+ bool SetTCPKeepAlive(int fd, bool enable, int delay) {
+   // Enabling TCP keepalives is the same on all platforms.
+@@ -468,6 +486,16 @@ void TCPSocketPosix::SetDefaultOptionsForClient() {
+   // If SetTCPNoDelay fails, we don't care.
+   SetTCPNoDelay(socket_->socket_fd(), true);
+ 
++  // ChromiumFish: match the persona's network-layer OS fingerprint. IPv4
++  // sockets honour IP_TTL; IPv6 sockets honour IPV6_UNICAST_HOPS. Set both and
++  // ignore the ENOPROTOOPT from the address family that does not apply.
++  if (int hop_limit = PersonaHopLimitOverride()) {
++    setsockopt(socket_->socket_fd(), IPPROTO_IP, IP_TTL, &hop_limit,
++               sizeof(hop_limit));
++    setsockopt(socket_->socket_fd(), IPPROTO_IPV6, IPV6_UNICAST_HOPS,
++               &hop_limit, sizeof(hop_limit));
++  }
++
+   // TCP keep alive wakes up the radio, which is expensive on mobile. Do not
+   // enable it there. It's useful to prevent TCP middleboxes from timing out
+   // connection mappings. Packets for timed out connection mappings at

@@ -1,5 +1,5 @@
 diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
-index edab63d18ffd0..876332b828d06 100644
+index edab63d18ffd0..a20bd90eb6290 100644
 --- a/chrome/browser/chrome_content_browser_client.cc
 +++ b/chrome/browser/chrome_content_browser_client.cc
 @@ -418,6 +418,7 @@
@@ -10,7 +10,18 @@ index edab63d18ffd0..876332b828d06 100644
  #include "third_party/blink/public/common/loader/url_loader_throttle.h"
  #include "third_party/blink/public/common/mime_util/mime_util.h"
  #include "third_party/blink/public/common/navigation/navigation_policy.h"
-@@ -5031,6 +5032,36 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
+@@ -2870,6 +2871,10 @@ void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
+   static const char* const kCommonSwitchNames[] = {
+       embedder_support::kUserAgent,
+       switches::kUserDataDir,  // Make logs go to the right file.
++      // ChromiumFish: forward the persona switch to every child process,
++      // including the network service, so net/ can present a Windows-matching
++      // TTL on outbound sockets (tcp_socket_posix.cc PersonaHopLimitOverride).
++      "persona-os",
+   };
+   command_line->CopySwitchesFrom(browser_command_line, kCommonSwitchNames);
+ 
+@@ -5031,6 +5036,36 @@ void ChromeContentBrowserClient::OverrideWebPreferences(
    web_prefs->is_indigo_onboarding =
        indigo::IndigoOnboardingDialog::IsOnboardingWebContents(web_contents);
  #endif
