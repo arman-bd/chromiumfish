@@ -1,5 +1,5 @@
 diff --git a/chrome/renderer/chrome_content_renderer_client.cc b/chrome/renderer/chrome_content_renderer_client.cc
-index e177eded759db..91ad0c23590f4 100644
+index cb230d68cbe49..4838bc9742e8c 100644
 --- a/chrome/renderer/chrome_content_renderer_client.cc
 +++ b/chrome/renderer/chrome_content_renderer_client.cc
 @@ -1427,8 +1427,19 @@ void ChromeContentRendererClient::
@@ -266,10 +266,10 @@ index 608bea5cb3864..5a63ee04a90ea 100644
  }
  
 diff --git a/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc b/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc
-index eacccc6407bac..59939b25d729e 100644
+index 6f63de9373166..c821fb9b8802f 100644
 --- a/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc
 +++ b/third_party/blink/renderer/bindings/core/v8/local_window_proxy.cc
-@@ -291,6 +291,52 @@ void LocalWindowProxy::Initialize() {
+@@ -301,6 +301,52 @@ void LocalWindowProxy::Initialize() {
  
    InstallConditionalFeatures();
  
@@ -323,10 +323,10 @@ index eacccc6407bac..59939b25d729e 100644
      probe::DidCreateMainWorldContext(GetFrame());
      GetFrame()->Loader().DispatchDidClearWindowObjectInMainWorld();
 diff --git a/third_party/blink/renderer/core/dom/element.cc b/third_party/blink/renderer/core/dom/element.cc
-index 19def24e3d684..b4988b5db280b 100644
+index 5227c6bdfc7b9..ee52942239851 100644
 --- a/third_party/blink/renderer/core/dom/element.cc
 +++ b/third_party/blink/renderer/core/dom/element.cc
-@@ -7591,6 +7591,12 @@ ShadowRoot* Element::attachShadow(const ShadowRootInit* shadow_root_init_dict,
+@@ -7645,6 +7645,12 @@ ShadowRoot* Element::attachShadow(const ShadowRootInit* shadow_root_init_dict,
      case ShadowRootMode::kUserAgent:
        NOTREACHED();
    }
@@ -339,7 +339,7 @@ index 19def24e3d684..b4988b5db280b 100644
  
    // If there's already a declarative shadow root, verify that the existing
    // mode is the same as the requested mode.
-@@ -7643,6 +7649,8 @@ bool Element::AttachDeclarativeShadowRoot(
+@@ -7697,6 +7703,8 @@ bool Element::AttachDeclarativeShadowRoot(
      return false;
    }
    CHECK(mode == ShadowRootMode::kOpen || mode == ShadowRootMode::kClosed);
@@ -349,7 +349,7 @@ index 19def24e3d684..b4988b5db280b 100644
    CustomElementRegistry* registry = nullptr;
    // Get global registry of the document by default.
 diff --git a/third_party/blink/renderer/core/dom/element.idl b/third_party/blink/renderer/core/dom/element.idl
-index 51f29e18f378f..2ec52a0b783c6 100644
+index f1454075f670d..5c225709d285f 100644
 --- a/third_party/blink/renderer/core/dom/element.idl
 +++ b/third_party/blink/renderer/core/dom/element.idl
 @@ -80,6 +80,12 @@ dictionary ParseHTMLUnsafeOptions {
@@ -446,7 +446,7 @@ index cccfafe8f93a0..96aac4b016dfc 100644
  
  }  // namespace
 diff --git a/third_party/blink/renderer/core/frame/local_dom_window.cc b/third_party/blink/renderer/core/frame/local_dom_window.cc
-index f36ed413289cb..4a8d40f2ad7a1 100644
+index 08db1e862097b..9083c26ed607e 100644
 --- a/third_party/blink/renderer/core/frame/local_dom_window.cc
 +++ b/third_party/blink/renderer/core/frame/local_dom_window.cc
 @@ -40,6 +40,7 @@
@@ -457,7 +457,7 @@ index f36ed413289cb..4a8d40f2ad7a1 100644
  #include "third_party/blink/public/common/navigation/impression.h"
  #include "third_party/blink/public/common/switches.h"
  #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-blink.h"
-@@ -1591,29 +1592,35 @@ bool LocalDOMWindow::offscreenBuffering() const {
+@@ -1659,31 +1660,36 @@ bool LocalDOMWindow::offscreenBuffering() const {
    return true;
  }
  
@@ -474,8 +474,9 @@ index f36ed413289cb..4a8d40f2ad7a1 100644
 +}  // namespace
 +
  int LocalDOMWindow::outerHeight() const {
-   if (!GetFrame())
+   if (!GetFrame()) {
      return 0;
+   }
  
    LocalFrame* frame = GetFrame();
 -
@@ -486,8 +487,9 @@ index f36ed413289cb..4a8d40f2ad7a1 100644
    }
  
 -  Page* page = frame->GetPage();
--  if (!page)
+-  if (!page) {
 -    return 0;
+-  }
 -
 -  ChromeClient& chrome_client = page->GetChromeClient();
 -  if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
@@ -507,8 +509,8 @@ index f36ed413289cb..4a8d40f2ad7a1 100644
  }
  
  int LocalDOMWindow::outerWidth() const {
-@@ -1621,24 +1628,14 @@ int LocalDOMWindow::outerWidth() const {
-     return 0;
+@@ -1692,25 +1698,14 @@ int LocalDOMWindow::outerWidth() const {
+   }
  
    LocalFrame* frame = GetFrame();
 -
@@ -519,8 +521,9 @@ index f36ed413289cb..4a8d40f2ad7a1 100644
    }
  
 -  Page* page = frame->GetPage();
--  if (!page)
+-  if (!page) {
 -    return 0;
+-  }
 -
 -  ChromeClient& chrome_client = page->GetChromeClient();
 -  if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
@@ -536,7 +539,7 @@ index f36ed413289cb..4a8d40f2ad7a1 100644
  }
  
  gfx::Size LocalDOMWindow::GetViewportSize() const {
-@@ -1672,6 +1669,13 @@ gfx::Size LocalDOMWindow::GetViewportSize() const {
+@@ -1746,6 +1741,13 @@ gfx::Size LocalDOMWindow::GetViewportSize() const {
    return document()->View()->Size();
  }
  
@@ -548,19 +551,21 @@ index f36ed413289cb..4a8d40f2ad7a1 100644
 +// kCanonicalChromeWidth above), so the JS-observable outer size stays
 +// consistent with the inner viewport without the per-pixel tell.
  int LocalDOMWindow::innerHeight() const {
-   if (!GetFrame())
+   if (!GetFrame()) {
      return 0;
-@@ -1689,39 +1693,15 @@ int LocalDOMWindow::innerWidth() const {
+@@ -1765,43 +1767,15 @@ int LocalDOMWindow::innerWidth() const {
  }
  
  int LocalDOMWindow::screenX() const {
 -  LocalFrame* frame = GetFrame();
--  if (!frame)
+-  if (!frame) {
 -    return 0;
+-  }
 -
 -  Page* page = frame->GetPage();
--  if (!page)
+-  if (!page) {
 -    return 0;
+-  }
 -
 -  ChromeClient& chrome_client = page->GetChromeClient();
 -  if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
@@ -578,12 +583,14 @@ index f36ed413289cb..4a8d40f2ad7a1 100644
  
  int LocalDOMWindow::screenY() const {
 -  LocalFrame* frame = GetFrame();
--  if (!frame)
+-  if (!frame) {
 -    return 0;
+-  }
 -
 -  Page* page = frame->GetPage();
--  if (!page)
+-  if (!page) {
 -    return 0;
+-  }
 -
 -  ChromeClient& chrome_client = page->GetChromeClient();
 -  if (page->GetSettings().GetReportScreenSizeInPhysicalPixelsQuirk()) {
@@ -596,9 +603,9 @@ index f36ed413289cb..4a8d40f2ad7a1 100644
  }
  
  double LocalDOMWindow::scrollX() const {
-@@ -1823,7 +1803,20 @@ double LocalDOMWindow::devicePixelRatio() const {
-   if (!GetFrame())
+@@ -1911,7 +1885,20 @@ double LocalDOMWindow::devicePixelRatio() const {
      return 0.0;
+   }
  
 -  return GetFrame()->DevicePixelRatio();
 +  // Lightweight-fork: the persona's claimed DPR (typically 1.0) is a
@@ -835,10 +842,10 @@ index 8cd793a2bc0bc..cc890e5cd0f9f 100644
  }
  
 diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
-index ce5e21a444e38..30503d67fb2ec 100644
+index 2a689dd0a8bf3..2524182ff1694 100644
 --- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
 +++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
-@@ -4057,6 +4057,11 @@
+@@ -4195,6 +4195,11 @@
      },
      {
        name: "NetInfoConstantType",
@@ -850,7 +857,7 @@ index ce5e21a444e38..30503d67fb2ec 100644
      },
      {
        name: "NetInfoDownlinkMax",
-@@ -6658,6 +6663,7 @@
+@@ -6874,6 +6879,7 @@
          "iOS": "stable",
          "Mac": "stable",
          "Win": "stable",

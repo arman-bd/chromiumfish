@@ -15,7 +15,7 @@ index 8fa0839680262..4ee28fe0f690d 100644
    channel_name_header_name = ""
    copyright_header_name = ""
 diff --git a/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc b/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
-index 01c45c9b85673..dc5607863c1f9 100644
+index 01c45c9b85673..95245daf9fd21 100644
 --- a/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
 +++ b/chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.cc
 @@ -37,28 +37,33 @@
@@ -58,7 +58,7 @@ index 01c45c9b85673..dc5607863c1f9 100644
  #endif
  
  namespace request_header_integrity {
-@@ -79,36 +84,102 @@ enum class PlatformRuntimeIntegrityResult {
+@@ -79,36 +84,109 @@ enum class PlatformRuntimeIntegrityResult {
  
  BASE_FEATURE(kRequestHeaderIntegrity, base::FEATURE_ENABLED_BY_DEFAULT);
  
@@ -159,6 +159,13 @@ index 01c45c9b85673..dc5607863c1f9 100644
 +      // current 57a77967...), Android did NOT rotate -- its 150 seed is the same
 +      // as 149.
 +      return is_android ? "699497c72b2fa8d1" : "57a77967c097ba5f";
++    case 151:
++      // Desktop seed verified byte-exact vs real Chrome 151.0.7922.137 on Linux
++      // (recovered from the running binary's deobfuscated seed and confirmed by
++      // reproducing both captured X-Browser-Validation digests). Shared across
++      // desktop (Win/Mac/Linux); only the API key differs. Android 151 not yet
++      // captured -- reuse the stable Android seed as best effort.
++      return is_android ? "699497c72b2fa8d1" : "82c4b9d46bdc8136";
 +    default:
 +      // Unknown milestone: fall back to an empty seed (best effort). Add the
 +      // real value above when bumping the persona to a new Chrome version.

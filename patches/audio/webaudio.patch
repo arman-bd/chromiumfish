@@ -1,5 +1,5 @@
 diff --git a/third_party/blink/renderer/modules/webaudio/audio_context.cc b/third_party/blink/renderer/modules/webaudio/audio_context.cc
-index 64cc335435bf3..ad64aec1e32db 100644
+index 5dcadd8e1db15..59482cf4bc1bb 100644
 --- a/third_party/blink/renderer/modules/webaudio/audio_context.cc
 +++ b/third_party/blink/renderer/modules/webaudio/audio_context.cc
 @@ -19,6 +19,7 @@
@@ -25,7 +25,7 @@ index 64cc335435bf3..ad64aec1e32db 100644
  // Operations tracked in the WebAudio.AudioContext.Operation histogram.
  enum class AudioContextOperation {
    kCreate,
-@@ -617,7 +610,7 @@ AudioContext::AudioContext(LocalDOMWindow& window,
+@@ -610,7 +603,7 @@ AudioContext::AudioContext(LocalDOMWindow& window,
    }
  
    destination_node_ = RealtimeAudioDestinationNode::Create(
@@ -34,7 +34,7 @@ index 64cc335435bf3..ad64aec1e32db 100644
        update_echo_cancellation_on_first_start);
  
    TRACE_EVENT2("webaudio", "AudioContext::AudioContext", "UUID", Uuid(),
-@@ -1150,17 +1143,14 @@ double AudioContext::baseLatency() const {
+@@ -1189,17 +1182,14 @@ double AudioContext::baseLatency() const {
    DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
    DCHECK(destination());
  
@@ -54,7 +54,7 @@ index 64cc335435bf3..ad64aec1e32db 100644
  }
  
  AudioPlaybackStats* AudioContext::playbackStats() {
-@@ -1648,13 +1638,6 @@ void AudioContext::DidInitialPermissionCheck(
+@@ -1672,13 +1662,6 @@ void AudioContext::DidInitialPermissionCheck(
        std::move(observer));
  }
  
@@ -69,10 +69,10 @@ index 64cc335435bf3..ad64aec1e32db 100644
    DCHECK_CALLED_ON_VALID_SEQUENCE(main_thread_sequence_checker_);
  
 diff --git a/third_party/blink/renderer/modules/webaudio/audio_context.h b/third_party/blink/renderer/modules/webaudio/audio_context.h
-index d36e7a82a32df..95d30c4eff756 100644
+index 67607b3f35d87..e68aa97b466af 100644
 --- a/third_party/blink/renderer/modules/webaudio/audio_context.h
 +++ b/third_party/blink/renderer/modules/webaudio/audio_context.h
-@@ -362,7 +362,6 @@ class MODULES_EXPORT AudioContext final
+@@ -376,7 +376,6 @@ class MODULES_EXPORT AudioContext final
  
    void DidInitialPermissionCheck(mojom::blink::PermissionDescriptorPtr,
                                   mojom::blink::PermissionStatusWithDetailsPtr);
@@ -81,7 +81,7 @@ index d36e7a82a32df..95d30c4eff756 100644
    void InitializeMediaDeviceService();
    void UninitializeMediaDeviceService();
 diff --git a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
-index fcac660801216..a2a22fa838736 100644
+index aed92e0ec46ad..8c173615b8bff 100644
 --- a/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
 +++ b/third_party/blink/renderer/modules/webaudio/offline_audio_context.cc
 @@ -28,6 +28,8 @@

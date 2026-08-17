@@ -2399,10 +2399,10 @@ index e749ea72e176a..a08f51404a3c4 100644
  <!--_html_template_end_-->`;
    // clang-format on
 diff --git a/chrome/browser/ui/BUILD.gn b/chrome/browser/ui/BUILD.gn
-index b669d4f3ee5f3..63f3cc0593c0f 100644
+index 017a8c3ff755f..cb5784c0dd95f 100644
 --- a/chrome/browser/ui/BUILD.gn
 +++ b/chrome/browser/ui/BUILD.gn
-@@ -167,6 +167,7 @@ static_library("ui") {
+@@ -448,6 +448,7 @@ static_library("ui") {
      ":url_identity",
      "//base",
      "//base:i18n",
@@ -2411,7 +2411,7 @@ index b669d4f3ee5f3..63f3cc0593c0f 100644
      "//build:android_buildflags",
      "//build:branding_buildflags",
 diff --git a/chrome/browser/ui/browser.cc b/chrome/browser/ui/browser.cc
-index b6bcac3e84d22..6b77bcdc93eea 100644
+index 0777bf71430c8..9fd3eaaeee036 100644
 --- a/chrome/browser/ui/browser.cc
 +++ b/chrome/browser/ui/browser.cc
 @@ -39,6 +39,7 @@
@@ -2422,7 +2422,7 @@ index b6bcac3e84d22..6b77bcdc93eea 100644
  #include "chrome/browser/ai/ai_data_keyed_service.h"          // nogncheck
  #include "chrome/browser/ai/ai_data_keyed_service_factory.h"  // nogncheck
  #include "chrome/browser/app_mode/app_mode_utils.h"
-@@ -2618,6 +2619,20 @@ void Browser::GetAIPageContent(
+@@ -2420,6 +2421,20 @@ void Browser::GetAIPageContent(
        }).Then(std::move(callback)));
  }
  
@@ -2444,10 +2444,10 @@ index b6bcac3e84d22..6b77bcdc93eea 100644
  void Browser::PrintCrossProcessSubframe(
      content::WebContents* web_contents,
 diff --git a/chrome/browser/ui/browser.h b/chrome/browser/ui/browser.h
-index 718dda248e492..129883184d7a0 100644
+index e2fcdc383237c..5b9abafb3eeea 100644
 --- a/chrome/browser/ui/browser.h
 +++ b/chrome/browser/ui/browser.h
-@@ -951,6 +951,16 @@ class Browser : public TabStripModelObserver,
+@@ -911,6 +911,16 @@ class Browser : public TabStripModelObserver,
        content::WebContents* web_contents,
        bool include_actionable_elements,
        base::OnceCallback<void(const std::string&)> callback) override;
@@ -2708,13 +2708,13 @@ index 0000000000000..67cfe67266258
 +
 +}  // namespace content
 diff --git a/content/public/browser/BUILD.gn b/content/public/browser/BUILD.gn
-index bea40fd122bef..9d8fb5f52f381 100644
+index 99c99d6ab2422..3863ecc7b268b 100644
 --- a/content/public/browser/BUILD.gn
 +++ b/content/public/browser/BUILD.gn
-@@ -218,6 +218,7 @@ source_set("browser_sources") {
-     "hid_delegate.h",
-     "histogram_fetcher.h",
-     "host_zoom_map.h",
+@@ -221,6 +221,7 @@ source_set("browser_sources") {
+     "immersive_playback_options.h",
+     "initiator_navigation_state.cc",
+     "initiator_navigation_state.h",
 +    "humanized_click.h",
      "installability_error.cc",
      "installability_error.h",
@@ -2774,7 +2774,7 @@ index 0000000000000..4bec45f9b44d4
 +
 +#endif  // CONTENT_PUBLIC_BROWSER_HUMANIZED_CLICK_H_
 diff --git a/content/public/browser/web_contents_delegate.cc b/content/public/browser/web_contents_delegate.cc
-index 16244802d3c31..69981c7e87a5a 100644
+index 5ec5f9ca15d75..85fc9ce8ad1d4 100644
 --- a/content/public/browser/web_contents_delegate.cc
 +++ b/content/public/browser/web_contents_delegate.cc
 @@ -476,6 +476,19 @@ void WebContentsDelegate::GetAIPageContent(
@@ -2798,10 +2798,10 @@ index 16244802d3c31..69981c7e87a5a 100644
      WebContents* web_contents) {
    return false;
 diff --git a/content/public/browser/web_contents_delegate.h b/content/public/browser/web_contents_delegate.h
-index 039e8305c5a1a..38432b75e451f 100644
+index 7cd96eea6314b..30752ce5bcc36 100644
 --- a/content/public/browser/web_contents_delegate.h
 +++ b/content/public/browser/web_contents_delegate.h
-@@ -900,6 +900,22 @@ class CONTENT_EXPORT WebContentsDelegate {
+@@ -901,6 +901,22 @@ class CONTENT_EXPORT WebContentsDelegate {
        bool include_actionable_elements,
        base::OnceCallback<void(const std::string&)> callback);
  

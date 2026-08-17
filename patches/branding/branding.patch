@@ -12,7 +12,7 @@ index 6fada0a2b1a1f..39c9a98bdadd1 100644
  	<array>
  		<dict>
 diff --git a/chrome/app/chromium_strings.grd b/chrome/app/chromium_strings.grd
-index a154b12dc4fa7..c1a0db34f981c 100644
+index 12a62d6803668..a0c205c86ba64 100644
 --- a/chrome/app/chromium_strings.grd
 +++ b/chrome/app/chromium_strings.grd
 @@ -294,10 +294,10 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->

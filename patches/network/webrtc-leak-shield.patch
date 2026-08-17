@@ -168,7 +168,7 @@ index df8f9455d224f..dd46a48b8c928 100644
        *base::CommandLine::ForCurrentProcess();
  
 diff --git a/third_party/blink/renderer/modules/mediastream/media_devices.cc b/third_party/blink/renderer/modules/mediastream/media_devices.cc
-index b74ee0e251804..6306b69b141d9 100644
+index 79675aaa98973..592f49843dd0c 100644
 --- a/third_party/blink/renderer/modules/mediastream/media_devices.cc
 +++ b/third_party/blink/renderer/modules/mediastream/media_devices.cc
 @@ -18,6 +18,7 @@
@@ -179,7 +179,7 @@ index b74ee0e251804..6306b69b141d9 100644
  #include "third_party/blink/public/common/mediastream/media_devices.h"
  #include "third_party/blink/public/mojom/media/capture_handle_config.mojom-blink.h"
  #include "third_party/blink/public/mojom/mediastream/media_devices.mojom-blink.h"
-@@ -525,6 +526,39 @@ ScriptPromise<IDLSequence<MediaDeviceInfo>> MediaDevices::enumerateDevices(
+@@ -526,6 +527,39 @@ ScriptPromise<IDLSequence<MediaDeviceInfo>> MediaDevices::enumerateDevices(
        kEnumerateDevicesTimeout);
    const auto promise = result_tracker->Promise();
  
@@ -220,10 +220,10 @@ index b74ee0e251804..6306b69b141d9 100644
        "enumerateDevices({result_tracker=%p}, "
        "{request_audio_input_capabilities=%s})",
 diff --git a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
-index 64b93ab843543..a97770d42f4f7 100644
+index b7f6443b9592d..591b9bb2b0d20 100644
 --- a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
 +++ b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
-@@ -2371,6 +2371,29 @@ void RTCPeerConnection::DidGenerateICECandidate(
+@@ -2568,6 +2568,29 @@ void RTCPeerConnection::DidGenerateICECandidate(
    DCHECK(!closed_);
    DCHECK(GetExecutionContext()->IsContextThread());
    DCHECK(platform_candidate);

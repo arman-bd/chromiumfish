@@ -1,5 +1,5 @@
 diff --git a/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
-index 16b2f87a42e31..56a93547a96a3 100644
+index d1d2310450a20..943035c96b95b 100644
 --- a/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
 +++ b/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
 @@ -4,6 +4,8 @@
@@ -11,7 +11,7 @@ index 16b2f87a42e31..56a93547a96a3 100644
  #include <memory>
  
  #include "base/compiler_specific.h"
-@@ -4789,13 +4791,13 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4814,13 +4816,13 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
      case GL_FRAGMENT_SHADER_DERIVATIVE_HINT:
        return GetUnsignedIntParameter(script_state, pname);
      case GL_MAX_3D_TEXTURE_SIZE:
@@ -28,7 +28,7 @@ index 16b2f87a42e31..56a93547a96a3 100644
      case GL_MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS:
        return GetInt64Parameter(script_state, pname);
      case GL_MAX_COMBINED_UNIFORM_BLOCKS:
-@@ -4803,27 +4805,27 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4828,27 +4830,27 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
      case GL_MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS:
        return GetInt64Parameter(script_state, pname);
      case GL_MAX_DRAW_BUFFERS:
@@ -62,7 +62,7 @@ index 16b2f87a42e31..56a93547a96a3 100644
      case GL_MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS:
        return GetIntParameter(script_state, pname);
      case GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS:
-@@ -4831,15 +4833,15 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4856,15 +4858,15 @@ ScriptValue WebGL2RenderingContextBase::getParameter(ScriptState* script_state,
      case GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS:
        return GetIntParameter(script_state, pname);
      case GL_MAX_UNIFORM_BLOCK_SIZE:
@@ -82,7 +82,7 @@ index 16b2f87a42e31..56a93547a96a3 100644
        return GetIntParameter(script_state, pname);
      case GL_MIN_PROGRAM_TEXEL_OFFSET:
 diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
-index ceb4c3f606e9f..740acecf15bb9 100644
+index 319e17ecde751..8ab25703a2466 100644
 --- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 +++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 @@ -25,6 +25,7 @@
@@ -103,7 +103,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
  #include "third_party/blink/public/common/features.h"
  #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
  #include "third_party/blink/public/mojom/gpu/gpu.mojom-blink.h"
-@@ -2560,6 +2564,12 @@ void WebGLRenderingContextBase::attachShader(WebGLProgram* program,
+@@ -2566,6 +2570,12 @@ void WebGLRenderingContextBase::attachShader(WebGLProgram* program,
                        "shader attachment already has shader");
      return;
    }
@@ -116,7 +116,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    ContextGL()->AttachShader(ObjectOrZero(program), ObjectOrZero(shader));
    shader->OnAttached();
  }
-@@ -2615,6 +2625,12 @@ void WebGLRenderingContextBase::bindBuffer(GLenum target, WebGLBuffer* buffer) {
+@@ -2621,6 +2631,12 @@ void WebGLRenderingContextBase::bindBuffer(GLenum target, WebGLBuffer* buffer) {
      return;
    if (!ValidateAndUpdateBufferBindTarget("bindBuffer", target, buffer))
      return;
@@ -129,7 +129,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    ContextGL()->BindBuffer(target, ObjectOrZero(buffer));
  }
  
-@@ -2782,6 +2798,20 @@ void WebGLRenderingContextBase::BufferDataImpl(GLenum target,
+@@ -2788,6 +2804,20 @@ void WebGLRenderingContextBase::BufferDataImpl(GLenum target,
  
    buffer->SetSize(size);
  
@@ -150,7 +150,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    ContextGL()->BufferData(target, static_cast<GLsizeiptr>(size), data, usage);
  }
  
-@@ -2925,6 +2955,11 @@ void WebGLRenderingContextBase::clear(GLbitfield mask) {
+@@ -2931,6 +2961,11 @@ void WebGLRenderingContextBase::clear(GLbitfield mask) {
      }
      ContextGL()->Clear(mask);
    }
@@ -162,7 +162,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    MarkContextChanged(kCanvasChanged,
                       CanvasPerformanceMonitor::DrawType::kOther);
  }
-@@ -2947,6 +2982,12 @@ void WebGLRenderingContextBase::clearColor(GLfloat r,
+@@ -2953,6 +2988,12 @@ void WebGLRenderingContextBase::clearColor(GLfloat r,
    clear_color_[1] = g;
    clear_color_[2] = b;
    clear_color_[3] = a;
@@ -175,7 +175,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    ContextGL()->ClearColor(r, g, b, a);
  }
  
-@@ -2980,6 +3021,11 @@ void WebGLRenderingContextBase::colorMask(GLboolean red,
+@@ -2986,6 +3027,11 @@ void WebGLRenderingContextBase::colorMask(GLboolean red,
  void WebGLRenderingContextBase::compileShader(WebGLShader* shader) {
    if (!ValidateWebGLProgramOrShader("compileShader", shader))
      return;
@@ -187,7 +187,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    ContextGL()->CompileShader(ObjectOrZero(shader));
  }
  
-@@ -3139,6 +3185,13 @@ void WebGLRenderingContextBase::copyTexSubImage2D(GLenum target,
+@@ -3145,6 +3191,13 @@ void WebGLRenderingContextBase::copyTexSubImage2D(GLenum target,
  WebGLBuffer* WebGLRenderingContextBase::createBuffer() {
    auto* buffer = MakeGarbageCollected<WebGLBuffer>(this);
    buffers_.insert(buffer);
@@ -201,7 +201,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    return buffer;
  }
  
-@@ -3151,7 +3204,13 @@ WebGLTexture* WebGLRenderingContextBase::createTexture() {
+@@ -3157,7 +3210,13 @@ WebGLTexture* WebGLRenderingContextBase::createTexture() {
  }
  
  WebGLProgram* WebGLRenderingContextBase::createProgram() {
@@ -216,7 +216,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
  }
  
  WebGLRenderbuffer* WebGLRenderingContextBase::createRenderbuffer() {
-@@ -3171,7 +3230,13 @@ WebGLShader* WebGLRenderingContextBase::createShader(GLenum type) {
+@@ -3177,7 +3236,13 @@ WebGLShader* WebGLRenderingContextBase::createShader(GLenum type) {
      return nullptr;
    }
  
@@ -231,7 +231,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
  }
  
  void WebGLRenderingContextBase::cullFace(GLenum mode) {
-@@ -3340,6 +3405,11 @@ void WebGLRenderingContextBase::detachShader(WebGLProgram* program,
+@@ -3346,6 +3411,11 @@ void WebGLRenderingContextBase::detachShader(WebGLProgram* program,
  void WebGLRenderingContextBase::disable(GLenum cap) {
    if (isContextLost() || !ValidateCapability("disable", cap))
      return;
@@ -243,7 +243,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    if (cap == GL_STENCIL_TEST) {
      stencil_enabled_ = false;
      ApplyDepthAndStencilTest();
-@@ -3447,6 +3517,11 @@ void WebGLRenderingContextBase::drawArrays(GLenum mode,
+@@ -3453,6 +3523,11 @@ void WebGLRenderingContextBase::drawArrays(GLenum mode,
    if (!ValidateDrawArrays("drawArrays"))
      return;
  
@@ -255,7 +255,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    DrawWrapper("drawArrays", CanvasPerformanceMonitor::DrawType::kDrawArrays,
                [&]() { ContextGL()->DrawArrays(mode, first, count); });
  }
-@@ -3458,6 +3533,12 @@ void WebGLRenderingContextBase::drawElements(GLenum mode,
+@@ -3464,6 +3539,12 @@ void WebGLRenderingContextBase::drawElements(GLenum mode,
    if (!ValidateDrawElements("drawElements", type, offset))
      return;
  
@@ -268,7 +268,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    DrawWrapper("drawElements", CanvasPerformanceMonitor::DrawType::kDrawElements,
                [&]() {
                  ContextGL()->DrawElements(
-@@ -3500,6 +3581,12 @@ void WebGLRenderingContextBase::DrawElementsInstancedANGLE(GLenum mode,
+@@ -3506,6 +3587,12 @@ void WebGLRenderingContextBase::DrawElementsInstancedANGLE(GLenum mode,
  void WebGLRenderingContextBase::enable(GLenum cap) {
    if (isContextLost() || !ValidateCapability("enable", cap))
      return;
@@ -281,7 +281,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    if (cap == GL_STENCIL_TEST) {
      stencil_enabled_ = true;
      ApplyDepthAndStencilTest();
-@@ -3527,6 +3614,11 @@ void WebGLRenderingContextBase::enableVertexAttribArray(GLuint index) {
+@@ -3533,6 +3620,11 @@ void WebGLRenderingContextBase::enableVertexAttribArray(GLuint index) {
    }
  
    bound_vertex_array_object_->SetAttribEnabled(index, true);
@@ -293,7 +293,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    ContextGL()->EnableVertexAttribArray(index);
  }
  
-@@ -3980,10 +4072,24 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+@@ -3986,10 +4078,24 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
    switch (pname) {
      case GL_ACTIVE_TEXTURE:
        return GetUnsignedIntParameter(script_state, pname);
@@ -322,7 +322,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
      case GL_ALPHA_BITS:
        if (drawing_buffer_->RequiresAlphaChannelToBePreserved())
          return WebGLAny(script_state, 0);
-@@ -4054,28 +4160,48 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4060,28 +4166,48 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
        return GetIntParameter(script_state, pname);
      case GL_LINE_WIDTH:
        return GetFloatParameter(script_state, pname);
@@ -383,7 +383,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
      case GL_PACK_ALIGNMENT:
        return GetIntParameter(script_state, pname);
      case GL_POLYGON_OFFSET_FACTOR:
-@@ -4107,11 +4233,15 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4113,11 +4239,15 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
      case GL_SCISSOR_TEST:
        return GetBooleanParameter(script_state, pname);
      case GL_SHADING_LANGUAGE_VERSION:
@@ -402,7 +402,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
      case GL_STENCIL_BACK_FAIL:
        return GetUnsignedIntParameter(script_state, pname);
      case GL_STENCIL_BACK_FUNC:
-@@ -4169,10 +4299,13 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4175,10 +4305,13 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
      case GL_VENDOR:
        return WebGLAny(script_state, String("WebKit"));
      case GL_VERSION:
@@ -418,7 +418,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
      case GL_VIEWPORT:
        return GetWebGLIntArrayParameter(script_state, pname);
      case GL_FRAGMENT_SHADER_DERIVATIVE_HINT_OES:  // OES_standard_derivatives
-@@ -4185,8 +4318,16 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4191,8 +4324,16 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
        return ScriptValue::CreateNull(script_state->GetIsolate());
      case WebGLDebugRendererInfo::kUnmaskedRendererWebgl:
        if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
@@ -436,7 +436,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
        }
        SynthesizeGLError(
            GL_INVALID_ENUM, "getParameter",
-@@ -4194,8 +4335,7 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4200,8 +4341,7 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
        return ScriptValue::CreateNull(script_state->GetIsolate());
      case WebGLDebugRendererInfo::kUnmaskedVendorWebgl:
        if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
@@ -446,7 +446,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
        }
        SynthesizeGLError(
            GL_INVALID_ENUM, "getParameter",
-@@ -4264,19 +4404,14 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4270,19 +4410,14 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
            "invalid parameter name, WEBGL_blend_func_extended not enabled");
        return ScriptValue::CreateNull(script_state->GetIsolate());
      case GL_MAX_COLOR_ATTACHMENTS_EXT:  // EXT_draw_buffers BEGIN
@@ -473,7 +473,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
      case GL_TIMESTAMP_EXT:
        if (ExtensionEnabled(kEXTDisjointTimerQueryName))
          return WebGLAny(script_state, 0);
-@@ -4491,10 +4626,43 @@ WebGLShaderPrecisionFormat* WebGLRenderingContextBase::getShaderPrecisionFormat(
+@@ -4497,10 +4632,43 @@ WebGLShaderPrecisionFormat* WebGLRenderingContextBase::getShaderPrecisionFormat(
        return nullptr;
    }
  
@@ -521,7 +521,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    return MakeGarbageCollected<WebGLShaderPrecisionFormat>(range[0], range[1],
                                                            precision);
  }
-@@ -4510,14 +4678,102 @@ WebGLRenderingContextBase::getSupportedExtensions() {
+@@ -4516,14 +4684,102 @@ WebGLRenderingContextBase::getSupportedExtensions() {
    if (isContextLost())
      return std::nullopt;
  
@@ -629,7 +629,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    return result;
  }
  
-@@ -5056,6 +5312,12 @@ void WebGLRenderingContextBase::linkProgram(WebGLProgram* program) {
+@@ -5062,6 +5318,12 @@ void WebGLRenderingContextBase::linkProgram(WebGLProgram* program) {
      ContextGL()->GenQueriesEXT(1, &query);
      ContextGL()->BeginQueryEXT(GL_PROGRAM_COMPLETION_QUERY_CHROMIUM, query);
    }
@@ -642,7 +642,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    ContextGL()->LinkProgram(ObjectOrZero(program));
    if (ExtensionEnabled(kKHRParallelShaderCompileName)) {
      ContextGL()->EndQueryEXT(GL_PROGRAM_COMPLETION_QUERY_CHROMIUM);
-@@ -5312,8 +5574,6 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+@@ -5318,8 +5580,6 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
                                          buffer_size.ValueOrDie())) {
      return;
    }
@@ -651,7 +651,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    uint8_t* data = static_cast<uint8_t*>(pixels->BaseAddressMaybeShared()) +
                    offset_in_bytes.ValueOrDie();
  
-@@ -5329,6 +5589,8 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+@@ -5335,6 +5595,8 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
      data = buffer->data();
    }
  
@@ -660,7 +660,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
    // Last-chance early-out, in case somehow the context was lost during
    // the above ClearIfComposited operation.
    if (isContextLost() || !GetDrawingBuffer())
-@@ -5341,6 +5603,31 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
+@@ -5347,6 +5609,31 @@ void WebGLRenderingContextBase::ReadPixelsHelper(GLint x,
      }
      ContextGL()->ReadPixels(x, y, width, height, format, type, data);
    }
@@ -692,7 +692,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
  }
  
  void WebGLRenderingContextBase::RenderbufferStorageImpl(
-@@ -5454,6 +5741,12 @@ void WebGLRenderingContextBase::shaderSource(WebGLShader* shader,
+@@ -5460,6 +5747,12 @@ void WebGLRenderingContextBase::shaderSource(WebGLShader* shader,
    DCHECK(ascii_string.Is8Bit() && ascii_string.ContainsOnlyAsciiOrEmpty());
    const GLchar* shader_data = base::as_chars(ascii_string.Span8()).data();
    const GLint shader_length = ascii_string.length();
@@ -784,7 +784,7 @@ index ceb4c3f606e9f..740acecf15bb9 100644
 +
  }  // namespace blink
 diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
-index c31775d6cf76c..8e83495155fdd 100644
+index 1fc5b8f00fc10..e6cab328cb015 100644
 --- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
 +++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
 @@ -658,6 +658,14 @@ class MODULES_EXPORT WebGLRenderingContextBase
@@ -802,7 +802,7 @@ index c31775d6cf76c..8e83495155fdd 100644
   protected:
    // Implementation helpers.
    friend class ScopedPixelLocalStorageInterrupt;
-@@ -1982,6 +1990,12 @@ class MODULES_EXPORT WebGLRenderingContextBase
+@@ -1983,6 +1991,12 @@ class MODULES_EXPORT WebGLRenderingContextBase
  
    const Platform::WebGLContextType context_type_;
  

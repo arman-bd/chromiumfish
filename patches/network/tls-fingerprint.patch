@@ -1,8 +1,8 @@
 diff --git a/net/base/features.cc b/net/base/features.cc
-index fbd9f26e13924..45e222882df1d 100644
+index 2d22050c0bf54..992b856ea6b40 100644
 --- a/net/base/features.cc
 +++ b/net/base/features.cc
-@@ -624,6 +624,10 @@ BASE_FEATURE(kRestrictAbusePortsOnLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
+@@ -626,6 +626,10 @@ BASE_FEATURE(kRestrictAbusePortsOnLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
  
  BASE_FEATURE(kTLSTrustAnchorIDs, base::FEATURE_DISABLED_BY_DEFAULT);
  
@@ -14,7 +14,7 @@ index fbd9f26e13924..45e222882df1d 100644
  
  #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
 diff --git a/net/socket/ssl_client_socket_impl.cc b/net/socket/ssl_client_socket_impl.cc
-index b3d4cb912fb44..24a6274320243 100644
+index 365ccf0f7e3f3..9bf3feaa1776f 100644
 --- a/net/socket/ssl_client_socket_impl.cc
 +++ b/net/socket/ssl_client_socket_impl.cc
 @@ -878,20 +878,17 @@ int SSLClientSocketImpl::Init() {

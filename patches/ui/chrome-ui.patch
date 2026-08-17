@@ -1,8 +1,8 @@
 diff --git a/chrome/browser/app_controller_mac.mm b/chrome/browser/app_controller_mac.mm
-index 9f3d527596656..8539036faac4b 100644
+index 442f1d33080b2..c2730adcf2c5f 100644
 --- a/chrome/browser/app_controller_mac.mm
 +++ b/chrome/browser/app_controller_mac.mm
-@@ -916,6 +916,9 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
+@@ -919,6 +919,9 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
  
    // Initialize the Profile menu.
    [self initProfileMenu];
@@ -12,7 +12,7 @@ index 9f3d527596656..8539036faac4b 100644
  }
  
  - (void)unregisterEventHandlers {
-@@ -1924,6 +1927,17 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
+@@ -1945,6 +1948,17 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
    NSMenu* mainMenu = [NSApp mainMenu];
    NSMenuItem* profileMenu = [mainMenu itemWithTag:IDC_PROFILE_MAIN_MENU];
  
@@ -30,7 +30,7 @@ index 9f3d527596656..8539036faac4b 100644
    if (!profiles::IsMultipleProfilesEnabled()) {
      [mainMenu removeItem:profileMenu];
      return;
-@@ -1934,6 +1948,39 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
+@@ -1955,6 +1969,39 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
  
    _profileMenuController =
        [[ProfileMenuController alloc] initWithMainMenuItem:profileMenu];
@@ -71,10 +71,10 @@ index 9f3d527596656..8539036faac4b 100644
  
  - (void)initShareMenu {
 diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
-index f5831f33b9fd1..da5fad6448049 100644
+index a457075948e34..c8a820a623d1b 100644
 --- a/chrome/browser/ui/browser_command_controller.cc
 +++ b/chrome/browser/ui/browser_command_controller.cc
-@@ -228,6 +228,109 @@ void AppInfoDialogClosedCallback(SessionID session_id,
+@@ -231,6 +231,109 @@ void AppInfoDialogClosedCallback(SessionID session_id,
    }
  }
  
@@ -184,21 +184,21 @@ index f5831f33b9fd1..da5fad6448049 100644
  bool CanOpenFile(Browser* browser) {
    if (browser->is_type_devtools() || browser->is_type_app() ||
        browser->is_type_app_popup()) {
-@@ -594,15 +697,24 @@ void BrowserCommandController::ShowCustomizeChromeSidePanel(
+@@ -598,15 +701,24 @@ void BrowserCommandController::ShowCustomizeChromeSidePanel(
  // BrowserCommandController, CommandUpdater implementation:
  
  bool BrowserCommandController::SupportsCommand(int id) const {
 +  if (IsLightweightForkBlockedCommand(id)) {
 +    return false;
 +  }
-   return command_updater_.SupportsCommand(id);
+   return command_updater_->SupportsCommand(id);
  }
  
  bool BrowserCommandController::IsCommandEnabled(int id) const {
 +  if (IsLightweightForkBlockedCommand(id)) {
 +    return false;
 +  }
-   return command_updater_.IsCommandEnabled(id);
+   return command_updater_->IsCommandEnabled(id);
  }
  
  bool BrowserCommandController::ExecuteCommand(int id,
@@ -209,16 +209,16 @@ index f5831f33b9fd1..da5fad6448049 100644
    return ExecuteCommandWithDisposition(id, WindowOpenDisposition::CURRENT_TAB,
                                         time_stamp);
  }
-@@ -611,6 +723,9 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
+@@ -615,6 +727,9 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
      int id,
      WindowOpenDisposition disposition,
      base::TimeTicks time_stamp) {
 +  if (IsLightweightForkBlockedCommand(id)) {
 +    return false;
 +  }
-   // Doesn't go through the command_updater_ to avoid dealing with having a
-   // naming collision for ExecuteCommandWithDisposition (both
-   // CommandUpdaterDelegate and CommandUpdater declare this function so we
+   if (!SupportsCommand(id) || !IsCommandEnabled(id)) {
+     return false;
+   }
 diff --git a/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc b/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc
 index 26feac287c1f6..e3d8dbfa60403 100644
 --- a/chrome/browser/ui/read_anything/read_anything_entry_point_controller.cc
@@ -242,10 +242,10 @@ index 26feac287c1f6..e3d8dbfa60403 100644
  
  // static
 diff --git a/chrome/browser/ui/startup/bad_flags_prompt.cc b/chrome/browser/ui/startup/bad_flags_prompt.cc
-index 0deb93f45504c..47fc835cc2dde 100644
+index 3eae2d1bd26b3..9b283a626fd38 100644
 --- a/chrome/browser/ui/startup/bad_flags_prompt.cc
 +++ b/chrome/browser/ui/startup/bad_flags_prompt.cc
-@@ -121,10 +121,15 @@ const char* const kBadFlags[] = {
+@@ -126,10 +126,15 @@ const char* const kBadFlags[] = {
      switches::kEnableSpeechDispatcher,
  #endif
  
@@ -265,7 +265,7 @@ index 0deb93f45504c..47fc835cc2dde 100644
  
      // This flag allows people to allowlist certain origins as secure, even
      // if they are not.
-@@ -252,6 +257,12 @@ void ShowBadFlagsInfoBarHelper(content::WebContents* web_contents,
+@@ -261,6 +266,12 @@ void ShowBadFlagsInfoBarHelper(content::WebContents* web_contents,
  }  // namespace
  
  void ShowBadFlagsPrompt(content::WebContents* web_contents) {
@@ -331,10 +331,10 @@ index 4907b9a951040..27d7e2ae0f986 100644
    if (ObsoleteSystem::IsObsoleteNowOrSoon()) {
      PrefService* local_state = g_browser_process->local_state();
 diff --git a/chrome/browser/ui/toolbar/app_menu_model.cc b/chrome/browser/ui/toolbar/app_menu_model.cc
-index 44cc2b51c48a2..4202b09d83d16 100644
+index fb1db8e036352..b1d9711b65a6e 100644
 --- a/chrome/browser/ui/toolbar/app_menu_model.cc
 +++ b/chrome/browser/ui/toolbar/app_menu_model.cc
-@@ -245,7 +245,7 @@ void AddSubMenuWithStringIdAndVectorIcon(ui::SimpleMenuModel* model,
+@@ -246,7 +246,7 @@ void AddSubMenuWithStringIdAndVectorIcon(ui::SimpleMenuModel* model,
  
  // Conditionally return the update app menu item title based on upgrade detector
  // state.
@@ -343,7 +343,7 @@ index 44cc2b51c48a2..4202b09d83d16 100644
    if (UpgradeDetector::GetInstance()->is_outdated_install() ||
        UpgradeDetector::GetInstance()->is_outdated_install_no_au()) {
      return l10n_util::GetStringUTF16(IDS_UPGRADE_BUBBLE_MENU_ITEM);
-@@ -960,7 +960,7 @@ SaveAndShareSubMenuModel::SaveAndShareSubMenuModel(
+@@ -975,7 +975,7 @@ SaveAndShareSubMenuModel::SaveAndShareSubMenuModel(
    }
  }
  
@@ -352,7 +352,7 @@ index 44cc2b51c48a2..4202b09d83d16 100644
    PrefService* local_state = g_browser_process->local_state();
    return local_state && local_state->GetBoolean(prefs::kPromotionsEnabled);
  }
-@@ -2050,8 +2050,16 @@ void AppMenuModel::LogMenuAction(AppMenuAction action_id) {
+@@ -2052,8 +2052,16 @@ void AppMenuModel::LogMenuAction(AppMenuAction action_id) {
  // - Learn about the browser and global customisation e.g. settings, help.
  // - Browser relaunch, quit.
  void AppMenuModel::Build() {
@@ -370,7 +370,7 @@ index 44cc2b51c48a2..4202b09d83d16 100644
  
    if (app_menu_icon_controller_ &&
        app_menu_icon_controller_->GetTypeAndSeverity().type ==
-@@ -2345,6 +2353,7 @@ void AppMenuModel::Build() {
+@@ -2354,6 +2362,7 @@ void AppMenuModel::Build() {
  #endif  // !BUILDFLAG(IS_CHROMEOS)
  
    uma_action_recorded_ = false;
@@ -411,10 +411,10 @@ index 744efde599c45..6afc973fe5533 100644
  
  void BookmarkPageActionController::SetStarred(bool starred) {
 diff --git a/chrome/browser/ui/views/frame/browser_view.cc b/chrome/browser/ui/views/frame/browser_view.cc
-index c5b196b2be317..288a6865641f2 100644
+index 4a2d263f41a99..512c313823ca2 100644
 --- a/chrome/browser/ui/views/frame/browser_view.cc
 +++ b/chrome/browser/ui/views/frame/browser_view.cc
-@@ -5170,6 +5170,9 @@ ContentsLayoutManager* BrowserView::GetContentsLayoutManager() const {
+@@ -5164,6 +5164,9 @@ ContentsLayoutManager* BrowserView::GetContentsLayoutManager() const {
  }
  
  bool BrowserView::MaybeShowBookmarkBar(WebContents* contents) {
@@ -424,7 +424,7 @@ index c5b196b2be317..288a6865641f2 100644
    const bool show_bookmark_bar =
        contents && browser_->SupportsWindowFeature(
                        Browser::WindowFeature::kFeatureBookmarkBar);
-@@ -5213,6 +5216,7 @@ bool BrowserView::MaybeShowBookmarkBar(WebContents* contents) {
+@@ -5207,6 +5210,7 @@ bool BrowserView::MaybeShowBookmarkBar(WebContents* contents) {
    }
  
    return needs_layout;
@@ -433,10 +433,10 @@ index c5b196b2be317..288a6865641f2 100644
  
  bool BrowserView::MaybeShowInfoBar(WebContents* contents) {
 diff --git a/chrome/browser/ui/views/location_bar/location_bar_view.cc b/chrome/browser/ui/views/location_bar/location_bar_view.cc
-index 24c769cf019fe..e65f61c88ef42 100644
+index 0353e3f0aeec9..3656aaabf4860 100644
 --- a/chrome/browser/ui/views/location_bar/location_bar_view.cc
 +++ b/chrome/browser/ui/views/location_bar/location_bar_view.cc
-@@ -330,6 +330,10 @@ void LocationBarView::Init() {
+@@ -339,6 +339,10 @@ void LocationBarView::Init() {
        std::make_unique<LocationIconView>(omnibox_chip_font_list, this, this);
    location_icon_view->set_drag_controller(this);
    location_icon_view_ = AddChildView(std::move(location_icon_view));
@@ -447,7 +447,7 @@ index 24c769cf019fe..e65f61c88ef42 100644
  
    // Initialize the Omnibox view. browser_ can be nullptr on ChromeOS in the
    // case of simple_web_view_dialog. Or it can be nulltpr on ChromeOS and on
-@@ -567,9 +571,10 @@ void LocationBarView::Init() {
+@@ -568,9 +572,10 @@ void LocationBarView::Init() {
                                  PageActionIconType::kAiMode);
    }
  
@@ -461,21 +461,9 @@ index 24c769cf019fe..e65f61c88ef42 100644
  
    params.icon_color = color_provider->GetColor(kColorOmniboxActionIcon);
    params.between_icon_spacing = kBetweenIconSpacing;
-@@ -970,18 +975,9 @@ void LocationBarView::Layout(PassKey) {
-       }
-       selected_keyword_view_->SetCustomImage(image);
-     }
--  } else if (location_icon_view_->GetShowText() &&
--             !ShouldChipOverrideLocationIcon()) {
--    location_icon_view_->SetVisible(true);
--    leading_decorations.AddDecoration(
--        vertical_padding, location_height, false, kLeadingDecorationMaxFraction,
--        /*intra_item_padding=*/0, icon_left, location_icon_view_);
--  } else if (!ShouldChipOverrideLocationIcon()) {
--    location_icon_view_->SetVisible(true);
--    leading_decorations.AddDecoration(vertical_padding, location_height, false,
--                                      0, /*intra_item_padding=*/0, icon_left,
--                                      location_icon_view_);
+@@ -955,6 +960,8 @@ void LocationBarView::Layout(PassKey) {
+                                       0, /*intra_item_padding=*/0, icon_left,
+                                       location_icon_view_);
    } else {
 +    // Lightweight-fork: utility browser — never show the page-info /
 +    // location icon (the lock / tune / chip on the left of the omnibox).
@@ -483,50 +471,37 @@ index 24c769cf019fe..e65f61c88ef42 100644
    }
  
 diff --git a/chrome/browser/ui/views/toolbar/toolbar_view.cc b/chrome/browser/ui/views/toolbar/toolbar_view.cc
-index 9f1ad065ba766..b504e43e2de9c 100644
+index 5a42610d05b88..12b23b1e9eda2 100644
 --- a/chrome/browser/ui/views/toolbar/toolbar_view.cc
 +++ b/chrome/browser/ui/views/toolbar/toolbar_view.cc
-@@ -588,22 +588,8 @@ void ToolbarView::Init() {
+@@ -581,9 +581,8 @@ void ToolbarView::Init() {
    if (!features::IsWebUIAvatarButtonEnabled()) {
      avatar_ =
          AddChildView(std::make_unique<AvatarToolbarButton>(browser_view_));
--    bool show_avatar_toolbar_button = true;
--#if BUILDFLAG(IS_CHROMEOS)
--    // ChromeOS only badges Incognito, Guest, and captive portal signin icons in
--    // the browser window.
--    show_avatar_toolbar_button =
--        browser_->profile()->IsIncognitoProfile() ||
--        browser_->profile()->IsGuestSession() ||
--        (browser_->profile()->IsOffTheRecord() &&
--         browser_->profile()->GetOTRProfileID().IsCaptivePortal());
--#else
--    // DevTools profiles are OffTheRecord, so hide it there.
--    show_avatar_toolbar_button = browser_->profile()->IsIncognitoProfile() ||
--                                 browser_->profile()->IsGuestSession() ||
--                                 browser_->profile()->IsRegularProfile();
--#endif
+-    bool show_avatar_toolbar_button =
+-        AvatarToolbarButtonInterface::CanShowForProfile(browser_->profile());
 -    avatar_->SetVisible(show_avatar_toolbar_button);
 +    // Lightweight-fork: utility browser — no profile/identity UI ever.
 +    avatar_->SetVisible(false);
    }
  
    overflow_button_ = AddChildView(std::make_unique<OverflowButton>());
-@@ -617,6 +603,10 @@ void ToolbarView::Init() {
-       l10n_util::GetStringUTF16(IDS_APPMENU_TOOLTIP));
-   app_menu_button->SetID(VIEW_ID_APP_MENU);
-   app_menu_button_ = AddChildView(std::move(app_menu_button));
-+  // Lightweight-fork: hide the 3-dot menu button entirely. Keep the pointer
-+  // alive (lots of code references it for focus / accessibility), just make
-+  // it invisible.
-+  app_menu_button_->SetVisible(false);
+@@ -600,6 +599,10 @@ void ToolbarView::Init() {
+         l10n_util::GetStringUTF16(IDS_APPMENU_TOOLTIP));
+     app_menu_button->SetID(VIEW_ID_APP_MENU);
+     app_menu_button_ = AddChildView(std::move(app_menu_button));
++    // Lightweight-fork: hide the 3-dot menu button entirely. Keep the pointer
++    // alive (lots of code references it for focus / accessibility), just make
++    // it invisible.
++    app_menu_button_->SetVisible(false);
+   }
  
    if (base::FeatureList::IsEnabled(contextual_tasks::kContextualTasks) &&
-       contextual_tasks::GetExpandButtonOption() ==
 diff --git a/chrome/browser/ui/webui/chrome_web_ui_configs.cc b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
-index bced2aebb3495..652b2e645e57e 100644
+index 184305a45acc2..df04f3ae7b009 100644
 --- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
 +++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
-@@ -298,11 +298,13 @@ void RegisterChromeWebUIConfigs() {
+@@ -304,11 +304,13 @@ void RegisterChromeWebUIConfigs() {
            security_interstitials::KnownInterceptionDisclosureUIConfig>());
    map.AddWebUIConfig(std::make_unique<SavedTabGroupsUnsupportedUIConfig>());
    map.AddWebUIConfig(std::make_unique<SegmentationInternalsUIConfig>());
@@ -542,7 +517,7 @@ index bced2aebb3495..652b2e645e57e 100644
    map.AddWebUIConfig(std::make_unique<TranslateInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<UsbInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<user_actions_ui::UserActionsUIConfig>());
-@@ -338,18 +340,26 @@ void RegisterChromeWebUIConfigs() {
+@@ -341,21 +343,29 @@ void RegisterChromeWebUIConfigs() {
    map.AddWebUIConfig(std::make_unique<actor::ui::ActorOverlayUIConfig>());
    map.AddWebUIConfig(std::make_unique<AppServiceInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<AutofillMlInternalsUIConfig>());
@@ -558,6 +533,9 @@ index bced2aebb3495..652b2e645e57e 100644
    map.AddWebUIConfig(std::make_unique<ColorPipelineInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<CommentsSidePanelUIConfig>());
    map.AddWebUIConfig(std::make_unique<CustomizeChromeUIConfig>());
+   map.AddWebUIConfig(
+       std::make_unique<
+           contextual_cueing_internals::ContextualCueingInternalsUIConfig>());
 -  map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
 +  // map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
    map.AddWebUIConfig(std::make_unique<DrivePickerHostUIConfig>());
@@ -576,7 +554,7 @@ index bced2aebb3495..652b2e645e57e 100644
    map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<InspectUIConfig>());
  #if BUILDFLAG(ENABLE_SESSION_SERVICE)
-@@ -369,7 +379,9 @@ void RegisterChromeWebUIConfigs() {
+@@ -376,14 +386,18 @@ void RegisterChromeWebUIConfigs() {
    map.AddWebUIConfig(std::make_unique<OmniboxPopupUIConfig>());
    map.AddWebUIConfig(
        std::make_unique<on_device_internals::OnDeviceInternalsUIConfig>());
@@ -587,7 +565,6 @@ index bced2aebb3495..652b2e645e57e 100644
    map.AddWebUIConfig(
        std::make_unique<
            personal_context::notice::PersonalContextNoticeUIConfig>());
-@@ -378,7 +390,9 @@ void RegisterChromeWebUIConfigs() {
    map.AddWebUIConfig(std::make_unique<ProfileInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<ReadingListUIConfig>());
    map.AddWebUIConfig(std::make_unique<SearchEngineChoiceUIConfig>());
@@ -598,7 +575,7 @@ index bced2aebb3495..652b2e645e57e 100644
    map.AddWebUIConfig(std::make_unique<ShoppingInsightsSidePanelUIConfig>());
    map.AddWebUIConfig(std::make_unique<SuggestInternalsUIConfig>());
    map.AddWebUIConfig(std::make_unique<SupportToolUIConfig>());
-@@ -446,7 +460,9 @@ void RegisterChromeWebUIConfigs() {
+@@ -451,7 +465,9 @@ void RegisterChromeWebUIConfigs() {
  #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
      BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_DESKTOP_ANDROID)
    map.AddWebUIConfig(std::make_unique<DiscardsUIConfig>());
@@ -610,10 +587,10 @@ index bced2aebb3495..652b2e645e57e 100644
          // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_DESKTOP_ANDROID)
  
 diff --git a/chrome/common/webui_url_constants.cc b/chrome/common/webui_url_constants.cc
-index 307b2de1bdb81..107aa9acadab5 100644
+index 4c12bc642955f..8962eacc9abf0 100644
 --- a/chrome/common/webui_url_constants.cc
 +++ b/chrome/common/webui_url_constants.cc
-@@ -337,7 +337,8 @@ const GURL& ChromeUINewTabPageURLAsGURL() {
+@@ -350,7 +350,8 @@ const GURL& ChromeUINewTabPageURLAsGURL() {
  }
  
  const GURL& ChromeUINewTabURLAsGURL() {

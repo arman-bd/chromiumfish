@@ -1,5 +1,5 @@
 diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
-index 4e4ca8dcb4feb..c45f8d4949ee0 100644
+index 44527d0a7b264..866fa8b80c766 100644
 --- a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
 +++ b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
 @@ -4,6 +4,8 @@

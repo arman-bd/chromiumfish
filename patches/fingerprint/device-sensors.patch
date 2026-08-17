@@ -1,8 +1,8 @@
 diff --git a/content/browser/gpu/gpu_data_manager_impl_private.cc b/content/browser/gpu/gpu_data_manager_impl_private.cc
-index 5c2d6fa3d29e4..ba1a8f416694a 100644
+index bb5a08cc656ac..4d10c3a3b4a83 100644
 --- a/content/browser/gpu/gpu_data_manager_impl_private.cc
 +++ b/content/browser/gpu/gpu_data_manager_impl_private.cc
-@@ -72,6 +72,7 @@
+@@ -74,6 +74,7 @@
  #include "media/media_buildflags.h"
  #include "media/mojo/clients/mojo_video_decoder.h"
  #include "media/mojo/mojom/video_encode_accelerator.mojom.h"
@@ -10,7 +10,7 @@ index 5c2d6fa3d29e4..ba1a8f416694a 100644
  #include "ui/base/ui_base_features.h"
  #include "ui/base/ui_base_switches.h"
  #include "ui/display/screen.h"
-@@ -1383,6 +1384,16 @@ void GpuDataManagerImplPrivate::UpdateGpuPreferences(
+@@ -1317,6 +1318,16 @@ void GpuDataManagerImplPrivate::UpdateGpuPreferences(
    DCHECK(gpu_preferences);
  
    gpu_preferences->gpu_program_cache_size = gpu::GetDefaultGpuDiskCacheSize();

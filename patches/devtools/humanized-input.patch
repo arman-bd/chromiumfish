@@ -1,8 +1,8 @@
 diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
-index d8b60778cdb82..92bb57e0a9f71 100644
+index 2c3a21e01a602..840a26860c329 100644
 --- a/content/browser/BUILD.gn
 +++ b/content/browser/BUILD.gn
-@@ -125,6 +125,7 @@ source_set("browser") {
+@@ -132,6 +132,7 @@ source_set("browser") {
      "//components/attribution_reporting:mojom",
      "//components/back_forward_cache:enum",
      "//components/browsing_data/core:cookie_or_cache_deletion_choice",
@@ -10,7 +10,7 @@ index d8b60778cdb82..92bb57e0a9f71 100644
      "//components/browsing_topics/common",
      "//components/cbor",
      "//components/discardable_memory/common",
-@@ -932,6 +933,7 @@ source_set("browser") {
+@@ -945,6 +946,7 @@ source_set("browser") {
      "devtools/protocol/background_service_handler.h",
      "devtools/protocol/browser_handler.cc",
      "devtools/protocol/browser_handler.h",
@@ -18,7 +18,7 @@ index d8b60778cdb82..92bb57e0a9f71 100644
      "devtools/protocol/device_access_handler.cc",
      "devtools/protocol/device_access_handler.h",
      "devtools/protocol/device_orientation_handler.cc",
-@@ -1207,6 +1209,7 @@ source_set("browser") {
+@@ -1220,6 +1222,7 @@ source_set("browser") {
      "host_zoom_level_context.h",
      "host_zoom_map_impl.cc",
      "host_zoom_map_impl.h",
@@ -26,7 +26,7 @@ index d8b60778cdb82..92bb57e0a9f71 100644
      "idle/idle_manager_impl.cc",
      "idle/idle_manager_impl.h",
      "image_capture/image_capture_impl.cc",
-@@ -2887,6 +2890,8 @@ source_set("browser") {
+@@ -2913,6 +2916,8 @@ source_set("browser") {
          [ "file_system_access/file_path_watcher/file_path_watcher_stub.cc" ]
  
      sources += [
@@ -781,10 +781,10 @@ index 0000000000000..99ef9592c9c8a
 +}  // namespace devtools
 +}  // namespace content
 diff --git a/content/browser/devtools/protocol/input_handler.cc b/content/browser/devtools/protocol/input_handler.cc
-index 11dab515d6f67..d2dec0ee10031 100644
+index 19ae925ff82d1..f50eced548acd 100644
 --- a/content/browser/devtools/protocol/input_handler.cc
 +++ b/content/browser/devtools/protocol/input_handler.cc
-@@ -48,6 +48,8 @@
+@@ -49,6 +49,8 @@
  #include "ui/base/clipboard/clipboard_constants.h"
  #include "ui/base/dragdrop/mojom/drag_drop_types.mojom-shared.h"
  #include "ui/events/base_event_utils.h"
@@ -793,8 +793,8 @@ index 11dab515d6f67..d2dec0ee10031 100644
  #include "ui/events/blink/web_input_event_traits.h"
  #include "ui/events/event_constants.h"
  #include "ui/events/gesture_detection/gesture_provider_config_helper.h"
-@@ -1353,6 +1355,37 @@ void InputHandler::ImeSetComposition(
-       std::move(closure));
+@@ -1358,6 +1360,37 @@ void InputHandler::ImeSetComposition(
+       /*target_dom_node_id=*/blink::DOMNodeIdType(), std::move(closure));
  }
  
 +namespace {
@@ -831,7 +831,7 @@ index 11dab515d6f67..d2dec0ee10031 100644
  void InputHandler::DispatchMouseEvent(
      const std::string& event_type,
      double x,
-@@ -1371,6 +1404,64 @@ void InputHandler::DispatchMouseEvent(
+@@ -1376,6 +1409,64 @@ void InputHandler::DispatchMouseEvent(
      std::optional<double> delta_y,
      std::optional<std::string> pointer_type,
      std::unique_ptr<DispatchMouseEventCallback> callback) {

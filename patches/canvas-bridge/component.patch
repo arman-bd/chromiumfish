@@ -62,7 +62,7 @@ index 0000000000000..828fdcb718b55
 +
 +#endif  // COMPONENTS_CANVAS_BRIDGE_PUBLIC_CANVAS_BRIDGE_SWITCHES_H_
 diff --git a/third_party/blink/renderer/controller/blink_initializer.cc b/third_party/blink/renderer/controller/blink_initializer.cc
-index 4d1f2acf58e43..92ace9029b594 100644
+index ed37fc47cf7c0..135ecf94b87d6 100644
 --- a/third_party/blink/renderer/controller/blink_initializer.cc
 +++ b/third_party/blink/renderer/controller/blink_initializer.cc
 @@ -30,6 +30,9 @@
@@ -75,7 +75,7 @@ index 4d1f2acf58e43..92ace9029b594 100644
  #include <algorithm>
  #include <memory>
  #include <utility>
-@@ -169,6 +172,18 @@ void InitializeCommon(Platform* platform, mojo::BinderMap* binders) {
+@@ -171,6 +174,18 @@ void InitializeCommon(Platform* platform, mojo::BinderMap* binders) {
    // Initialize performance manager.
    RendererResourceCoordinatorImpl::MaybeInitialize();
  
@@ -95,10 +95,10 @@ index 4d1f2acf58e43..92ace9029b594 100644
    // is enabled. For that reason, the partition can only be initialized after V8
    // has been initialized.
 diff --git a/third_party/blink/renderer/platform/BUILD.gn b/third_party/blink/renderer/platform/BUILD.gn
-index ac8478a059fa6..fcfd08b7185f4 100644
+index 85d03eee373c5..668cb4e3e9f5e 100644
 --- a/third_party/blink/renderer/platform/BUILD.gn
 +++ b/third_party/blink/renderer/platform/BUILD.gn
-@@ -1783,6 +1783,7 @@ component("platform") {
+@@ -1792,6 +1792,7 @@ component("platform") {
      "//third_party/blink/public/mojom:color_scheme_mojo_bindings",
      "//third_party/blink/public/mojom:embedded_frame_sink_mojo_bindings_blink",
      "//third_party/blink/renderer/platform/blob",

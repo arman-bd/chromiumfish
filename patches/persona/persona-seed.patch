@@ -1,5 +1,5 @@
 diff --git a/content/browser/renderer_host/render_process_host_impl.cc b/content/browser/renderer_host/render_process_host_impl.cc
-index abe9030414bcc..493bf3aa0d967 100644
+index 2a8abef097d85..b1a9867ae87f1 100644
 --- a/content/browser/renderer_host/render_process_host_impl.cc
 +++ b/content/browser/renderer_host/render_process_host_impl.cc
 @@ -72,6 +72,7 @@
@@ -10,17 +10,17 @@ index abe9030414bcc..493bf3aa0d967 100644
  #include "components/embedder_support/switches.h"
  #include "components/input/features.h"
  #include "components/input/utils.h"
-@@ -3840,6 +3841,9 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
+@@ -3871,6 +3872,9 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
        switches::kDisableVideoCaptureUseGpuMemoryBuffer,
        switches::kDomAutomationController,
        switches::kEnableAutomation,
 +      // Lightweight-fork: forward the fingerprint persona seed so every
 +      // renderer derives the same persona as the browser process.
 +      switches::kPersonaSeed,
-       switches::kEnableExperimentalAccessibilityLanguageDetection,
        switches::kEnableExperimentalAccessibilityLabelsDebugging,
        switches::kEnableExperimentalWebPlatformFeatures,
-@@ -3981,6 +3985,12 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
+       switches::kEnableBlinkTestFeatures,
+@@ -4012,6 +4016,12 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
  #if BUILDFLAG(IS_CHROMEOS)
        switches::kSchedulerBoostUrgent,
  #endif
