@@ -69,6 +69,23 @@ The DB auto-updates: it tracks the `latest` monthly build (cached, re-checked
 weekly), so you get fresh data without upgrading the SDK. Pin a fixed version
 with `CHROMIUMFISH_GEOIP_VERSION=2026.06` for reproducibility.
 
+### Geolocation (GPS)
+
+Pin a static GPS position with two flags through `args`. ChromiumFish auto-grants the
+Geolocation permission (no prompt) and reports those exact coordinates to every frame,
+never querying the real location providers:
+
+```python
+with Chromiumfish(
+    persona_seed="alpha-7",
+    args=["--persona-lat=48.8584", "--persona-lng=2.2945"],  # optional: --persona-accuracy=<m> (default 40)
+) as browser:
+    ...
+```
+
+Keep the location aligned with the exit IP and timezone. More:
+[chromiumfish.com/personas#geolocation-gps](https://chromiumfish.com/personas#geolocation-gps).
+
 ## AI agent
 
 ChromiumFish ships a native in-browser agent (perceive → think → act, driven by an
