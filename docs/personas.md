@@ -88,6 +88,49 @@ def scrape(account_id: str):
 > TLS, and behaviour still matter. For high-friction targets, combine a persona with a
 > clean residential proxy and human-like interaction.
 
+## Mobile and OS persona
+
+By default a persona presents as **Windows** desktop Chrome. `--persona-os` switches the
+whole OS family the persona claims — not just the User-Agent, but the coherent stack behind
+it (Client Hints and `Sec-CH-UA-Platform`, and OS-specific engine behaviour such as the
+math/`libm` results, the outbound TCP TTL, and the media key systems). Pass it through the
+SDK's `args` list:
+
+| Value | Persona |
+|-------|---------|
+| `win` | Windows desktop Chrome. **Default** — used when the flag is absent. |
+| `mac` | macOS desktop Chrome. |
+| `android` | A seed-driven **Pixel-family phone**: mobile UA + Client Hints, phone screen metrics and DPR, touch, mobile viewport, a Mali WebGL string, and `pointer: coarse` / `hover: none`. |
+
+Like the desktop persona, the mobile one is **seed-driven**: the `persona_seed` picks the
+specific device out of the Pixel pool, so the same seed always reproduces the same phone.
+
+```python
+from chromiumfish.sync_api import Chromiumfish
+
+with Chromiumfish(
+    persona_seed="alpha-7",
+    args=["--persona-os=android"],
+) as browser:
+    page = browser.new_page()
+    page.goto("https://example.com")   # navigator.userAgentData.mobile === true
+```
+
+```javascript
+const browser = await ChromiumFish({
+  personaSeed: "alpha-7",
+  args: ["--persona-os=android"],
+});
+```
+
+{: .warning }
+> **The Android persona is functional but not airtight.** The UA, Client Hints, screen,
+> touch, and WebGL surfaces are coherent and were verified byte-exact against a real Pixel,
+> but residual tells remain — the font set, exact-match canvas pixels, and locale/timezone
+> alignment are not fully mobile. For the strictest anti-fingerprinting targets, prefer the
+> default desktop persona; if you do use `android`, pair it with a mobile-region proxy and a
+> matching `timezone`/locale, and don't lean on it against the hardest detectors.
+
 ## Canvas and WebGL (optional bridge)
 
 The WebGL vendor/renderer **string** is part of the persona and reports a real D3D11/ANGLE

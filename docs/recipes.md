@@ -129,6 +129,47 @@ await browser.close();
 > If you already know the proxy's region, pass the IANA name directly
 > (e.g. `timezone="Europe/Berlin"`) to skip the IP lookup.
 
+## Emulate an Android phone
+
+Switch the whole persona to a seed-driven Pixel-family phone with `--persona-os=android`,
+passed through `args`. The same `persona_seed` always picks the same device. The mobile
+persona changes the UA, Client Hints, screen metrics, touch, viewport, and WebGL together.
+
+### Python
+
+```python
+from chromiumfish.sync_api import Chromiumfish
+
+with Chromiumfish(
+    persona_seed="alpha-7",
+    args=["--persona-os=android"],
+) as browser:
+    page = browser.new_page()
+    page.goto("https://example.com")
+    print(page.evaluate("navigator.userAgentData.mobile"))  # True
+```
+
+### Node
+
+```javascript
+import { ChromiumFish } from "chromiumfish";
+
+const browser = await ChromiumFish({
+  personaSeed: "alpha-7",
+  args: ["--persona-os=android"],
+});
+const page = await browser.newPage();
+await page.goto("https://example.com");
+console.log(await page.evaluate("navigator.userAgentData.mobile")); // true
+await browser.close();
+```
+
+{: .warning }
+> The Android persona is coherent across UA/hints/screen/touch/WebGL but **not airtight** —
+> fonts, exact-match canvas pixels, and locale/timezone still carry desktop tells. Pair it
+> with a mobile-region proxy and a matching timezone, and don't rely on it against the
+> strictest detectors. `--persona-os` also accepts `mac` and `win` (`win` is the default).
+
 ## Spoof GPS geolocation
 
 Give the browser a fixed GPS position. With `--persona-lat` and `--persona-lng` set,
