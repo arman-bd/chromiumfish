@@ -30,7 +30,9 @@ dependencies = [
 agent = ["websocket-client>=1.6"]
 # The MCP server (`chromiumfish mcp` / chromiumfish.mcp) exposes the browser to
 # MCP clients (Claude, Cursor, …). The `mcp` SDK requires Python >=3.10.
-mcp = ["mcp>=1.2", "websocket-client>=1.6"]
+# Capped below 2.0: the 2.x line dropped the bundled `mcp.server.fastmcp`
+# module this server is built on, so 2.x installs break at import time.
+mcp = ["mcp>=1.2,<2", "websocket-client>=1.6"]
 
 [project.urls]
 Homepage = "https://chromiumfish.com"

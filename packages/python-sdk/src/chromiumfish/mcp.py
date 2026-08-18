@@ -78,6 +78,24 @@ def _require_mcp():
     try:
         from mcp.server.fastmcp import FastMCP, Image
     except ImportError as exc:  # pragma: no cover - import guard
+        # Two very different failures land here. Either the `mcp` SDK is absent,
+        # or it is present but on the 2.x line, which dropped the bundled
+        # `mcp.server.fastmcp` module this server is built on. Telling someone
+        # who already installed the extra to install it again is useless, so
+        # separate the two cases.
+        try:
+            import importlib.metadata as _md
+
+            installed = _md.version("mcp")
+        except Exception:
+            installed = None
+        if installed is not None:
+            raise RuntimeError(
+                f"the installed 'mcp' package ({installed}) is too new for this "
+                "server: the 2.x line removed `mcp.server.fastmcp`. Pin it with "
+                '`pip install "mcp<2"` (or reinstall `pip install '
+                '"chromiumfish[mcp]"`, which now caps it).'
+            ) from exc
         raise RuntimeError(
             "the MCP server needs the 'mcp' package; install it with "
             '`pip install "chromiumfish[mcp]"` (needs Python ≥3.10).'
