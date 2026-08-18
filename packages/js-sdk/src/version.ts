@@ -10,7 +10,7 @@
 export const SDK_VERSION = "0.2.3";
 
 /** Default ChromiumFish browser build to fetch. Matches src/chrome/VERSION. */
-export const DEFAULT_BROWSER_VERSION = "149.0.7827.115";
+export const DEFAULT_BROWSER_VERSION = "151.0.7922.165";
 
 /** Public repo hosting the release assets. */
 export const RELEASE_REPO = "arman-bd/chromiumfish";
