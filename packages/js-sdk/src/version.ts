@@ -7,7 +7,7 @@
  */
 
 /** SDK package version (kept in sync with package.json). */
-export const SDK_VERSION = "0.2.3";
+export const SDK_VERSION = "0.2.4";
 
 /** Default ChromiumFish browser build to fetch. Matches src/chrome/VERSION. */
 export const DEFAULT_BROWSER_VERSION = "151.0.7922.165";
@@ -30,7 +30,7 @@ export const DEFAULT_GEOIP_VERSION = "latest";
  * Concrete version used when `"latest"` cannot be resolved (offline + no cached
  * pointer). Bump occasionally so the offline floor stays recent.
  */
-export const GEOIP_FALLBACK_VERSION = "2026.06";
+export const GEOIP_FALLBACK_VERSION = "2026.08";
 
 /**
  * Reject version strings that aren't a plain build tag. Versions are
