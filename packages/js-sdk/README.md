@@ -69,6 +69,22 @@ const browser = await ChromiumFish({
 Keep the location aligned with the exit IP and timezone. More:
 [chromiumfish.com/personas#geolocation-gps](https://chromiumfish.com/personas#geolocation-gps).
 
+### Mobile / OS persona
+
+By default the persona is Windows desktop Chrome. `--persona-os` (through `args`) switches
+the whole OS family — `win` (default), `mac`, or `android`, a seed-driven Pixel-family phone
+(mobile UA/hints, touch, phone screen, Mali WebGL):
+
+```javascript
+const browser = await ChromiumFish({ personaSeed: "alpha-7", args: ["--persona-os=android"] });
+// navigator.userAgentData.mobile === true
+```
+
+The Android persona is coherent but not airtight — fonts, exact-match canvas, and
+locale/timezone still carry desktop tells, so pair it with a mobile-region proxy + timezone
+and don't rely on it against the strictest detectors. More:
+[chromiumfish.com/personas#mobile-and-os-persona](https://chromiumfish.com/personas#mobile-and-os-persona).
+
 ## AI agent
 
 ChromiumFish ships a native in-browser agent (perceive → think → act, driven by
