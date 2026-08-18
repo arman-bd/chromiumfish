@@ -104,6 +104,57 @@ is pointed at the bridge (two command-line flags passed through the SDK's `args`
 those reads are answered by the real Windows renderer instead of local SwiftShader. See
 [Canvas & WebGL bridge](canvas-bridge) for the full setup.
 
+## Geolocation (GPS)
+
+A persona can also carry a **fixed GPS location**. Give it a latitude/longitude pair and
+ChromiumFish does two things at once:
+
+- **Auto-grants** the Geolocation permission for the session — no prompt, and
+  `navigator.permissions.query({ name: "geolocation" })` reports `granted`.
+- **Overrides** the Geolocation API session-wide. Every frame, current and future, reports
+  the spoofed position, and the browser never subscribes to the real network/system location
+  providers. It's the engine-level equivalent of CDP's `Emulation.setGeolocationOverride`.
+
+Set it with command-line flags passed through the SDK's `args` list (Python `args=`,
+Node `args:`):
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--persona-lat=<deg>` | yes | Latitude in decimal degrees. |
+| `--persona-lng=<deg>` | yes | Longitude in decimal degrees. |
+| `--persona-accuracy=<m>` | no | Horizontal accuracy in meters. Defaults to `40`, a plausible GPS value. |
+
+### Python
+
+```python
+from chromiumfish.sync_api import Chromiumfish
+
+with Chromiumfish(
+    persona_seed="alpha-7",
+    args=["--persona-lat=48.8584", "--persona-lng=2.2945"],  # Eiffel Tower
+) as browser:
+    page = browser.new_page()
+    page.goto("https://example.com")
+```
+
+### Node
+
+```javascript
+import { ChromiumFish } from "chromiumfish";
+
+const browser = await ChromiumFish({
+  personaSeed: "alpha-7",
+  args: ["--persona-lat=48.8584", "--persona-lng=2.2945"],  // Eiffel Tower
+});
+const page = await browser.newPage();
+await page.goto("https://example.com");
+```
+
+Unlike the fingerprint surfaces, the location is **explicit, not derived from the seed** —
+you set the exact coordinates you want. Keep it coherent with the rest of the identity: a
+GPS fix in Paris behind a US proxy on `America/New_York` is a contradiction a site can catch.
+Pair it with a matching proxy and `timezone="auto"`.
+
 ## What's deterministic per seed
 
 | Surface | Behaviour |

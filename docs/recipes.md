@@ -129,6 +129,65 @@ await browser.close();
 > If you already know the proxy's region, pass the IANA name directly
 > (e.g. `timezone="Europe/Berlin"`) to skip the IP lookup.
 
+## Spoof GPS geolocation
+
+Give the browser a fixed GPS position. With `--persona-lat` and `--persona-lng` set,
+ChromiumFish auto-grants the Geolocation permission (no prompt) and reports those exact
+coordinates to every frame, without ever touching the real location providers. Pass them
+through `args`; add `--persona-accuracy` (meters) to override the default of 40.
+
+### Python
+
+```python
+from chromiumfish.sync_api import Chromiumfish
+
+with Chromiumfish(
+    persona_seed="alpha-7",
+    args=[
+        "--persona-lat=48.8584",
+        "--persona-lng=2.2945",
+        "--persona-accuracy=25",
+    ],
+) as browser:
+    page = browser.new_page()
+    page.goto("https://example.com")
+    pos = page.evaluate(
+        """() => new Promise((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(
+                (p) => resolve([p.coords.latitude, p.coords.longitude]),
+                reject))"""
+    )
+    print(pos)  # [48.8584, 2.2945]
+```
+
+### Node
+
+```javascript
+import { ChromiumFish } from "chromiumfish";
+
+const browser = await ChromiumFish({
+  personaSeed: "alpha-7",
+  args: ["--persona-lat=48.8584", "--persona-lng=2.2945", "--persona-accuracy=25"],
+});
+const page = await browser.newPage();
+await page.goto("https://example.com");
+const pos = await page.evaluate(
+  () =>
+    new Promise((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve([p.coords.latitude, p.coords.longitude]),
+        reject,
+      ),
+    ),
+);
+console.log(pos); // [48.8584, 2.2945]
+await browser.close();
+```
+
+{: .tip }
+> Keep the location coherent with the rest of the identity. A GPS fix should sit in the same
+> region as the exit IP and the timezone — pair it with a matching proxy and `timezone="auto"`.
+
 ## Multiple pages, one browser, isolated contexts
 
 Launch the browser once and open a new context per task. Each context has its own cookies,

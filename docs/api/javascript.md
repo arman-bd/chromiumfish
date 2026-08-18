@@ -50,6 +50,8 @@ lifecycle, so call `browser.close()` when done.
 {: .tip }
 > Set `timezone: "auto"` when you run behind a proxy so the browser's timezone matches the exit IP instead of the host machine.
 
+Pin a GPS location through `args`: `args: ["--persona-lat=48.8584", "--persona-lng=2.2945"]` (optionally `--persona-accuracy=<meters>`, default 40). ChromiumFish auto-grants the Geolocation permission and reports those coordinates to every frame. See [Geolocation](../personas#geolocation-gps).
+
 ## AI agent
 
 The native in-browser agent (perceive → think → act). See the [AI Agent guide](../ai-agent)

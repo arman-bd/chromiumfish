@@ -59,6 +59,8 @@ Same API, returns an async `Browser`.
 
 When you set a proxy, `timezone="auto"` reads the timezone from the proxy's egress IP, so the browser clock matches where the traffic actually comes from.
 
+Pin a GPS location through `args`: `args=["--persona-lat=48.8584", "--persona-lng=2.2945"]` (optionally `--persona-accuracy=<meters>`, default 40). ChromiumFish auto-grants the Geolocation permission and reports those coordinates to every frame. See [Geolocation](../personas#geolocation-gps).
+
 ```python
 with Chromiumfish(
     persona_seed="alpha-7",

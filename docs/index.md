@@ -41,6 +41,9 @@ fingerprinting logic of their own; they fetch, verify, and cache the binary, the
   those reads pass through clean.
 - **Timezone follows the proxy.** Pass `timezone="auto"` and the browser's timezone is set
   from your egress IP, so it lines up with the proxy you're routing through.
+- **Pin a GPS location.** Set `--persona-lat`/`--persona-lng` and the browser auto-grants
+  the Geolocation permission and reports that exact position to every frame — no prompt, and
+  the real location providers are never queried. See [Personas](personas#geolocation-gps).
 - **It's just Chromium.** Everything you know about Playwright applies; the SDK is a thin
   wrapper over `chromium.launch(executablePath=...)`.
 - **Native AI agent.** Beyond driving it yourself, hand the browser a plain-language task and
