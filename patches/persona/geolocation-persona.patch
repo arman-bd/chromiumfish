@@ -110,3 +110,45 @@ index 7edad76e875c0..f0b3e0d181d1a 100644
    }
    return geolocation_context_.get();
  }
+diff --git a/services/device/geolocation/geolocation_impl.cc b/services/device/geolocation/geolocation_impl.cc
+index bf60741c22..09a19fb7c2 100644
+--- a/services/device/geolocation/geolocation_impl.cc
++++ b/services/device/geolocation/geolocation_impl.cc
+@@ -10,6 +10,7 @@
+ #include "base/functional/bind.h"
+ #include "base/logging.h"
+ #include "base/metrics/histogram_functions.h"
++#include "base/time/time.h"
+ #include "services/device/geolocation/geolocation_context.h"
+ #include "services/device/public/cpp/geolocation/geoposition.h"
+ 
+@@ -115,7 +116,15 @@ void GeolocationImpl::QueryNextPosition(QueryNextPositionCallback callback) {
+ void GeolocationImpl::QueryCachedPosition(
+     QueryCachedPositionCallback callback) {
+   if (position_override_) {
+-    std::move(callback).Run(position_override_.Clone());
++    // Lightweight-fork: the static persona override carries a timestamp frozen
++    // at injection time, so the fix ages and freshness-checking consumers (e.g.
++    // Google Maps' "your location") reject it. Re-stamp to now on delivery so
++    // the spoofed fix always reads as a current GPS fix, like a real device.
++    mojom::GeopositionResultPtr fix = position_override_.Clone();
++    if (fix->is_position()) {
++      fix->get_position()->timestamp = base::Time::Now();
++    }
++    std::move(callback).Run(std::move(fix));
+     return;
+   }
+ 
+@@ -203,6 +212,12 @@ void GeolocationImpl::OnLocationUpdate(const mojom::GeopositionResult& result) {
+ 
+ void GeolocationImpl::ReportCurrentPosition() {
+   CHECK(current_result_);
++  // Lightweight-fork: refresh the persona override's timestamp on every delivery
++  // (see QueryCachedPosition) so getCurrentPosition/watchPosition never hand out
++  // a stale-looking fix. Real provider positions (no override set) are untouched.
++  if (position_override_ && current_result_->is_position()) {
++    current_result_->get_position()->timestamp = base::Time::Now();
++  }
+   std::move(position_callback_).Run(std::move(current_result_));
+ }
+ 
