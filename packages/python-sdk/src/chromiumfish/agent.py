@@ -99,6 +99,38 @@ AGENT_SYSTEM_PROMPT = (
 )
 
 
+# Chromium auto-denies EVERY permission while an AI actor task owns the tab
+# (features::kGlicActorPermissionsAutoReject, enabled by default). That check runs
+# before the fork's static-geolocation grant, so an agent-driven page asking for
+# its position gets PERMISSION_DENIED and sites report "cannot access your
+# location" — even though --persona-lat/--persona-lng are set. When a GPS persona
+# is pinned we switch that auto-reject off so the pinned coordinates are served.
+_ACTOR_PERMISSION_AUTOREJECT = "GlicActorPermissionsAutoReject"
+
+
+def _apply_persona_permission_fix(argv: list[str]) -> list[str]:
+    """Disable the actor permission auto-reject when a GPS persona is pinned.
+
+    Merges into an existing ``--disable-features=`` rather than adding a second
+    one (Chromium keeps only the last occurrence of a switch).
+    """
+    def _has(name: str) -> bool:
+        return any(a == f"--{name}" or a.startswith(f"--{name}=") for a in argv)
+
+    if not (_has("persona-lat") and _has("persona-lng")):
+        return argv
+    out = list(argv)
+    for i, arg in enumerate(out):
+        if arg.startswith("--disable-features="):
+            feats = [f for f in arg.split("=", 1)[1].split(",") if f]
+            if _ACTOR_PERMISSION_AUTOREJECT not in feats:
+                feats.append(_ACTOR_PERMISSION_AUTOREJECT)
+                out[i] = "--disable-features=" + ",".join(feats)
+            return out
+    out.append(f"--disable-features={_ACTOR_PERMISSION_AUTOREJECT}")
+    return out
+
+
 def _require_ws():
     try:
         from websocket import create_connection
@@ -358,7 +390,7 @@ def launch_agent(
         chrome = binary_path()
     profile = tempfile.mkdtemp(prefix="cf-agent-")
     proc = subprocess.Popen(
-        [
+        _apply_persona_permission_fix([
             str(chrome),
             f"--remote-debugging-port={port}",
             "--remote-allow-origins=*",
@@ -372,7 +404,7 @@ def launch_agent(
             f"--agent-llm-key={api_key or os.environ.get('OPENAI_API_KEY', '')}",
             f"--agent-model={model or os.environ.get('OPENAI_API_MODEL', '')}",
             *(extra_args or []),
-        ],
+        ]),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     try:

@@ -110,6 +110,37 @@ type Cadence = [string | number, string | number, string | number];
 export type TypingSpeed = keyof typeof TYPING_PROFILES | (string & {}) | Cadence;
 
 /** Build the GlicActorIncrementalTyping switch for a typing-speed setting. */
+/**
+ * Chromium auto-denies EVERY permission while an AI actor task owns the tab
+ * (`features::kGlicActorPermissionsAutoReject`, enabled by default). That check
+ * runs before the fork's static-geolocation grant, so an agent-driven page asking
+ * for its position gets PERMISSION_DENIED and sites report "cannot access your
+ * location" — even though `--persona-lat`/`--persona-lng` are set. When a GPS
+ * persona is pinned we switch that auto-reject off so the pinned coordinates are
+ * served. Merges into an existing `--disable-features=` (Chromium keeps only the
+ * last occurrence of a switch).
+ */
+const ACTOR_PERMISSION_AUTOREJECT = "GlicActorPermissionsAutoReject";
+
+export function applyPersonaPermissionFix(argv: string[]): string[] {
+  const has = (name: string) =>
+    argv.some((a) => a === `--${name}` || a.startsWith(`--${name}=`));
+  if (!(has("persona-lat") && has("persona-lng"))) return argv;
+  const out = [...argv];
+  for (let i = 0; i < out.length; i++) {
+    if (out[i].startsWith("--disable-features=")) {
+      const feats = out[i].slice("--disable-features=".length).split(",").filter(Boolean);
+      if (!feats.includes(ACTOR_PERMISSION_AUTOREJECT)) {
+        feats.push(ACTOR_PERMISSION_AUTOREJECT);
+        out[i] = `--disable-features=${feats.join(",")}`;
+      }
+      return out;
+    }
+  }
+  out.push(`--disable-features=${ACTOR_PERMISSION_AUTOREJECT}`);
+  return out;
+}
+
 export function typingFlag(typing: TypingSpeed = "human"): string {
   let kd: string | number, ku: string | number, mult: string | number;
   if (typeof typing === "string") {
@@ -424,7 +455,7 @@ export async function launchAgent(opts: LaunchAgentOptions = {}): Promise<AgentS
     `--agent-model=${model || (process.env.OPENAI_API_MODEL ?? "")}`,
     ...extraArgs,
   ];
-  const proc: ChildProcess = spawn(chrome, args, { stdio: "ignore" });
+  const proc: ChildProcess = spawn(chrome, applyPersonaPermissionFix(args), { stdio: "ignore" });
 
   const cleanup = () => rmSync(profile, { recursive: true, force: true });
   const deadline = Date.now() + timeoutMs;
